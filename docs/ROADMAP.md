@@ -5,10 +5,11 @@
 > Source of Truth**; hier steht die Kopie, damit das Repo nicht ohne Roadmap
 > dasteht. Relative Links in die Config wurden zu reinem Text reduziert.
 >
-> Stand 2026-08-23: **alle fünf Migrationsphasen (§13) sind durch.** Der
-> LSP-Kern liegt in diesem Repo, konfiguriert die Server, besitzt alle
-> LSP-Tasten, erreicht Fremdplugins nur über Adapter und installiert sie über
-> `import = "lsp.pack"`. Offen sind Einzelpunkte, keine Phase mehr.
+> Stand 2026-08-23: **alle fünf Migrationsphasen (§13) sind durch**, ebenso die
+> Einzelpunkte danach — Schritt 12, B8, B12, B14, B16–B19, die Doku-Seiten aus
+> §12, die Spec-Suite (124 Fälle) und Count-Support auf den Bewegungstasten.
+> Offen sind nur noch drei Entscheidungen, die dem Autor gehören: `NEW-20`,
+> §15.1 (Trouble als Default-Senke) und §15.2 (cmp gegen blink).
 
 # `lsp.nvim` — Konzept (Dachplugin)
 
@@ -41,9 +42,25 @@ Modulwurzel `wkddap`) und den anderen extrahierten `*.nvim`-Plugins
 > installiert und konfiguriert das Ökosystem, `plugins/trouble.lua` und der
 > LSP-Teil von `plugins/lsp.lua` sind weg.
 >
-> **Alle fünf Phasen sind damit durch.** Es bleiben Einzelpunkte: Schritt 12
-> (die ~30 `:Lsp*` zu Aliasen falten), B8, B12 — und `lua/lsp_legacy` in der
-> Config wegwerfen.
+> **Alle fünf Phasen sind damit durch**, und die Einzelpunkte inzwischen auch:
+> Schritt 12 (die ~30 `:Lsp*` sind zu 15 Routen mit Legacy-Aliasen gefaltet),
+> B8, B12, B14, B16–B19, `lua/lsp_legacy` gelöscht (163 Dateien), die sechs
+> Doku-Seiten aus §12, eine Spec-Suite mit 124 Fällen und Count-Support auf den
+> Bewegungstasten (`NEW-25`).
+>
+> Es bleiben **drei Entscheidungen, die dir gehören** — nicht mir: `NEW-20`
+> (gen_map `--check` gegen eine bewusst nicht committete Map, gehört im Gate
+> aufgelöst), §15.1 (Trouble als Default-Senke für `]d`/`[d`) und §15.2 (cmp
+> gegen blink — jetzt echt umschaltbar über `vim.g.lsp_nvim.pack.completion`).
+> Alles andere unter §15 „Offen“ hat sich durch das Gebaute erledigt.
+>
+> Die Migration hat sechs Bugs gefunden, die vorher **live in der Config**
+> liefen: die Copilot/cmp-Brücke wurde nie aufgerufen, `config_exists()` meldete
+> immer „keine Config“, ein `format()`-Aufruf ohne Argument hätte beim ersten
+> Server ohne Modul das ganze Setup abgebrochen, eine Warnung wurde verworfen,
+> ein macOS-Guard war immer falsch, und ein Global leckte. Keiner davon wäre
+> beim Lesen aufgefallen — sie kamen aus Specs, aus luacheck und aus dem Zwang,
+> beim Umzug jede Zeile einmal anzufassen.
 
 Die Grundsatzentscheidung ist in nvim.nvim.md (Abschnitt
 „`lsp.nvim` vs. `options.nvim`“, 2026-07-17) getroffen: `lua/lsp/` ist
@@ -1067,7 +1084,7 @@ Für `docs/ROADMAP.md` des neuen Plugins — nicht alles sofort umsetzen:
 |---|---|---|
 | **Inlay-Hints-Toggle** (`vim.lsp.inlay_hint`, global + per Filetype) | Nirgends in `lua/lsp/` referenziert, obwohl seit Neovim 0.10 nativ | klein |
 | **Code-Action-Indikator** (Sign/virtueller Text, wenn `textDocument/codeAction` etwas liefert) | Sichtbarkeit ohne blindes `lsa` | mittel |
-| **`:Lsp log`** (Log-Level-Toggle + Tail-Viewer im Scratch-Buffer) | Server-Abstürze heute nur über rohes `vim.lsp.log`-File | klein (Renderer existiert in `lspdoctor`) |
+| **`:Lsp log`** | ✅ **ERLEDIGT (2026-08-23)** — `:Lsp log open` öffnet die Datei im Split, `:Lsp log level` schaltet den Level, mit Completion über die geschlossene Menge. Kein eigener Tail-Renderer: das Log *ist* eine Datei, und ein Split darauf kann alles, was ein Scratch-Buffer könnte, plus `:e` |
 | **Auto-Restart mit Backoff** bei Client-Crash | `core/attach.lua` hat keine Crash-Behandlung | mittel |
 | **Formatter-Prioritäts-Audit** | `lspdoctor` hat `formatter_priority` + `show_conflicts` — unklar, ob das in `formatter/conform.lua` durchgesetzt wird | klein (Audit) |
 | **Workspace-Symbol-/Call-Hierarchy-Picker** über den `picker`-Adapter | Konsistente Picker-UI statt Ad-hoc-Telescope in `ts_type_lookup` | mittel |
@@ -1076,9 +1093,9 @@ Für `docs/ROADMAP.md` des neuen Plugins — nicht alles sofort umsetzen:
 | **Hover-Cache** via `lib.lua.memo` | Wiederholtes Hover auf gleicher Position/Version spart einen Roundtrip | klein |
 | **Sprung zum Lua-Table-/Funktions-Root** (ehem. `<leader>gtt`) | Aus B2 gerettet: aus einer tief verschachtelten Lua-Tabelle an den Kopf der umschließenden Struktur springen, optional zentriert. Die Taste war jahrelang auf ein Modul gemappt, das es nie gab — das Feature war also gewollt, nur nie gebaut | mittel |
 | **Diagnostics-Debounce** bei `publishDiagnostics` | `core/handlers.lua` dedupliziert, debounced aber nicht (chatty Server wie `ts_ls`) | klein |
-| **Test-Entry-Point** (`tools/_test`) | ✅ **ERLEDIGT (2026-08-23)** — als `tests/lsp/*_spec.lua` auf plenarys busted-Harness (wie `dap.nvim`), nicht als `tools/_test`: der Ort aus dem Konzept hätte die Tests unter *ein* Werkzeug gehängt, gehören tun sie zum ganzen Plugin. 103 Specs über Config-Normalisierung, Keymap-Katalog, Capabilities-Kette, Adapter-Registry, Pack-Gating und Server-Registry — also genau die Stellen, aus denen die Bugs dieser Migration kamen. Dazu bleibt `tests/smoke.lua` als End-to-End-Lauf. |
+| **Test-Entry-Point** (`tools/_test`) | ✅ **ERLEDIGT (2026-08-23)** — als `tests/lsp/*_spec.lua` auf plenarys busted-Harness (wie `dap.nvim`), nicht als `tools/_test`: der Ort aus dem Konzept hätte die Tests unter *ein* Werkzeug gehängt, gehören tun sie zum ganzen Plugin. 124 Specs über Config-Normalisierung, Keymap-Katalog, Capabilities-Kette, Adapter-Registry, Pack-Gating, die `:Lsp`-Routen und Server-Registry — also genau die Stellen, aus denen die Bugs dieser Migration kamen. Dazu bleibt `tests/smoke.lua` als End-to-End-Lauf. |
 | **Signature-Help-Modul reduzieren** | `tools/lsp_signature/**` ist eine komplette Eigenimplementierung (~800 LOC) | groß (erstmal nur beobachten) |
-| **Keymap-Kollisionsprüfer** in `:checkhealth lsp` | Fällt fast gratis ab, sobald Keymaps deklarativ sind (§8.1) | klein |
+| **Keymap-Kollisionsprüfer** in `:checkhealth lsp` | Halb erledigt: `keymaps_spec.lua` prüft, dass keine zwei Katalog-Einträge dieselbe Taste im selben Mode beanspruchen — zur Build-Zeit, wo ein Fehler nichts kostet. Offen bleibt die Laufzeit-Frage, die nur `:checkhealth` sehen kann: kollidiert der Katalog mit einer Taste, die *du* oder ein anderes Plugin gesetzt hast | klein |
 | **Profil-Presets** (`preset = "lean"\|"default"\|"full"`) | Ein Schalter statt 20 Einzeloptionen für „schlank auf schwacher Maschine“ | mittel |
 
 ---
@@ -1120,6 +1137,29 @@ Für `docs/ROADMAP.md` des neuen Plugins — nicht alles sofort umsetzen:
 - **Das Gate nennt zwei veraltete Pfade**: `e:\repos\` in `NEW-01`,
   `C:\Users\bartl\…` in `NEW-35`.
 
+- **Die Checkliste altert schneller als der Code.** Beim ersten Durchgang war
+  das Repo ein Gerüst, und ein knappes Drittel der Punkte war mit „noch leer“
+  oder „noch nicht zutreffend“ beantwortet — `NEW-15` (keine Keymaps), `NEW-21`
+  (leerer Katalog), `NEW-25` (kein Count, weil es keine Taste gab), `NEW-29`.
+  Nach der Migration stimmte davon nichts mehr: das Protokoll beschrieb ein
+  Repo, das es nicht mehr gibt. Für die nächste Extraktion: ein Punkt, dessen
+  Antwort „gibt es noch nicht“ lautet, ist **nicht abgehakt, sondern vertagt**,
+  und gehört auf eine Liste, die am Ende der Migration nochmal drankommt.
+- **`NEW-25` war genau so ein Punkt** und ist erledigt. `v:count1` wirkt auf die
+  acht Bewegungstasten (`]d`/`[d`, `]q`/`[q`, `]l`/`[l`, `]w`/`[w`); `3]q`
+  springt drei Quickfix-Einträge. Nicht über eine Schleife: `:{count}cnext` und
+  `vim.diagnostic.jump({ count = N })` können das nativ, feuern die Autocommands
+  einmal statt N-mal und laufen so weit sie kommen, statt am ersten `E553`
+  stehenzubleiben. Die leader-präfixierten Aktionen bekommen keinen — eine
+  Liste füllen oder eine Einstellung umschalten hat kein geordnetes Ziel, in das
+  ein Count indizieren könnte.
+- **Ein Linter sieht, was ein Reviewer überliest.** `steps()` stand als `local`
+  *unter* der Closure, die es aufruft — in Lua ist der Name dort ein Global,
+  also `nil`. Liest sich vollkommen richtig, läuft in die Wand. Die Specs haben
+  es nicht gefunden, weil trouble.nvim im Testlauf fehlt und die Funktion vorher
+  am `pcall(require, ...)` zurückkehrt; luacheck hat es sofort gesehen. Deshalb
+  steht der Lint-Aufruf jetzt in `tests/README.md` neben der Suite.
+
 ### Offen
 
 1. **Trouble als Default-Senke für `]d`/`[d`**: durch Trouble oder immer nativ?
@@ -1129,21 +1169,24 @@ Für `docs/ROADMAP.md` des neuen Plugins — nicht alles sofort umsetzen:
    deutet auf einen abgebrochenen Versuch hin. — *Vorschlag: nicht Teil der
    Migration; beide Adapter bauen, Default `auto` (cmp bevorzugt, weil heute
    aktiv), Wechsel später als eigener Schritt.*
-3. **Modulwurzel `lsp`**: freier Name, aber generisch. `dap.nvim` musste wegen
-   Kollision auf `wkddap` ausweichen; bei `lsp` besteht diese Kollision nicht.
-   — *Vorschlag: `lsp` behalten* (spart das Umschreiben aller `require`-Pfade,
-   u. a. `autocmds/events/utils/filetype.lua:46-106`).
-4. **Windows-Kompatibilität des Formatters** (B6): bewusste Einschränkung oder
-   nachzuziehen? Die Workstation läuft auf Windows.
-5. **`lspdoctor` vs. `:checkhealth`**: bestätigen, dass beide denselben Kern
-   nutzen und nicht divergieren.
-6. **`dap.nvim` ↔ `lsp.nvim`**: die Mason-Registrierungs-API (E2) macht
-   `dap.nvim` weich abhängig von `lsp.nvim`. Akzeptabel, oder soll `dap.nvim`
-   seine DAP-Pakete weiterhin selbst installieren? — *Vorschlag: API nutzen,
-   pcall-geschützt, damit `dap.nvim` standalone lauffähig bleibt.*
-7. **Umfang von Phase 1**: Pack sofort oder erst nach bewährtem Kern-Umzug?
-   — *Vorschlag: Pack erst in Phase 5, damit ein Fehler im Pack nicht die
-   Kern-Migration blockiert.*
+3. **`NEW-20`**: `scripts/gen_map.lua` **plus** `--check` in CI, gegen eine Map,
+   die seit `dap.nvim`/`cascade.nvim` bewusst nicht mehr committet wird. Beides
+   zusammen geht nicht, und das ist keine Frage dieses Repos — sie gehört im
+   Gate entschieden, sonst löst sie jedes Repo still anders auf. In `lsp.nvim`
+   läuft `gen_map.lua` derzeit ohne `--check`.
+
+### Erledigt durch das Gebaute (2026-08-23)
+
+Die folgenden Punkte standen bis eben unter „Offen“ und sind es nicht mehr —
+nicht weil sie entschieden wurden, sondern weil der Code die Frage beantwortet:
+
+| # | Frage | Wie sie ausging |
+|---|---|---|
+| 3 | **Modulwurzel `lsp`** | Beibehalten. Alle `require("lsp.…")`-Pfade blieben gültig; die Kollision aus dem `dap.nvim`-Fall trat nicht ein. Der reale Fallstrick war ein anderer und steht oben: solange die Config ihr eigenes `lua/lsp/**` hat, gewinnt sie auf der `runtimepath` |
+| 4 | **Windows-Formatter** (B6) | War nie eine Einschränkung, nur ein veralteter Kopfkommentar. `formatter/conform.lua` verzweigt seit jeher auf PATH-Separator, `.cmd`-Suffix und Mason-Bin-Pfad |
+| 5 | **`lspdoctor` vs. `:checkhealth`** | Können nicht divergieren: beide lesen `require("lsp").status()`, es gibt keine zweite Stelle, an der sich das Plugin selbst beschreibt. `:checkhealth` verweist für die Buffer-Ebene auf `:LspDoctor`, statt sie zu wiederholen |
+| 6 | **`dap.nvim` ↔ `lsp.nvim`** | Wie vorgeschlagen: `integrations/mason/` nimmt Registrierungen entgegen, `dap.nvim` meldet sich pcall-geschützt an und bleibt standalone lauffähig |
+| 7 | **Umfang von Phase 1** | Wie vorgeschlagen: Pack erst in Phase 5. Hat sich gelohnt — der erste Pack-Entwurf hat blink.cmp in die Config installiert, weil lazys `import` ein *Verzeichnis* liest und die bedingten Imports nichts abgeschirmt haben. In Phase 1 hätte dieser Fehler die Kern-Migration blockiert |
 
 ---
 
