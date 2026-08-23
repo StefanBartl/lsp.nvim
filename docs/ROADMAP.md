@@ -5,10 +5,9 @@
 > Source of Truth**; hier steht die Kopie, damit das Repo nicht ohne Roadmap
 > dasteht. Relative Links in die Config wurden zu reinem Text reduziert.
 >
-> Stand 2026-08-23: Phase 1 (§13) ist abgeschlossen — das Gerüst steht, der
-> `gates/NEW_PROJECT.md`-Durchlauf ist in `docs/CHECKLISTS/NEW_PROJECT.md`
-> protokolliert. Sprachserver konfiguriert das Plugin noch keine; das ist
-> Phase 2.
+> Stand 2026-08-23: Phasen 0, 1 und 2 (§13) sind abgeschlossen — der LSP-Kern
+> liegt in diesem Repo und konfiguriert die Server. Offen sind Phase 3
+> (Keymaps), Phase 4 (Integrations-Adapter) und Phase 5 (Pack).
 
 # `lsp.nvim` — Konzept (Dachplugin)
 
@@ -20,17 +19,22 @@ Modulwurzel `wkddap`) und den anderen extrahierten `*.nvim`-Plugins
 > **Stand 2026-08-23.** Alle Repos liegen inzwischen unter `C:\repos\` — die
 > `E:\repos\…`-Pfade in diesem Dokument sind entsprechend nachgezogen.
 >
-> `C:\repos\lsp.nvim` (GitHub: `StefanBartl/lsp.nvim`) ist auf Branch `main`
-> und hat **Phase 1 abgeschlossen**: `gates/NEW_PROJECT.md` ist durchgegangen
-> (Protokoll: `docs/CHECKLISTS/NEW_PROJECT.md` im Repo), das Gerüst steht —
-> `config/`, `bindings/`, `@types/`, `health.lua`, Tooling, CI, README,
-> vimdoc, `docs/BINDINGS.md`, Smoke-Test. Lauffähig sind die Teile, die nichts
-> aus der Migration brauchen: Konfiguration, `:Lsp status|servers|health|log`,
-> der Keymap-Mechanismus und `:checkhealth lsp`.
+> `C:\repos\lsp.nvim` (GitHub: `StefanBartl/lsp.nvim`) ist auf Branch `main`.
+> **Phasen 0, 1 und 2 sind abgeschlossen.**
 >
-> **Einen Language Server konfiguriert es weiterhin nicht** — das ist Phase 2.
-> Das Plugin ist in der Config nicht installiert; `lua/lsp/**` macht die Arbeit
-> unverändert selbst.
+> - Phase 0: B1, B2, B4, B6 erledigt (siehe die Befund-Tabelle).
+> - Phase 1: `gates/NEW_PROJECT.md` durchgegangen, Protokoll in
+>   `docs/CHECKLISTS/NEW_PROJECT.md`; Gerüst, Tooling, CI, README, vimdoc,
+>   Smoke-Test.
+> - Phase 2: der Kern ist umgezogen — 164 Dateien, `core/`, `servers/`,
+>   `languages/`, `formatter/`, `diagnostics/`, `lspdoctor/`, `tools/`,
+>   `usercmds/`, `completion/`, `integrations/mason/`. Die Config lädt das
+>   Plugin; `lua/lsp/**` heißt dort jetzt `lua/lsp_legacy/**` und liegt auf
+>   keinem require-Pfad mehr.
+>
+> Offen sind Phase 3 (Keymap-Konsolidierung), Phase 4 (Integrations-Adapter),
+> Phase 5 (Pack) und aus Phase 6 der Umzug von `debug_adapters/**` nach
+> `dap.nvim` — die stecken noch in `lsp_legacy`.
 
 Die Grundsatzentscheidung ist in nvim.nvim.md (Abschnitt
 „`lsp.nvim` vs. `options.nvim`“, 2026-07-17) getroffen: `lua/lsp/` ist
@@ -164,7 +168,7 @@ beheben, nicht 1:1 mitschleppen:
 | B4 | `require("lsp.lspdoctor").setup()` wird **zweimal hintereinander** mit widersprüchlichen `formatter_priority` aufgerufen | `lsp/init.lua:223-235` | ✅ **ERLEDIGT (2026-08-23)** — mit korrigierter Diagnose: „erster ist toter Code" stimmte **nicht**. `lspdoctor.setup()` merged Key für Key in ein persistentes `Opts` (`lspdoctor/init.lua:115`), also wirkten *alle* Keys aus beiden Aufrufen; überschrieben wurde nur `formatter_priority`. `list_limit`, `semantic_tokens_timeout` und `scratch_filetype` waren nie verloren. Zu einem Aufruf zusammengezogen, der exakt den bisherigen Effektivzustand trägt — sichtbar am Aufrufort statt aus der Merge-Semantik erschlossen. Nebenbefund: `null-ls` in der Prioritätsliste ist wirkungslos, es ist nirgends installiert (conform formatiert); bewusst stehen gelassen, weil das eine Entscheidung ist und kein Aufräumen. |
 | B5 | Conform wird **zweimal** konfiguriert: `plugins/lsp.lua:126` (`format_on_save = {…}`) und `lsp/formatter/conform.lua` + `lsp/formatter/init.lua` (`format_on_save = false`, eigener Autocmd) | beide | Zwei konkurrierende Format-on-Save-Pfade. Muss im Dachplugin **eine** Wahrheit werden |
 | B6 | `formatter/init.lua` dokumentiert sich als „Linux/macOS only; no Windows-specific branches“ — Workstation läuft auf Windows | `lsp/formatter/init.lua:3` | ✅ **ERLEDIGT (2026-08-23).** Veralteter Kommentar, keine reale Einschränkung. `formatter/init.lua` braucht selbst nichts Plattformabhängiges (Autocmds + View-Erhaltung); die Stellen, die es tun, liegen in `formatter/conform.lua` und verzweigen dort korrekt auf Windows (PATH-Separator `;`, `.cmd`-Suffix, Mason-Bin-Pfad — `conform.lua:20,40`). Kopfkommentar entsprechend richtiggestellt. |
-| B7 | `ACTIVE`-Serverliste hart im Sourcecode, Server an/aus = Code-Edit | `lsp/core/registry.lua:10-33` | → `opts.servers` |
+| B7 | `ACTIVE`-Serverliste hart im Sourcecode, Server an/aus = Code-Edit | `lsp/core/registry.lua:10-33` | ✅ **ERLEDIGT (2026-08-23).** Liste nach `config/DEFAULTS.lua` als `servers`, `registry.setup_all(shared, servers)` bekommt sie übergeben. Leere oder kaputte Liste fällt auf die Defaults zurück statt „gar kein Sprachserver" zu ergeben — das sieht aus wie eine kaputte Installation und darf nie das Ergebnis eines Tippfehlers sein. |
 | B8 | Drei eigene Root-Resolver (`core/root_scope.lua`, `servers/lua_ls/rootresolver.lua`, `servers/marksman/rootresolver.lua`) trotz `lib.nvim.fs` | siehe §10 | Dedup-Kandidat |
 | B9 | `<leader>rn` (inc-rename) und `grn` (`vim.lsp.buf.rename`) machen dasselbe, unterschiedlich | `config/inc_rename` vs. `bindings/mappings/lsp.lua` | Im Dachplugin: **ein** Rename-Keymap, Backend konfigurierbar (`rename.provider = "inc_rename"\|"native"`) |
 | B10 | `lsr`/`lsi`/`lss`/`lsd`/`lsD`/`lst`/`lsa` sind **prefixlose** 3-Zeichen-Maps im Normal-Mode | `bindings/mappings/lsp.lua:27-33` | Blockieren `ls…`-Sequenzen und verzögern `l`-Bewegungen nicht, aber kollidieren mit Neovim-0.11-Defaults (`grr`, `gri`, `grn`, `gO`). Bei der Preset-Definition neu bewerten |
@@ -776,14 +780,19 @@ Bewusst in Phasen, damit die Config zwischen den Phasen immer lauffähig bleibt.
    Einschränkung — die plattformabhängigen Stellen sitzen in
    `formatter/conform.lua` und behandeln Windows bereits.
 
-Damit ist Phase 0 abgeschlossen. Offen bleibt allein die Laufzeit-Verifikation
-aus Punkt 1, die ein laufendes Neovim braucht (headless hängt die volle Config
-zu lange): >
-    :lua local c, w = require("lsp.core.capabilities").get()
-    :lua print(#w, vim.inspect(c.textDocument.completion.completionItem.resolveSupport))
-<
-Erwartet: keine Warnung mehr, und ein `resolveSupport` mit den Feldern von
-`cmp_nvim_lsp` statt der nackten Fallback-Struktur.
+Damit ist Phase 0 abgeschlossen — **einschließlich** der Laufzeit-Verifikation
+aus Punkt 1. Sie lief beim Umschalten in Phase 2 gegen die echte Config mit:
+`capabilities.get()` liefert **0 Warnungen**, `snippetSupport = true` und ein
+`resolveSupport` mit den fünf Feldern von `cmp_nvim_lsp`
+(`documentation`, `additionalTextEdits`, `insertTextFormat`, `insertTextMode`,
+`command`) statt der nackten Fallback-Struktur. Der B1-Fix wirkt also in einer
+geladenen Config, nicht nur auf dem Papier.
+
+Nebenbefund: die Annahme „headless hängt die volle Config zu lange" war falsch.
+`nvim --headless "+qa!"` lädt sie in **rund 1,0-1,2 s**. Der frühere Dreiminuten-
+Hänger kam von einem `vim.defer_fn`, das Neovim am Leben hielt, nicht von der
+Config. Verifikationen gegen die echte Config sind damit billig — das gilt für
+alle weiteren Phasen.
 
 ### Phase 1 — Gerüst
 
@@ -806,21 +815,54 @@ Erwartet: keine Warnung mehr, und ein `resolveSupport` mit den Feldern von
    (§8.1), und `NEW-20`s `--check`-CI-Job fehlt, weil `docs/map/` hier — wie in
    `dap.nvim` und `cascade.nvim` — nicht eingecheckt wird.
 
-### Phase 2 — Kern umziehen (Schicht 1)
+### Phase 2 — Kern umziehen (Schicht 1) — ✅ erledigt 2026-08-23
 
-5. `lua/lsp/**` 1:1 kopieren, **außer** `debug_adapters/**`.
-6. Host-Kopplungen auflösen: `machine.*` → Opt, `config.mason.*` → Adapter,
-   `nvchad.*` → Adapter (Default aus).
-7. `ACTIVE` → `opts.servers` (B7); Root-Resolver gegen `lib.nvim.fs` prüfen (B8).
-8. `config/DEFAULTS.lua` + `config/init.lua` schreiben, alle Magic Numbers und
-   hart codierten Listen dorthin.
-9. `health.lua` als Brücke zu `lspdoctor/health.lua`.
-10. In der Host-Config `require("lsp").setup(...)` durch die Plugin-Spec
-    ersetzen — **ohne** `import = "lsp.pack"`, die alten `plugins/*.lua`
-    bleiben vorerst. Alter `lua/lsp/`-Ordner wird erst gelöscht, wenn
-    `:LspDoctor`, Formatter-Toggle und mind. 3 Server manuell getestet sind.
-    Achtung: `autocmds/events/utils/filetype.lua` referenziert
-    `lsp.languages.*` — bleibt gültig, da die Modulwurzel `lsp` heißt.
+5. ✅ 164 Dateien kopiert, `debug_adapters/**` bewusst nicht.
+6. ✅ Host-Kopplungen aufgelöst — es waren weniger als gedacht:
+   - `machine.*` war in `core/attach.lua` **schon vorher** entfernt worden (der
+     Kommentar dort erklärt, warum die Maschinenrolle ein schlechter Proxy für
+     „großes Repo" war). Nichts zu tun.
+   - `config.mason.*` ist mitgezogen als `lsp/integrations/mason/` (E2), nicht
+     als Adapter auf ein Host-Modul.
+   - `nvchad.*` ist an drei Stellen `pcall`-geschützt und bleibt vorerst so;
+     der Adapter aus Phase 4 kann das später aufräumen.
+   - **Neu gefunden:** `lua/@types/lsp.lua` (nur vom LSP-Subsystem benutzt) ist
+     als `lsp/@types/vim_lsp.lua` mitgezogen, und
+     `completion/personal_names` greift nicht mehr auf `plugins.personal.list`
+     zu — die Liste ist Config-Daten, das Plugin bekommt sie über
+     `setup({ labels = fn })` gereicht.
+7. ✅ `ACTIVE` → `servers` (B7). B8 (Root-Resolver gegen `lib.nvim.fs`) ist
+   **nicht** erledigt und bleibt offen — reines Verschieben war hier die
+   richtige Größe, Dedup ist eine eigene Änderung.
+8. ✅ `config/DEFAULTS.lua` + `config/init.lua`: `servers`, `diagnostics`,
+   `formatter`, `attach`, `mason`, `lspdoctor`, `tools`, `languages`. Jeder Key
+   wird von Code gelesen; `completion`/`rename`/`integrations` aus §9 fehlen
+   weiterhin bewusst.
+9. ✅ `health.lua` erweitert (Servers-Sektion: konfiguriert vs. aufgesetzt vs.
+   attached) und verweist für die Buffer-Diagnose auf `:LspDoctor`, statt sie
+   nachzubauen.
+10. ✅ Umgeschaltet — mit einer Abweichung vom Plan: `require("lsp").setup(...)`
+    bleibt in `startup.now("lsp", ...)` stehen und wandert **nicht** in einen
+    `opts`-Block. Der Schritt ist absichtlich synchron und geordnet
+    (Capabilities müssen global gesetzt sein, bevor der erste Client attached);
+    `opts` würde diese Ordnung dem Plugin-Manager überlassen. Die Spec ist
+    deshalb `lazy = false, priority = 900` ohne `opts`/`config`.
+
+    Der alte Ordner ist `lua/lsp_legacy/**` — umbenannt, nicht gelöscht, weil
+    ein `lua/lsp/` in der Config das Plugin vollständig überschattet und das
+    Umbenennen die Voraussetzung dafür ist, dass sich der Umbau überhaupt
+    testen lässt. Er liegt auf keinem require-Pfad. Wegwerfen, sobald eine
+    echte Sitzung den Umbau bestätigt hat.
+
+    Verifiziert (headless, gegen die echte Config): `require("lsp")` löst nach
+    `C:/repos/lsp.nvim/lua/lsp/init.lua` auf, alle 8 Server aufgesetzt, **0**
+    Setup-Warnungen, `:Lsp`/`:LspDoctor`/`:LspStatus`/`:DiagQF` registriert,
+    und die beiden Module, die die Config-eigenen Keymaps noch anfassen
+    (`lsp.core.root_scope_picker`, `lsp.servers.marksman.hints`), lösen aus dem
+    Plugin auf.
+
+    Zu `autocmds/events/utils/filetype.lua`: die Datei referenziert
+    `lsp.languages.*` heute gar nicht mehr — der Hinweis war veraltet.
 
 ### Phase 3 — Bindings zentralisieren
 
