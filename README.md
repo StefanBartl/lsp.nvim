@@ -236,11 +236,18 @@ lua/lsp/
   tools/              -- eslint/prettier, signature help, type lookup, deprecations
   usercmds/           -- the migrated :Lsp* command family
   completion/         -- nvim-cmp source for the config's own plugin names
-  integrations/mason/ -- ensure_install for LSP/linter/formatter packages
+  integrations/        -- one adapter per third-party plugin, plus the registry
 ```
 
-`integrations/` holds only Mason so far; the adapters for trouble, conform,
-lazydev and the completion engines arrive in phase 4, `pack/` in phase 5.
+The adapters own every third-party `require`. The core does not reach into
+them: they hand capability contributors and attach hooks to `lsp/init.lua`,
+which passes them into the core as plain functions — so `core/attach.lua` does
+not know lazydev or NvChad exist, and `core/capabilities.lua` does not know
+which completion engine is installed. `:checkhealth lsp` lists them straight
+from the registry rather than a second, hand-kept list.
+
+Their plugin *specs* still live in the config's `plugins/*.lua`. Moving those
+is the pack layer (`pack/`, phase 5).
 
 ## Roadmap
 

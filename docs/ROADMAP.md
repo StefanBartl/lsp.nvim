@@ -5,9 +5,10 @@
 > Source of Truth**; hier steht die Kopie, damit das Repo nicht ohne Roadmap
 > dasteht. Relative Links in die Config wurden zu reinem Text reduziert.
 >
-> Stand 2026-08-23: Phasen 0 bis 3 (§13) sind abgeschlossen — der LSP-Kern liegt
-> in diesem Repo, konfiguriert die Server und besitzt alle LSP-Tasten. Offen
-> sind Phase 4 (Integrations-Adapter) und Phase 5 (Pack).
+> Stand 2026-08-23: Phasen 0 bis 4 (§13) sind im Wesentlichen abgeschlossen —
+> der LSP-Kern liegt in diesem Repo, konfiguriert die Server, besitzt alle
+> LSP-Tasten und erreicht Fremdplugins nur noch über Adapter. Offen ist
+> Phase 5 (Pack).
 
 # `lsp.nvim` — Konzept (Dachplugin)
 
@@ -33,9 +34,12 @@ Modulwurzel `wkddap`) und den anderen extrahierten `*.nvim`-Plugins
 >   keinem require-Pfad mehr.
 >
 > Aus Phase 6 ist der Umzug von `debug_adapters/**` nach `dap.nvim` ebenfalls
-> erledigt, und **Phase 3 ist durch**: alle 42 LSP-Tasten kommen aus dem
-> Katalog, `docs/BINDINGS.md` wird daraus generiert (CI prüft mit `--check`).
-> Offen sind Phase 4 (Integrations-Adapter) und Phase 5 (Pack).
+> erledigt, **Phase 3 ist durch** (alle 42 LSP-Tasten kommen aus dem Katalog,
+> `docs/BINDINGS.md` wird daraus generiert, CI prüft mit `--check`) und
+> **Phase 4 zum größten Teil**: 12 Adapter unter `integrations/`, der Kern
+> kennt kein Fremdplugin mehr. Offen ist Phase 5 (Pack) — und mit ihr die
+> Setup-Blöcke der Fremdplugins, die weiterhin in `plugins/*.lua` der Config
+> stehen.
 
 Die Grundsatzentscheidung ist in nvim.nvim.md (Abschnitt
 „`lsp.nvim` vs. `options.nvim`“, 2026-07-17) getroffen: `lua/lsp/` ist
@@ -167,7 +171,7 @@ beheben, nicht 1:1 mitschleppen:
 | B2 | Keymap auf nicht existierendes Modul `mylsp.nav.lua_root` | `bindings/mappings/lsp.lua:8` | ✅ **ERLEDIGT (2026-08-23).** `mylsp` existiert nirgends — nicht in `lua/`, nicht in einem installierten Plugin — die Taste warf bei jedem Druck. Keymap entfernt, mit Kommentar an ihrer Stelle. Das Feature selbst („zum umschließenden Lua-Table-/Funktions-Root springen") ist zu schade zum Wegwerfen und steht jetzt in §14, statt als kaputte Taste am Leben gehalten zu werden. |
 | B3 | `]q`/`[q` **doppelt** gebunden (diagnostics + trouble); trouble gewinnt durch spätere Registrierung in `bindings/mappings/init.lua` | `lsp/diagnostics/keymaps.lua:33` vs. `bindings/mappings/trouble.lua:53` | ✅ **ERLEDIGT (2026-08-23)** — mit korrigierter Diagnose. Es war **kein Verhaltenskonflikt**: `quickfix.next_qf()` ist `pcall(vim.cmd, "cnext")`, Troubles Variante `<cmd>cnext<cr>`. Einziger Unterschied: das geschluckte E553 am Listenende. Zwei Besitzer, ein Verhalten. Jetzt ein Katalogeintrag, die `pcall`-Variante behalten. |
 | B4 | `require("lsp.lspdoctor").setup()` wird **zweimal hintereinander** mit widersprüchlichen `formatter_priority` aufgerufen | `lsp/init.lua:223-235` | ✅ **ERLEDIGT (2026-08-23)** — mit korrigierter Diagnose: „erster ist toter Code" stimmte **nicht**. `lspdoctor.setup()` merged Key für Key in ein persistentes `Opts` (`lspdoctor/init.lua:115`), also wirkten *alle* Keys aus beiden Aufrufen; überschrieben wurde nur `formatter_priority`. `list_limit`, `semantic_tokens_timeout` und `scratch_filetype` waren nie verloren. Zu einem Aufruf zusammengezogen, der exakt den bisherigen Effektivzustand trägt — sichtbar am Aufrufort statt aus der Merge-Semantik erschlossen. Nebenbefund: `null-ls` in der Prioritätsliste ist wirkungslos, es ist nirgends installiert (conform formatiert); bewusst stehen gelassen, weil das eine Entscheidung ist und kein Aufräumen. |
-| B5 | Conform wird **zweimal** konfiguriert: `plugins/lsp.lua:126` (`format_on_save = {…}`) und `lsp/formatter/conform.lua` + `lsp/formatter/init.lua` (`format_on_save = false`, eigener Autocmd) | beide | Zwei konkurrierende Format-on-Save-Pfade. Muss im Dachplugin **eine** Wahrheit werden |
+| B5 | Conform wird **zweimal** konfiguriert: `plugins/lsp.lua:126` (`format_on_save = {…}`) und `lsp/formatter/conform.lua` + `lsp/formatter/init.lua` (`format_on_save = false`, eigener Autocmd) | beide | ✅ **War bereits erledigt** (Stand 2026-08-23 geprüft). `plugins/lsp.lua:153-157` trägt heute einen expliziten Kommentar, dass dort **kein** `config`-Block steht und `lsp.formatter.conform.setup()` der einzige autoritative `conform.setup()`-Aufruf ist. Der Eintrag hier war veraltet — der Fix kam irgendwann zwischen Analyse und Migration. Format-on-Save läuft über den eigenen Autocmd, nie über conforms Option. |
 | B6 | `formatter/init.lua` dokumentiert sich als „Linux/macOS only; no Windows-specific branches“ — Workstation läuft auf Windows | `lsp/formatter/init.lua:3` | ✅ **ERLEDIGT (2026-08-23).** Veralteter Kommentar, keine reale Einschränkung. `formatter/init.lua` braucht selbst nichts Plattformabhängiges (Autocmds + View-Erhaltung); die Stellen, die es tun, liegen in `formatter/conform.lua` und verzweigen dort korrekt auf Windows (PATH-Separator `;`, `.cmd`-Suffix, Mason-Bin-Pfad — `conform.lua:20,40`). Kopfkommentar entsprechend richtiggestellt. |
 | B7 | `ACTIVE`-Serverliste hart im Sourcecode, Server an/aus = Code-Edit | `lsp/core/registry.lua:10-33` | ✅ **ERLEDIGT (2026-08-23).** Liste nach `config/DEFAULTS.lua` als `servers`, `registry.setup_all(shared, servers)` bekommt sie übergeben. Leere oder kaputte Liste fällt auf die Defaults zurück statt „gar kein Sprachserver" zu ergeben — das sieht aus wie eine kaputte Installation und darf nie das Ergebnis eines Tippfehlers sein. |
 | B8 | Drei eigene Root-Resolver (`core/root_scope.lua`, `servers/lua_ls/rootresolver.lua`, `servers/marksman/rootresolver.lua`) trotz `lib.nvim.fs` | siehe §10 | Dedup-Kandidat |
@@ -927,13 +931,54 @@ Verifiziert gegen die echte Config: 42 Keymaps gebunden, 0 Setup-Warnungen, und
 `]q`/`[q`/`grn`/`<leader>rn`/`lsd`/`<leader>xt`/`<leader>dos`/`<leader>wq`/`]w`
 lösen alle auf Katalogeinträge auf.
 
-### Phase 4 — Integrationen (Schicht 2)
+### Phase 4 — Integrationen (Schicht 2) — ✅ größtenteils erledigt 2026-08-23
 
-15. Adapter für trouble, conform, lazydev, cmp/blink, mason,
-    workspace-diagnostics, lspsaga, inc-rename, lensline, picker, which-key,
-    noice, nvchad — je einer, je einzeln testbar.
-16. B5 auflösen: **eine** Conform-Wahrheit.
-17. `config/{trouble,inc_rename,mason,copilot}` im Host löschen.
+15. ✅ 12 Adapter: nvchad, cmp, blink, lazydev, conform, trouble, inc_rename,
+    picker, lspsaga, lensline, noice, mason. which-key ist bewusst **keiner**
+    — `bindings/which_key.lua` macht das seit Phase 3, ein zweiter Ort dafür
+    wäre genau die Doppelung, die die Schicht beseitigen soll.
+    workspace-diagnostics ebenso nicht: `core/workspace_diagnostics.lua` ist
+    **eigener** Code, kein Wrapper um ein Fremdplugin.
+
+    **Der eigentliche Gewinn ist die Abhängigkeitsrichtung.** Die Adapter
+    werden nicht vom Kern *gerufen* — das wäre genau der Schichtverstoß, gegen
+    den `scripts/gen_map.lua` eine Regel deklariert. Sie reichen ihre Beiträge
+    an `lsp/init.lua` (das keiner der beiden Schichten angehört), und das gibt
+    sie als **einfache Funktionen** in den Kern:
+
+    - `core/capabilities.get(contributors)` statt drei `pcall(require, …)` auf
+      NvChad, cmp und blink. Reihenfolge bewusst erhalten (NvChad zuerst,
+      Completion-Engine danach), weil `tbl_deep_extend("force", …)` den
+      späteren gewinnen lässt. Im Kern bleibt, was Kern ist: Basis-Capabilities,
+      die Prüfung, dass überhaupt jemand Completion beigetragen hat, und der
+      Fallback — also genau die Prüfung, die B1 überhaupt sichtbar gemacht hat.
+    - `core/attach.build({ hooks = … })` statt lazydev und NvChad inline.
+
+    Folge: `capabilities.apply_globally()` braucht die Contributors übergeben
+    und kann sie nicht selbst nachschlagen. `require("lsp").apply_capabilities()`
+    ist der Einstieg, der das tut; die Config ruft jetzt den.
+    `:checkhealth lsp` liest die Liste aus der Registry statt aus einer zweiten,
+    handgepflegten.
+16. ✅ Nichts zu tun — B5 war bereits gelöst, siehe die korrigierte Zeile oben.
+17. ⚠️ **Nur teilweise.** `config/mason/**` ist in Phase 2 mitgezogen und
+    gelöscht. `config/{trouble,inc_rename,copilot}` bleiben: sie hängen an den
+    Lazy-Specs in `plugins/*.lua`, und Specs zu verschieben ist Phase 5 (§6),
+    nicht diese hier. Das Plugin konfiguriert bis dahin sein eigenes Verhalten,
+    die Fremdplugins ihres.
+
+**Bewusst nicht gebaut:**
+
+- `mason.register(kind, packages)` aus E2 — `dap.nvim` ruft es nicht, und eine
+  API ohne Aufrufer ist keine API. Kommt, wenn `dap.nvim` sie braucht.
+- Die Picker-Abstraktion über telescope/snacks/pickers.nvim aus §7. Es ist
+  weiterhin fzf-lua fest verdrahtet; eine Indirektion mit genau einer
+  Implementierung dahinter verschleiert nur, dass die Wahl nicht getroffen ist.
+
+Verifiziert gegen die echte Config: 0 Setup-Warnungen, 0 Capability-Warnungen,
+`snippetSupport = true` und `resolveSupport` weiterhin mit cmps fünf
+Properties (die B1-Regression, die dieser Umbau plausibel hätte auslösen
+können), 8 Server, 42 Keymaps, 2 `on_attach`- und 1 `on_init`-Hook verdrahtet,
+und `lua_ls` attached an einem Lua-Buffer.
 
 ### Phase 5 — Pack (Schicht 3)
 

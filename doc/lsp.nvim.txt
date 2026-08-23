@@ -289,19 +289,29 @@ manager and makes swapping a completion engine a one-file change.
 `scripts/gen_map.lua` declares the rule so it can be checked rather than merely
 intended.
 
-Core and the first integration exist today: `core/`, `servers/`, `languages/`,
+Core and integrations exist today: `core/`, `servers/`, `languages/`,
 `formatter/`, `diagnostics/`, `lspdoctor/`, `tools/`, `usercmds/`,
-`completion/` and `integrations/mason/`, alongside `config/`, `bindings/` and
-`health.lua`. The remaining adapters are phase 4, `pack/` is phase 5. See
-`docs/ROADMAP.md` section 5 for the full tree.
+`completion/` and `integrations/`, alongside `config/`, `bindings/` and
+`health.lua`. `pack/` is phase 5.
+
+The adapters own every third-party `require`. They are not called by the core;
+they hand capability contributors and attach hooks to `lsp/init.lua`, which
+passes them in as plain functions. That is why `core/attach.lua` no longer
+knows lazydev or NvChad exist, and why |lsp.nvim.setup()| is the only place
+that composes the two layers. See `docs/ROADMAP.md` section 5 for the full
+tree.
 
 ==============================================================================
 9. STATUS AND ROADMAP                                       *lsp.nvim-status*
 
-Migration phases 0 to 2 are done: the LSP core lives here and configures the
-servers. Outstanding are phase 3 (the keymap catalogue is still empty, the keys
-remain in the config), phase 4 (adapters for trouble, conform, lazydev and the
-completion engines) and phase 5 (the LazySpec pack).
+Migration phases 0 to 4 are done: the core lives here, configures the servers,
+owns every LSP keymap, and reaches third-party plugins only through the
+adapters in `integrations/`.
+
+Outstanding: phase 5 (the LazySpec pack), which is also what would let the
+third-party *setup blocks* -- Trouble's, inc-rename's, the completion engine's
+-- move out of the config's `plugins/*.lua`. Until then this plugin configures
+its own behaviour and those plugins configure theirs.
 
 `docs/ROADMAP.md` in the repository carries the full concept -- the survey of
 the subsystem being extracted, the three-layer design, the pack system, the
