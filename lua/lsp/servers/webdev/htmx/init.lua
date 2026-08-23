@@ -31,6 +31,12 @@ function M.setup(shared, opts)
 
   -- OPTIONAL: Filter INFO-Logs aus stderr
   -- htmx-lsp schreibt JSON-Logs auf stderr, die Neovim als [ERROR] loggt
+  --
+  -- This table is filled below and then never passed to `vim.lsp.config` --
+  -- which is exactly why the "Filtering funktioniert nicht" note further down
+  -- is there. Wiring it in would not help either: stderr is not routed through
+  -- `handlers`. Left in place as the record of an attempt, not as working code.
+  -- luacheck: ignore handlers
   ---@diagnostic disable-next-line: unused-local
   local handlers = {}
   if opts.filter_stderr ~= false then

@@ -95,7 +95,7 @@ return function(lines, opts)
     local title = tostring(footer)
     local max_title = math.max(10, math.floor(final_width * 0.9))
     if fn.strdisplaywidth(title) > max_title then
-      local short = title
+      local short
       if title:match("[/\\]") then
         short = title:match("[^/\\]+[/\\][^/\\]+$") or title:sub(-max_title)
       else

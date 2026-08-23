@@ -41,7 +41,7 @@ function M.setup(shared, opts)
     end
   end
 
-  local cmd = nil
+  local cmd
   if exe then
     cmd = { exe, "--stdio" }
   else

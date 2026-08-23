@@ -9,7 +9,10 @@ local M = {}
 ---Check if sourcekit-lsp is available (macOS only)
 ---@return boolean
 local function is_sourcekit_available()
-  if not (vim.loop or vim.uv).os_uname().sysname == "Darwin" then
+  -- `not X == "Darwin"` parses as `(not X) == "Darwin"` and is always false,
+  -- so this guard never fired and the function fell through to the executable
+  -- check on every platform.
+  if (vim.loop or vim.uv).os_uname().sysname ~= "Darwin" then
     return false
   end
   return vim.fn.executable("sourcekit-lsp") == 1

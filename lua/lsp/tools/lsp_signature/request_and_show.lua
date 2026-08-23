@@ -87,7 +87,7 @@ return function(bufnr, callback)
 
         schedule(function()
           -- build footer from current client buffer path (shortened by util.helper if you like)
-          local footer = nil
+          local footer
           -- choose display path for the signature origin (prefer client root or file path)
           local origin = client.workspace_folders
             and client.workspace_folders[1]

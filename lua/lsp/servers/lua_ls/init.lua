@@ -1,8 +1,6 @@
 ---@module 'lsp.servers.lua_ls'
 --- Lua language server setup using native LSP config/enable with strict root and scoped libraries.
 
-local notify = require("lib.nvim.notify").create("[lsp.servers.lua_ls]")
-
 local M = {}
 
 -- Import required dependencies for ignore patterns and root resolution

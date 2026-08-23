@@ -36,9 +36,10 @@ function M.setup(opts)
 end
 
 --- Attach only (for cases where plugin loader calls attach separately)
----@param ctx table|nil
-function M.attach(ctx)
-  ctx = ctx or {}
+--- `_ctx` is accepted for call-site symmetry with the other attach functions
+--- and deliberately ignored.
+---@param _ctx table|nil
+function M.attach(_ctx)
   usercmds.attach(M)
   autocmds.attach(M)
 end

@@ -54,8 +54,6 @@ end
 ---@param ctx table
 ---@param _config table
 local function on_publish(_err, result, ctx, _config)
-  _err, _config = _err, _config
-
   -- Try to find client again for absolute safety
   local client = nil
   if ctx and ctx.client_id then

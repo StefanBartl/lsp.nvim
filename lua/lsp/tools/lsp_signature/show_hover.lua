@@ -21,7 +21,7 @@ local schedule = vim.schedule
 ---@param opts table|nil
 ---@param on_result fun(shown: boolean)
 ---@diagnostic disable-next-line: unused-local
-local function make_client_request_handler(client, params, opts, on_result)
+local function make_client_request_handler(_client, _params, opts, on_result)
   opts = opts or {}
   local mode = opts.mode
   local callback = opts.callback
@@ -90,7 +90,8 @@ end
 ---@return boolean
 function M.show_hover(client_or_clients, params, opts)
   opts = opts or {}
-  local clients = {}
+  ---@type table[]
+  local clients
 
   -- normalize to list of clients
   if client_or_clients == nil then

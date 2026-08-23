@@ -97,8 +97,6 @@ function M.setup(shared, opts)
       local enable_ok, enable_err = pcall(lsp.enable, "omnisharp")
       if not enable_ok then
         notify.error("🔧 C# Setup: Enable failed: " .. tostring(enable_err))
-      else
-        -- notify.info("🔧 C# Setup: LSP enabled ✓") -- DEBUG
       end
     end
   else

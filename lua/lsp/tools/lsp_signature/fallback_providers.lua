@@ -148,7 +148,7 @@ local function format_location_line_for_preview(entry)
 
   -- Prefer to show the actual snippet (code/signature) as the main line.
   -- Fallback to symbol name or a compact "line X, col Y" notation when snippet missing.
-  local main = nil
+  local main
   if snippet and snippet ~= "" then
     main = snippet
   elseif name ~= "" then

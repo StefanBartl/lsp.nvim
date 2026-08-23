@@ -36,7 +36,7 @@ function M.create_handler(opts)
   ---@param ctx table|nil
   ---@return nil
   ---@diagnostic disable-next-line: unused-local
-  return function(err, chunk, ctx)
+  return function(_err, chunk, _ctx)
     if not chunk or chunk == "" then
       return
     end

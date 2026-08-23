@@ -44,14 +44,12 @@ local function has_any_config(root, patterns)
   for _, p in ipairs(patterns) do
     local path = root .. "/" .. p
     if fn.filereadable(path) == 1 then
-      if p == "package.json" then
-        -- package.json may declare `"eslintConfig"` or `"prettier"`
-        if file_contains(path, '"eslintConfig"') or file_contains(path, '"prettier"') then
-          return true
-        else
-          -- continue checking other patterns
-        end
-      else
+      if p ~= "package.json" then
+        return true
+      end
+      -- package.json only counts when it actually declares `"eslintConfig"` or
+      -- `"prettier"`; otherwise keep checking the remaining patterns.
+      if file_contains(path, '"eslintConfig"') or file_contains(path, '"prettier"') then
         return true
       end
     end

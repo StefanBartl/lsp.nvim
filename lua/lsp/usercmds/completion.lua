@@ -128,7 +128,7 @@ end
 ---@param cursorpos integer
 ---@return string[]
 ---@diagnostic disable-next-line: unused-local
-function M.complete_start(arglead, cmdline, cursorpos)
+function M.complete_start(arglead, _cmdline, _cursorpos)
   -- Wrap in pcall to avoid breaking completion on errors
   local ok, result = pcall(function()
     local bufnr = 0
@@ -181,7 +181,7 @@ end
 ---@param cursorpos integer
 ---@return string[]
 ---@diagnostic disable-next-line: unused-local
-function M.complete_stop(arglead, cmdline, cursorpos)
+function M.complete_stop(arglead, _cmdline, _cursorpos)
   local clients = get_buffer_clients(0)
   local names = {}
 

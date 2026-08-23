@@ -5,7 +5,21 @@ local M = {}
 
 local lsp = vim.lsp
 
+--- Options handed down by `lsp.lspdoctor.setup()`.
+---
+--- Nothing in this file reads them yet: the checks below are unconditional, so
+--- `list_limit`, `show_capabilities`, `show_workspace`, `show_tools` and
+--- `show_conflicts` do not currently affect `:LspDoctor health`. Kept (rather
+--- than dropping the parameter) because wiring them up is the intended
+--- behaviour, not because the assignment does anything today.
+---
+--- This used to assign to a bare `Opts`, i.e. to a global.
+---@type table
+-- luacheck: ignore Opts
+local Opts = {}
+
 ---@param opts table
+---@return nil
 function M.setup(opts)
   Opts = opts or {}
 end

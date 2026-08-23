@@ -47,10 +47,8 @@ end
 ---@param diag table
 ---@return string
 function M.extract_symbol(bufnr, diag)
-  local result = ""
-
   -- first: try to get text under the diagnostic range
-  result = helper.get_text_for_range(bufnr, diag.range)
+  local result = helper.get_text_for_range(bufnr, diag.range)
   if result ~= "" then
     return remove_prefix_from_string(result)
   end
