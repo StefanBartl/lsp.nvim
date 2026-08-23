@@ -5,10 +5,10 @@
 > Source of Truth**; hier steht die Kopie, damit das Repo nicht ohne Roadmap
 > dasteht. Relative Links in die Config wurden zu reinem Text reduziert.
 >
-> Stand 2026-08-23: Phasen 0 bis 4 (§13) sind im Wesentlichen abgeschlossen —
-> der LSP-Kern liegt in diesem Repo, konfiguriert die Server, besitzt alle
-> LSP-Tasten und erreicht Fremdplugins nur noch über Adapter. Offen ist
-> Phase 5 (Pack).
+> Stand 2026-08-23: **alle fünf Migrationsphasen (§13) sind durch.** Der
+> LSP-Kern liegt in diesem Repo, konfiguriert die Server, besitzt alle
+> LSP-Tasten, erreicht Fremdplugins nur über Adapter und installiert sie über
+> `import = "lsp.pack"`. Offen sind Einzelpunkte, keine Phase mehr.
 
 # `lsp.nvim` — Konzept (Dachplugin)
 
@@ -36,10 +36,14 @@ Modulwurzel `wkddap`) und den anderen extrahierten `*.nvim`-Plugins
 > Aus Phase 6 ist der Umzug von `debug_adapters/**` nach `dap.nvim` ebenfalls
 > erledigt, **Phase 3 ist durch** (alle 42 LSP-Tasten kommen aus dem Katalog,
 > `docs/BINDINGS.md` wird daraus generiert, CI prüft mit `--check`) und
-> **Phase 4 zum größten Teil**: 12 Adapter unter `integrations/`, der Kern
-> kennt kein Fremdplugin mehr. Offen ist Phase 5 (Pack) — und mit ihr die
-> Setup-Blöcke der Fremdplugins, die weiterhin in `plugins/*.lua` der Config
-> stehen.
+> **Phase 4 zum größten Teil** (12 Adapter unter `integrations/`, der Kern
+> kennt kein Fremdplugin mehr) und **Phase 5** — `import = "lsp.pack"`
+> installiert und konfiguriert das Ökosystem, `plugins/trouble.lua` und der
+> LSP-Teil von `plugins/lsp.lua` sind weg.
+>
+> **Alle fünf Phasen sind damit durch.** Es bleiben Einzelpunkte: Schritt 12
+> (die ~30 `:Lsp*` zu Aliasen falten), B8, B12 — und `lua/lsp_legacy` in der
+> Config wegwerfen.
 
 Die Grundsatzentscheidung ist in nvim.nvim.md (Abschnitt
 „`lsp.nvim` vs. `options.nvim`“, 2026-07-17) getroffen: `lua/lsp/` ist
@@ -177,7 +181,7 @@ beheben, nicht 1:1 mitschleppen:
 | B8 | Drei eigene Root-Resolver (`core/root_scope.lua`, `servers/lua_ls/rootresolver.lua`, `servers/marksman/rootresolver.lua`) trotz `lib.nvim.fs` | siehe §10 | Dedup-Kandidat |
 | B9 | `<leader>rn` (inc-rename) und `grn` (`vim.lsp.buf.rename`) machen dasselbe, unterschiedlich | `config/inc_rename` vs. `bindings/mappings/lsp.lua` | ✅ **ERLEDIGT (2026-08-23).** Abweichung vom Vorschlag: **beide** Tasten bleiben, statt auf eine zu reduzieren — das Muskelgedächtnis für beide ist real, das Problem war nicht die Anzahl der Tasten, sondern dass sie Verschiedenes taten. Sie zeigen jetzt auf **eine** Aktion, `rename.provider` (`auto\|inc_rename\|native`) entscheidet das Backend. inc-rename läuft über `feedkeys` statt über ein `expr`-Mapping, weil ein `expr`-Mapping zur Drückzeit nicht entscheiden kann, keines zu sein. |
 | B10 | `lsr`/`lsi`/`lss`/`lsd`/`lsD`/`lst`/`lsa` sind **prefixlose** 3-Zeichen-Maps im Normal-Mode | `bindings/mappings/lsp.lua:27-33` | Blockieren `ls…`-Sequenzen und verzögern `l`-Bewegungen nicht, aber kollidieren mit Neovim-0.11-Defaults (`grr`, `gri`, `grn`, `gO`). Bei der Preset-Definition neu bewerten |
-| B11 | `blink.cmp` vollständig auskommentiert, `nvim-cmp` aktiv — Capabilities-Modul unterstützt beide | `plugins/lsp.lua:96-118` | Dachplugin macht Engine-Wahl zur Option (`completion.engine = "cmp"\|"blink"\|"auto"`) |
+| B11 | `blink.cmp` vollständig auskommentiert, `nvim-cmp` aktiv — Capabilities-Modul unterstützt beide | `plugins/lsp.lua:96-118` | ✅ **ERLEDIGT (2026-08-23)** — aber als `vim.g.lsp_nvim.pack.completion`, **nicht** als `opts.completion.engine` wie vorgeschlagen. Der Grund ist die Timing-Trennung aus §6.2: ob ein Plugin *installiert* wird, muss feststehen, bevor `setup(opts)` existiert. `lsp.integrations.blink` konnte blinks Capabilities schon immer mergen — was fehlte, war eine Möglichkeit, es zu **installieren**. Die beiden Engines schließen sich per `enabled` gegenseitig aus. |
 | B12 | `lspdoctor/health.lua` schrieb in ein nacktes `Opts`, also in eine **globale** Variable | `lsp/lspdoctor/health.lua:10` | ✅ Global beseitigt (2026-08-23). **Aber:** die Datei *liest* `Opts` nirgends — `:LspDoctor health` ignoriert damit `list_limit`, `show_capabilities`, `show_workspace`, `show_tools` und `show_conflicts` vollständig. Der Doctor reicht sie durch, sie landen im Nichts. Verdrahten ist offen. |
 | B13 | `not X == "Darwin"` statt `X ~= "Darwin"` — parst als `(not X) == "Darwin"` und ist immer falsch | `lsp/servers/mobiledev/sourcekit.lua:12` | ✅ **ERLEDIGT (2026-08-23).** Der macOS-Guard hat nie gegriffen; die Funktion fiel auf jeder Plattform durch zur Executable-Prüfung. |
 | B14 | `handlers`-Tabelle wird befüllt und nirgends übergeben — der Grund für die Notiz „FIX: Filtering funktioniert nicht" daneben | `lsp/servers/webdev/htmx/init.lua:35` | Belassen und begründet: Verdrahten würde nichts ändern, stderr läuft nicht über `handlers`. htmx steht ohnehin nicht in `servers`. Echte Lösung offen. |
@@ -980,12 +984,48 @@ Properties (die B1-Regression, die dieser Umbau plausibel hätte auslösen
 können), 8 Server, 42 Keymaps, 2 `on_attach`- und 1 `on_init`-Hook verdrahtet,
 und `lua_ls` attached an einem Lua-Buffer.
 
-### Phase 5 — Pack (Schicht 3)
+### Phase 5 — Pack (Schicht 3) — ✅ erledigt 2026-08-23
 
-18. `pack/{init,core,ui,completion}.lua` aus den heutigen Specs in
-    `plugins/lsp.lua` + `plugins/trouble.lua` bauen.
-19. Host-Spec auf `import = "lsp.pack"` umstellen, `plugins/lsp.lua` und
-    `plugins/trouble.lua` löschen.
+18. ✅ `pack/{init,core,ui,completion,completion_blink}.lua`. Die
+    Plugin-Konfiguration ist dabei in die Adapter gewandert, damit der Pack
+    wirklich nur Specs enthält: Troubles Preview/Formatter/0.12-Patch,
+    lspsagas Optionstabelle, lenslines Profil und inc-renames post_hook
+    (aus `config/inc_rename/` mitgezogen und in `configure()` gewickelt — es
+    lief seine `setup()` und setzte eine globale Option bisher als
+    Seiteneffekt des bloßen `require`).
+19. ✅ `import = "lsp.pack"` in `init.lua`, neben dem lib.nvim-`dir`-Pin und aus
+    demselben Grund plus einem: `import` lässt lazy `lsp.pack` **während der
+    Spec-Sammlung** requiren, das Verzeichnis muss also vorher feststehen.
+    `plugins/trouble.lua`, `config/trouble/` und `config/inc_rename/`
+    gelöscht; `plugins/lsp.lua` behält nur noch, was wirklich config-eigen ist
+    (die personal-names-Completion-Quelle und die Copilot-Brücke).
+
+**Korrektur an §6.1/§6.2 — der erste Entwurf war falsch und hat ein Plugin
+installiert, das niemand wollte.** `import` benennt ein **Verzeichnis**: lazy
+requirt *jedes* Modul unter `lua/lsp/pack/` und behandelt jedes Ergebnis als
+Spec-Liste. Ein `pack/init.lua`, das bedingte `{ import = "lsp.pack.completion" }`
+-Einträge zurückgibt, gated damit **nichts** — die Geschwister werden ohnehin
+importiert, es würde sie nur ein zweites Mal einlesen. Beim ersten Testlauf
+wurde deshalb blink.cmp in die Config geklont (wieder entfernt). Konsequenzen:
+
+- Selektion läuft pro Spec über `enabled`, gelesen aus `lsp.config.pack`.
+- Der Helper musste **aus** `pack/` heraus, weil ein Modul dort als Spec
+  gelesen würde. Er liegt in `config/pack.lua` — was ohnehin stimmiger ist, er
+  liest ja Konfiguration.
+- `pack/init.lua` gibt `{}` zurück und hält diese Einschränkung fest.
+
+Die Zwei-Kanal-Trennung aus §6.2 (`vim.g` = *ob*, `opts` = *wie*) stimmt
+unverändert — nur der Mechanismus dahinter ist ein anderer als gedacht.
+
+**Nebenbefund:** der Trouble-0.12-Patch überschrieb `TSHighlighter._on_win`/
+`_on_line` **bedingungslos**. Auf einem Neovim, das sie noch hat, ersetzte er
+funktionierende Methoden durch die gleichnamigen Fallbacks. Jetzt mit Guard —
+§7 hatte genau das gefordert („mit Versions-Guard statt bedingungslos").
+
+Verifiziert gegen die echte Config: alle sieben Pack-Plugins in der Spec,
+blink korrekt abwesend, 8 Server, 42 Keymaps, 0 Warnungen, und die
+Konfiguration wirklich angewandt (Troubles Preview rechts mit Index-Formatter,
+`inccommand=split`, `:IncRename` registriert, lspsaga konfiguriert).
 
 ### Phase 6 — Abschluss
 

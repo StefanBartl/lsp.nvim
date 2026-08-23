@@ -77,11 +77,35 @@ and does not register without it.
 -- lazy.nvim
 {
   "StefanBartl/lsp.nvim",
+  import = "lsp.pack",   -- installs the ecosystem too; drop it to bring your own
   dependencies = { "StefanBartl/lib.nvim" },
   event = { "BufReadPre", "BufNewFile" },
   opts = {},
 }
 ```
+
+With `import = "lsp.pack"` you also get conform, lazydev,
+workspace-diagnostics, trouble, lspsaga, lensline and inc-rename, configured.
+Without it you get the plugin alone: it wires up whatever of those happens to
+be installed and reports the rest in `:checkhealth lsp`.
+
+Which of them gets installed is a *separate* channel from `opts`, set before
+`require("lazy").setup()`:
+
+```lua
+vim.g.lsp_nvim = {
+  pack = {
+    core = true,          -- conform, lazydev, workspace-diagnostics
+    ui = true,            -- trouble, lspsaga, lensline, inc-rename
+    completion = "cmp",   -- "cmp" | "blink" | false
+    disable = { "lspsaga.nvim" },
+  },
+}
+```
+
+It has to be separate: lazy evaluates `import` while collecting specs, long
+before `setup(opts)` exists to be read. `vim.g` decides *whether* a plugin is
+installed, `opts` decides *how* everything is configured.
 
 ```lua
 -- packer.nvim
@@ -99,9 +123,6 @@ use({
 Plug 'StefanBartl/lib.nvim'
 Plug 'StefanBartl/lsp.nvim'
 ```
-
-Once the pack layer exists, `import = "lsp.pack"` will additionally install and
-configure the third-party plugins; see [docs/ROADMAP.md](docs/ROADMAP.md) §6.
 
 > The module root is `lsp`, chosen so that existing `require("lsp.…")` paths in
 > a config keep resolving after the code moves here. While a config still has
@@ -237,6 +258,7 @@ lua/lsp/
   usercmds/           -- the migrated :Lsp* command family
   completion/         -- nvim-cmp source for the config's own plugin names
   integrations/        -- one adapter per third-party plugin, plus the registry
+  pack/                -- LazySpec export: what `import = "lsp.pack"` installs
 ```
 
 The adapters own every third-party `require`. The core does not reach into
@@ -246,8 +268,9 @@ not know lazydev or NvChad exist, and `core/capabilities.lua` does not know
 which completion engine is installed. `:checkhealth lsp` lists them straight
 from the registry rather than a second, hand-kept list.
 
-Their plugin *specs* still live in the config's `plugins/*.lua`. Moving those
-is the pack layer (`pack/`, phase 5).
+`pack/` holds specifications and nothing else. Each spec's `config` is a single
+call into the matching adapter, so what a plugin is configured *to* never sits
+in the layer that decides *whether* it is installed.
 
 ## Roadmap
 

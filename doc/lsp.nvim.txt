@@ -67,11 +67,34 @@ the rest of the setup with it -- it is recorded and shown by |:Lsp status| and
 With lazy.nvim: >lua
     {
       "StefanBartl/lsp.nvim",
+      import = "lsp.pack",
       dependencies = { "StefanBartl/lib.nvim" },
       event = { "BufReadPre", "BufNewFile" },
       opts = {},
     }
 <
+                                                            *lsp.nvim-pack*
+`import = "lsp.pack"` additionally installs and configures the ecosystem:
+conform, lazydev, workspace-diagnostics, trouble, lspsaga, lensline and
+inc-rename. Drop it to bring your own -- the plugin then wires up whatever of
+those is installed and reports the rest in |:checkhealth-lsp|.
+
+Which of them gets installed is a SEPARATE channel from `opts`, and has to be:
+lazy evaluates `import` while it is still collecting specs, long before
+`setup(opts)` exists to be read. Set it before `require("lazy").setup()`: >lua
+    vim.g.lsp_nvim = {
+      pack = {
+        core = true,          -- conform, lazydev, workspace-diagnostics
+        ui = true,            -- trouble, lspsaga, lensline, inc-rename
+        completion = "cmp",   -- "cmp" | "blink" | false
+        disable = { "lspsaga.nvim" },
+      },
+    }
+<
+`vim.g` decides WHETHER a plugin is installed, `opts` decides HOW everything is
+configured. Note that `import` names a directory: lazy requires every module
+under `lua/lsp/pack/`, so the selection above is applied per spec through
+`enabled`, not by importing conditionally.
                                                            *lsp.nvim.status()*
 >lua
     require("lsp").status()
@@ -289,10 +312,9 @@ manager and makes swapping a completion engine a one-file change.
 `scripts/gen_map.lua` declares the rule so it can be checked rather than merely
 intended.
 
-Core and integrations exist today: `core/`, `servers/`, `languages/`,
+The tree is complete: `pack/`, `integrations/`, `core/`, `servers/`, `languages/`,
 `formatter/`, `diagnostics/`, `lspdoctor/`, `tools/`, `usercmds/`,
-`completion/` and `integrations/`, alongside `config/`, `bindings/` and
-`health.lua`. `pack/` is phase 5.
+`completion/`, `config/`, `bindings/` and `health.lua`.
 
 The adapters own every third-party `require`. They are not called by the core;
 they hand capability contributors and attach hooks to `lsp/init.lua`, which
@@ -304,14 +326,14 @@ tree.
 ==============================================================================
 9. STATUS AND ROADMAP                                       *lsp.nvim-status*
 
-Migration phases 0 to 4 are done: the core lives here, configures the servers,
-owns every LSP keymap, and reaches third-party plugins only through the
-adapters in `integrations/`.
+All five migration phases are done. The core lives here, configures the
+servers, owns every LSP keymap, reaches third-party plugins only through the
+adapters in `integrations/`, and installs and configures them from `pack/`.
 
-Outstanding: phase 5 (the LazySpec pack), which is also what would let the
-third-party *setup blocks* -- Trouble's, inc-rename's, the completion engine's
--- move out of the config's `plugins/*.lua`. Until then this plugin configures
-its own behaviour and those plugins configure theirs.
+What remains is smaller and listed in `docs/ROADMAP.md`: folding the ~30
+`:Lsp*` commands into `:Lsp` routes as aliases (section 8.2), deduplicating the
+three root resolvers against `lib.nvim.fs` (finding B8), and wiring the doctor's
+health options, which it currently accepts and ignores (finding B12).
 
 `docs/ROADMAP.md` in the repository carries the full concept -- the survey of
 the subsystem being extracted, the three-layer design, the pack system, the
