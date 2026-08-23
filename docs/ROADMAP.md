@@ -1130,10 +1130,21 @@ Für `docs/ROADMAP.md` des neuen Plugins — nicht alles sofort umsetzen:
   Die vimdoc heißt deshalb `doc/lsp.nvim.txt`, alle Tags sind `lsp.nvim-…`
   präfixiert, `*lsp*` bleibt unangetastet. §5 nennt noch `doc/lsp.txt`.
 - **`NEW-20` widerspricht der jüngeren Map-Entscheidung.** Das Gate verlangt
-  `scripts/gen_map.lua` **plus** `--check` in CI; `--check` prüft aber die
-  eingecheckte Map, und die wird seit `dap.nvim`/`cascade.nvim` bewusst nicht
-  mehr committet. Beides zusammen geht nicht. Gehört im Gate entschieden, nicht
-  pro Repo still in eine Richtung aufgelöst.
+  `scripts/gen_map.lua` **plus** `--check` in CI; `--check` vergleicht aber
+  byte-genau gegen eine **eingecheckte** Map (siehe
+  `documentation.nvim/docs/REUSE.md`), und die wird seit `dap.nvim`/`cascade.nvim`
+  bewusst nicht mehr committet. Beides zusammen geht nicht — bestätigt beim
+  Nachprüfen am 2026-08-23: `documentation.nvim` selbst ist die einzige
+  Ausnahme (3 Dateien committet, Dogfooding, ~3 MB), `docmap-desktop`,
+  `dap.nvim`, `cascade.nvim`, `gopath.nvim` und `lsp.nvim` haben alle
+  `docs/map/` gitignored. Gehört im Gate entschieden, nicht pro Repo still in
+  eine Richtung aufgelöst.
+
+  **Vorschlag fürs Gate** (noch nicht übernommen, nur hier vermerkt): `NEW-20`
+  umformulieren zu „`gen_map.lua` gemäß REUSE.md übernehmen; `--check` in CI
+  nur, wenn die Map bewusst committet wird (Ausnahme: `documentation.nvim`
+  selbst). Sonst genügt ein ungeprüfter `gen_map.lua`-Lauf als Crash-Smoke-Test,
+  falls überhaupt gewollt.“
 - **Das Gate nennt zwei veraltete Pfade**: `e:\repos\` in `NEW-01`,
   `C:\Users\bartl\…` in `NEW-35`.
 
@@ -1160,15 +1171,38 @@ Für `docs/ROADMAP.md` des neuen Plugins — nicht alles sofort umsetzen:
   am `pcall(require, ...)` zurückkehrt; luacheck hat es sofort gesehen. Deshalb
   steht der Lint-Aufruf jetzt in `tests/README.md` neben der Suite.
 
-### Offen
+### Entschieden (2026-08-23, zweiter Durchgang)
 
-1. **Trouble als Default-Senke für `]d`/`[d`**: durch Trouble oder immer nativ?
-   — *Vorschlag: `diagnostics.ui = "auto"` (Trouble, wenn geladen).*
-2. **Completion-Engine**: bleibt `nvim-cmp`, oder ist der Umzug auf `blink.cmp`
-   Teil dieser Migration? Der auskommentierte Block in `plugins/lsp.lua:96-118`
-   deutet auf einen abgebrochenen Versuch hin. — *Vorschlag: nicht Teil der
-   Migration; beide Adapter bauen, Default `auto` (cmp bevorzugt, weil heute
-   aktiv), Wechsel später als eigener Schritt.*
+- **Trouble als Default-Senke für `]d`/`[d`**: ja. Alles andere wäre, das
+  halbe Plugin nachzubauen — Trouble bringt viel mit, und die meisten Nutzer
+  greifen ohnehin dazu. **Noch nicht umgesetzt**: `]d`/`[d` laufen aktuell immer
+  über `vim.diagnostic.jump`; Trouble bedient bislang nur die separaten
+  `]w`/`[w`-Tasten (`trouble_diag_next/prev`). Umsetzung: `diagnostics.ui =
+  "auto"` (Trouble, wenn geladen, sonst nativ) — offen für einen späteren
+  Schritt, bewusst nicht mit dieser Änderung mitgezogen.
+- **Completion-Engine**: Default bleibt `nvim-cmp` (war es vorher auch).
+  Beide Adapter existieren seit Phase 5 und sind seit 2026-08-23 über
+  `vim.g.lsp_nvim.pack.completion = "cmp"|"blink"` echt umschaltbar — zuvor war
+  blink nur ein auskommentierter Block in `plugins/lsp.lua`, nie tatsächlich
+  erreichbar. Die Config setzt es probeweise auf `"blink"` (`init.lua`, direkt
+  vor `require("lazy").setup`), um blink.cmp einmal live zu testen; der
+  Plugin-Default bleibt `"cmp"` unangetastet.
+
+  Der erste echte Testlauf hat sofort einen Bug gefunden: `lsp.integrations.cmp`
+  warnte unbedingt „nvim-cmp not found!“, auch wenn blink bewusst gewählt war
+  — ein Rest aus der Zeit, als cmp der einzige Motor war.
+  `lsp.integrations.blink` war schon symmetrisch (schweigt, wenn abwesend);
+  `cmp.lua` jetzt auch. `core.capabilities.get()` behält seine eigene
+  Aggregat-Warnung, wenn wirklich **kein** Contributor Completion-Capabilities
+  liefert — dort bleibt B1 (die stillschweigend degradierte Completion aus der
+  ursprünglichen Config) weiterhin gefangen. Behoben in `lsp.nvim` (Commit
+  `ba4ecb8`).
+
+  Fehlt für einen fairen Blink-Test noch: die `personal_names`-cmp-Quelle
+  (`lsp.completion.personal_names`) hat kein blink-Gegenstück. Wer auf `blink`
+  wechselt, verliert die atomare Vervollständigung der eigenen
+  Plugin-Namensliste kommentarlos — kein Fehler, aber eine Lücke, die auffallen
+  wird, wenn man danach sucht.
 3. **`NEW-20`**: `scripts/gen_map.lua` **plus** `--check` in CI, gegen eine Map,
    die seit `dap.nvim`/`cascade.nvim` bewusst nicht mehr committet wird. Beides
    zusammen geht nicht, und das ist keine Frage dieses Repos — sie gehört im
