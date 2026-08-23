@@ -1,0 +1,11 @@
+doc/tags
+
+# Generated module map (documentation.nvim). Derived output, not source:
+# `nvim --headless -l scripts/gen_map.lua` rebuilds it from the current tree.
+# Deliberately not committed, following the same decision taken in dap.nvim
+# and cascade.nvim -- a committed copy is stale the moment anything it
+# describes changes.
+docs/map/
+
+# Local dependency checkouts for headless script/CI runs.
+.deps/

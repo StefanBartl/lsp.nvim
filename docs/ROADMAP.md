@@ -5,8 +5,10 @@
 > Source of Truth**; hier steht die Kopie, damit das Repo nicht ohne Roadmap
 > dasteht. Relative Links in die Config wurden zu reinem Text reduziert.
 >
-> Stand 2026-08-23: Das Repo enthält **noch keinen Code** — nur diese Roadmap
-> und eine Platzhalter-README. Der Umsetzungsplan steht in §13.
+> Stand 2026-08-23: Phase 1 (§13) ist abgeschlossen — das Gerüst steht, der
+> `gates/NEW_PROJECT.md`-Durchlauf ist in `docs/CHECKLISTS/NEW_PROJECT.md`
+> protokolliert. Sprachserver konfiguriert das Plugin noch keine; das ist
+> Phase 2.
 
 # `lsp.nvim` — Konzept (Dachplugin)
 
@@ -17,11 +19,18 @@ Modulwurzel `wkddap`) und den anderen extrahierten `*.nvim`-Plugins
 
 > **Stand 2026-08-23.** Alle Repos liegen inzwischen unter `C:\repos\` — die
 > `E:\repos\…`-Pfade in diesem Dokument sind entsprechend nachgezogen.
-> `C:\repos\lsp.nvim` (GitHub: `StefanBartl/lsp.nvim`) hat jetzt Branch `main`
-> (aus `master` umbenannt) und dieses Konzept als `docs/ROADMAP.md` gespiegelt;
-> `README.md` ist ein Platzhalter, der die README-Pflichten aus §12 noch nicht
-> erfüllt. **Code gibt es weiterhin keinen** — Phase 1 (§13) ist damit
-> angefangen, nicht abgeschlossen.
+>
+> `C:\repos\lsp.nvim` (GitHub: `StefanBartl/lsp.nvim`) ist auf Branch `main`
+> und hat **Phase 1 abgeschlossen**: `gates/NEW_PROJECT.md` ist durchgegangen
+> (Protokoll: `docs/CHECKLISTS/NEW_PROJECT.md` im Repo), das Gerüst steht —
+> `config/`, `bindings/`, `@types/`, `health.lua`, Tooling, CI, README,
+> vimdoc, `docs/BINDINGS.md`, Smoke-Test. Lauffähig sind die Teile, die nichts
+> aus der Migration brauchen: Konfiguration, `:Lsp status|servers|health|log`,
+> der Keymap-Mechanismus und `:checkhealth lsp`.
+>
+> **Einen Language Server konfiguriert es weiterhin nicht** — das ist Phase 2.
+> Das Plugin ist in der Config nicht installiert; `lua/lsp/**` macht die Arbeit
+> unverändert selbst.
 
 Die Grundsatzentscheidung ist in nvim.nvim.md (Abschnitt
 „`lsp.nvim` vs. `options.nvim`“, 2026-07-17) getroffen: `lua/lsp/` ist
@@ -769,10 +778,20 @@ Bewusst in Phasen, damit die Config zwischen den Phasen immer lauffähig bleibt.
    `bindings/`, `integrations/`, `@types/`, `doc/`, `docs/`, `.luarc.json`,
    `stylua.toml`, README-Skelett — nach Vorlage von `dap.nvim`/`filetree.nvim`.
 
-   *Angefangen 2026-08-23:* Branch `main` (aus `master` umbenannt, Default auf
-   GitHub umgestellt), `docs/ROADMAP.md` = Spiegel dieses Konzepts,
-   `README.md` = Platzhalter. Offen bleibt der komplette Rest der Liste —
-   `lua/lsp/**`, `doc/lsp.txt`, `.luarc.json`, `stylua.toml`, echte README.
+   *Erledigt 2026-08-23.* Branch `main` (aus `master` umbenannt, GitHub-Default
+   umgestellt, `origin/master` gelöscht), Repo-Description und Topics gesetzt.
+   Angelegt: `lua/lsp/{init,health}.lua`, `config/{init,DEFAULTS,KEYMAPS}.lua`,
+   `bindings/{init,keymaps,usrcmds,autocmds,which_key}.lua`, `@types/` je Ebene,
+   `.luarc.json`, `stylua.toml`, `.luacheckrc`, `.gitattributes`, `.gitignore`,
+   `scripts/gen_map.lua`, `.github/workflows/ci.yml`, `tests/smoke.lua`,
+   `README.md`, `doc/lsp.nvim.txt`, `docs/BINDINGS.md`,
+   `docs/CHECKLISTS/NEW_PROJECT.md`.
+
+   Drei Abweichungen, alle im Checklisten-Protokoll begründet: die vimdoc heißt
+   `lsp.nvim.txt` statt `lsp.txt` (Neovims Runtime belegt den Namen bereits),
+   der Keymap-Katalog liegt in `config/KEYMAPS.lua` statt in `DEFAULTS.lua`
+   (§8.1), und `NEW-20`s `--check`-CI-Job fehlt, weil `docs/map/` hier — wie in
+   `dap.nvim` und `cascade.nvim` — nicht eingecheckt wird.
 
 ### Phase 2 — Kern umziehen (Schicht 1)
 
@@ -859,6 +878,32 @@ Für `docs/ROADMAP.md` des neuen Plugins — nicht alles sofort umsetzen:
 | E2 | **Mason-Zuständigkeit** | `ensure_install` zieht **vollständig nach `lsp.nvim`** (`integrations/mason/`), nicht nach `lib.nvim`. `dap.nvim` meldet seine DAP-Pakete per `register("dap", …)` an. → §4 |
 | E3 | **Keymap-Preset** (B10) | `ls*`-Belegung **bleibt**. Die Neovim-0.11-Defaults (`grr`/`gri`/`grn`/`grt`/`gO`) laufen buffer-lokal parallel weiter — kein Konflikt. → §8.1 |
 | E4 | **B1 (Merge-Konflikt in `capabilities.lua`)** | **Erledigt**, vor der Migration im Host gefixt. |
+
+### Aus dem NEW_PROJECT-Durchlauf (2026-08-23)
+
+- **Die Modulwurzel `lsp` überschattet sich selbst.** Solange die Config ihr
+  eigenes `lua/lsp/**` hat, gewinnt sie auf der `runtimepath` und `require("lsp")`
+  landet dort, nicht im Plugin. Der erste Testlauf hat genau das getan und
+  stillschweigend den falschen Code geprüft. Das ist kein Argument gegen die
+  Namenswahl aus §5 — der Vorteil (alle `require("lsp.…")`-Pfade bleiben gültig)
+  ist derselbe —, aber eine Bedingung, die dort fehlte: **Config-Ordner löschen
+  und Plugin installieren müssen derselbe Schritt sein.** Ein Übergangszustand
+  „beides da" ist nicht neutral, er ist unsichtbar kaputt. Für Phase 2 (§13,
+  Schritt 10) heißt das: die dort vorgesehene Reihenfolge „erst umstellen, alten
+  Ordner später löschen, wenn getestet" funktioniert so nicht — getestet werden
+  kann erst *nach* dem Löschen. Vorschlag: Config-Ordner nach
+  `lua/lsp_legacy/**` umbenennen statt löschen, dann umstellen, testen, und erst
+  danach wegwerfen.
+- **`doc/lsp.txt` ist vergeben.** Neovims Runtime liefert selbst eines (`:h lsp`).
+  Die vimdoc heißt deshalb `doc/lsp.nvim.txt`, alle Tags sind `lsp.nvim-…`
+  präfixiert, `*lsp*` bleibt unangetastet. §5 nennt noch `doc/lsp.txt`.
+- **`NEW-20` widerspricht der jüngeren Map-Entscheidung.** Das Gate verlangt
+  `scripts/gen_map.lua` **plus** `--check` in CI; `--check` prüft aber die
+  eingecheckte Map, und die wird seit `dap.nvim`/`cascade.nvim` bewusst nicht
+  mehr committet. Beides zusammen geht nicht. Gehört im Gate entschieden, nicht
+  pro Repo still in eine Richtung aufgelöst.
+- **Das Gate nennt zwei veraltete Pfade**: `e:\repos\` in `NEW-01`,
+  `C:\Users\bartl\…` in `NEW-35`.
 
 ### Offen
 

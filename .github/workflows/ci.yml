@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: stylua --check
+        uses: JohnnyMorganz/stylua-action@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          version: latest
+          args: --check lua/ scripts/ tests/
+
+      - uses: leafo/gh-actions-lua@v13
+        with:
+          # Matches this repo's own .luacheckrc (std = "lua51"); luacheck 1.2.0
+          # also fails to load under newer Lua.
+          luaVersion: "5.1"
+      - uses: leafo/gh-actions-luarocks@v6
+      - run: luarocks install luacheck
+      - run: luacheck lua scripts tests
+
+  smoke:
+    # lib.nvim is a hard dependency, so the smoke test needs it checked out --
+    # without it the plugin cannot even register `:Lsp`, which is one of the
+    # things being asserted.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: StefanBartl/lib.nvim
+          path: .deps/lib.nvim
+      - uses: rhysd/action-setup-vim@v1
+        with: { neovim: true, version: stable }
+      - run: |
+          nvim --headless -u NONE \
+            -c "set rtp^=." -c "set rtp^=.deps/lib.nvim" \
+            -c "luafile tests/smoke.lua" -c "qa!"
