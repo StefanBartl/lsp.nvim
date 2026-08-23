@@ -159,11 +159,11 @@ beheben, nicht 1:1 mitschleppen:
 | # | Befund | Ort | Bewertung |
 |---|---|---|---|
 | B1 | **Unaufgelöste Git-Merge-Konflikt-Marker** (`<<<<<<< HEAD` / `=======` / `>>>>>>>`) im Sourcecode | `lsp/core/capabilities.lua:61-71, 106-113` | 🔴 **Kritisch — ✅ ERLEDIGT (2026-07-26).** Datei war syntaktisch kaputt → `pcall(require, "lsp.core.capabilities")` schlug fehl → `lsp/init.lua:53` fiel still auf `make_client_capabilities()` zurück; **Completion-Capabilities von cmp/blink/NvChad wurden gar nicht angewandt.** Aufgelöst zugunsten der `8b6135fd`-Seite (String-Level `"error"`/`"warn"`), weil `lsp/init.lua:44` genau darauf vergleicht — mit `vim.log.levels.ERROR` (Zahl) wäre jeder Fehler still zur Warnung degradiert. Zusätzlich die doppelte `local warnings = {}`-Deklaration entfernt. |
-| B2 | Keymap auf nicht existierendes Modul `mylsp.nav.lua_root` | `bindings/mappings/lsp.lua:8` | Tote Taste `<leader>gtt`; entweder Feature nach `lsp.nvim` portieren oder Keymap streichen |
+| B2 | Keymap auf nicht existierendes Modul `mylsp.nav.lua_root` | `bindings/mappings/lsp.lua:8` | ✅ **ERLEDIGT (2026-08-23).** `mylsp` existiert nirgends — nicht in `lua/`, nicht in einem installierten Plugin — die Taste warf bei jedem Druck. Keymap entfernt, mit Kommentar an ihrer Stelle. Das Feature selbst („zum umschließenden Lua-Table-/Funktions-Root springen") ist zu schade zum Wegwerfen und steht jetzt in §14, statt als kaputte Taste am Leben gehalten zu werden. |
 | B3 | `]q`/`[q` **doppelt** gebunden (diagnostics + trouble); trouble gewinnt durch spätere Registrierung in `bindings/mappings/init.lua` | `lsp/diagnostics/keymaps.lua:33` vs. `bindings/mappings/trouble.lua:53` | Genau der Fall, den das Dachplugin auflöst: eine Quelle, eine Entscheidung |
-| B4 | `require("lsp.lspdoctor").setup()` wird **zweimal hintereinander** mit widersprüchlichen `formatter_priority` aufgerufen | `lsp/init.lua:223-235` | Zweiter Aufruf gewinnt; erster ist toter Code |
+| B4 | `require("lsp.lspdoctor").setup()` wird **zweimal hintereinander** mit widersprüchlichen `formatter_priority` aufgerufen | `lsp/init.lua:223-235` | ✅ **ERLEDIGT (2026-08-23)** — mit korrigierter Diagnose: „erster ist toter Code" stimmte **nicht**. `lspdoctor.setup()` merged Key für Key in ein persistentes `Opts` (`lspdoctor/init.lua:115`), also wirkten *alle* Keys aus beiden Aufrufen; überschrieben wurde nur `formatter_priority`. `list_limit`, `semantic_tokens_timeout` und `scratch_filetype` waren nie verloren. Zu einem Aufruf zusammengezogen, der exakt den bisherigen Effektivzustand trägt — sichtbar am Aufrufort statt aus der Merge-Semantik erschlossen. Nebenbefund: `null-ls` in der Prioritätsliste ist wirkungslos, es ist nirgends installiert (conform formatiert); bewusst stehen gelassen, weil das eine Entscheidung ist und kein Aufräumen. |
 | B5 | Conform wird **zweimal** konfiguriert: `plugins/lsp.lua:126` (`format_on_save = {…}`) und `lsp/formatter/conform.lua` + `lsp/formatter/init.lua` (`format_on_save = false`, eigener Autocmd) | beide | Zwei konkurrierende Format-on-Save-Pfade. Muss im Dachplugin **eine** Wahrheit werden |
-| B6 | `formatter/init.lua` dokumentiert sich als „Linux/macOS only; no Windows-specific branches“ — Workstation läuft auf Windows | `lsp/formatter/init.lua:3` | Verstößt gegen MISC-Regel „Cross-Plattform“. Klären: reale Einschränkung oder veralteter Kommentar |
+| B6 | `formatter/init.lua` dokumentiert sich als „Linux/macOS only; no Windows-specific branches“ — Workstation läuft auf Windows | `lsp/formatter/init.lua:3` | ✅ **ERLEDIGT (2026-08-23).** Veralteter Kommentar, keine reale Einschränkung. `formatter/init.lua` braucht selbst nichts Plattformabhängiges (Autocmds + View-Erhaltung); die Stellen, die es tun, liegen in `formatter/conform.lua` und verzweigen dort korrekt auf Windows (PATH-Separator `;`, `.cmd`-Suffix, Mason-Bin-Pfad — `conform.lua:20,40`). Kopfkommentar entsprechend richtiggestellt. |
 | B7 | `ACTIVE`-Serverliste hart im Sourcecode, Server an/aus = Code-Edit | `lsp/core/registry.lua:10-33` | → `opts.servers` |
 | B8 | Drei eigene Root-Resolver (`core/root_scope.lua`, `servers/lua_ls/rootresolver.lua`, `servers/marksman/rootresolver.lua`) trotz `lib.nvim.fs` | siehe §10 | Dedup-Kandidat |
 | B9 | `<leader>rn` (inc-rename) und `grn` (`vim.lsp.buf.rename`) machen dasselbe, unterschiedlich | `config/inc_rename` vs. `bindings/mappings/lsp.lua` | Im Dachplugin: **ein** Rename-Keymap, Backend konfigurierbar (`rename.provider = "inc_rename"\|"native"`) |
@@ -769,8 +769,21 @@ Bewusst in Phasen, damit die Config zwischen den Phasen immer lauffähig bleibt.
    String. Verbleibende Verifikation im laufenden Neovim: dass mit geladenem
    `cmp_nvim_lsp` keine Warnung mehr kommt und `caps.textDocument.completion`
    aus cmp statt aus dem Fallback stammt.
-2. B4 (doppeltes `lspdoctor.setup`) und B2 (toter `<leader>gtt`) aufräumen.
-3. Entscheiden: `formatter/init.lua` Windows-tauglich (B6)?
+2. ✅ **B4 und B2 aufgeräumt** (2026-08-23): der doppelte `lspdoctor.setup`
+   zu einem Aufruf zusammengezogen (Effektivzustand unverändert, siehe die
+   korrigierte B4-Zeile), die tote Taste `<leader>gtt` entfernt.
+3. ✅ **B6 entschieden** (2026-08-23): veralteter Kommentar, keine reale
+   Einschränkung — die plattformabhängigen Stellen sitzen in
+   `formatter/conform.lua` und behandeln Windows bereits.
+
+Damit ist Phase 0 abgeschlossen. Offen bleibt allein die Laufzeit-Verifikation
+aus Punkt 1, die ein laufendes Neovim braucht (headless hängt die volle Config
+zu lange): >
+    :lua local c, w = require("lsp.core.capabilities").get()
+    :lua print(#w, vim.inspect(c.textDocument.completion.completionItem.resolveSupport))
+<
+Erwartet: keine Warnung mehr, und ein `resolveSupport` mit den Feldern von
+`cmp_nvim_lsp` statt der nackten Fallback-Struktur.
 
 ### Phase 1 — Gerüst
 
@@ -860,6 +873,7 @@ Für `docs/ROADMAP.md` des neuen Plugins — nicht alles sofort umsetzen:
 | **Per-Projekt-Override** (`.nvim-lsp.json` im Repo-Root) | Server X in Projekt Y deaktivieren ohne globale Config-Änderung | mittel-groß |
 | **Multi-Root/Monorepo-Workspace-Switcher** als eigenes Feature | Formalisiert, was in `root_scope_picker` halb existiert | klein |
 | **Hover-Cache** via `lib.lua.memo` | Wiederholtes Hover auf gleicher Position/Version spart einen Roundtrip | klein |
+| **Sprung zum Lua-Table-/Funktions-Root** (ehem. `<leader>gtt`) | Aus B2 gerettet: aus einer tief verschachtelten Lua-Tabelle an den Kopf der umschließenden Struktur springen, optional zentriert. Die Taste war jahrelang auf ein Modul gemappt, das es nie gab — das Feature war also gewollt, nur nie gebaut | mittel |
 | **Diagnostics-Debounce** bei `publishDiagnostics` | `core/handlers.lua` dedupliziert, debounced aber nicht (chatty Server wie `ts_ls`) | klein |
 | **Test-Entry-Point** (`tools/_test`) | Fehlt komplett — widerspricht Testbarkeits-Leitlinie | mittel |
 | **Signature-Help-Modul reduzieren** | `tools/lsp_signature/**` ist eine komplette Eigenimplementierung (~800 LOC) | groß (erstmal nur beobachten) |
