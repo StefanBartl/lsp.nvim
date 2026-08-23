@@ -24,4 +24,28 @@ function M.available()
   return (pcall(require, "lensline"))
 end
 
+--- Configure lensline. Called from the pack spec's `config`.
+---@return boolean ok
+function M.configure()
+  local ok, lensline = pcall(require, "lensline")
+  if not ok then
+    return false
+  end
+
+  lensline.setup({
+    profiles = {
+      {
+        name = "minimal",
+        style = {
+          placement = "inline",
+          prefix = "",
+          -- Only render lenses for the focused function.
+          render = "focused",
+        },
+      },
+    },
+  })
+  return true
+end
+
 return M

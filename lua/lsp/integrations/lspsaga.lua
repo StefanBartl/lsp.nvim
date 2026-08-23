@@ -28,4 +28,29 @@ function M.available()
   return (pcall(require, "lspsaga"))
 end
 
+--- Configure lspsaga. Called from the pack spec's `config`.
+---
+--- Almost everything is off: the breadcrumb is the reason this plugin is here.
+--- Note `lightbulb.enable`, not `enabled` -- lspsaga reads
+--- `saga.config.lightbulb.enable`, and the misspelling merged in as a dead
+--- extra field while the lightbulb kept running on every cursor move (~214ms
+--- in a startup sample, plus permanent load while editing).
+---@return boolean ok
+function M.configure()
+  local ok, lspsaga = pcall(require, "lspsaga")
+  if not ok then
+    return false
+  end
+
+  lspsaga.setup({
+    beacon = { enable = false },
+    breadcrumb = { enable = true, show_file = true, folder_level = 1 },
+    hover = { enable = false },
+    lightbulb = { enable = false },
+    rename = { enable = false },
+    term_toggle = { enable = false },
+  })
+  return true
+end
+
 return M

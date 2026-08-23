@@ -1,0 +1,35 @@
+---@module 'lsp.pack'
+---@brief LazySpec export: what the umbrella installs.
+---@description
+--- This is what makes lsp.nvim an umbrella rather than a plugin that assumes
+--- an ecosystem someone else assembled. One entry in a plugin list: >lua
+---     {
+---       "StefanBartl/lsp.nvim",
+---       import = "lsp.pack",
+---       dependencies = { "StefanBartl/lib.nvim" },
+---     }
+--- <
+--- Without `import = "lsp.pack"` you get the plugin and nothing else: it wires
+--- up whatever of the ecosystem happens to be installed and reports what is
+--- missing in `:checkhealth lsp`.
+---
+--- **This module returns nothing, on purpose.** `import` names a *directory*:
+--- lazy requires every module under `lua/lsp/pack/` and treats each result as
+--- a spec list. An `init.lua` that returned conditional
+--- `{ import = "lsp.pack.ui" }` entries would not gate anything -- the
+--- siblings are imported regardless -- it would only import them a second
+--- time. That mistake installs a completion engine nobody asked for, which is
+--- exactly how this was found.
+---
+--- Selection therefore happens per spec, through `enabled`, reading
+--- `vim.g.lsp_nvim.pack` via `lsp.config.pack`. The file stays as the entry
+--- point the documentation points at, and as the place this constraint is
+--- written down.
+---
+---@see lsp.config.pack
+---@see lsp.pack.core
+---@see lsp.pack.ui
+---@see lsp.pack.completion
+
+---@type table[]
+return {}
