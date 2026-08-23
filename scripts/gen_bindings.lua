@@ -90,9 +90,9 @@ local fh = assert(io.open(DOC, "r"))
 local current = fh:read("*a")
 fh:close()
 
-local s, e = current:find(BEGIN, 1, true)
-local s2, e2 = current:find(END, 1, true)
-if not (s and s2) then
+local s = current:find(BEGIN, 1, true)
+local _, e2 = current:find(END, 1, true)
+if not (s and e2) then
   io.stderr:write("gen_bindings: markers not found in docs/BINDINGS.md\n")
   vim.cmd("cq 1")
 end
