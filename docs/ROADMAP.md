@@ -62,27 +62,55 @@ LSP-Bezogene zusammenläuft — inklusive der Fremdplugins (`trouble.nvim`,
 
 ---
 
-## Table of Content
+## Table of content
 
-- [1. Ist-Zustand](#1-ist-zustand)
-- [2. Befunde aus der Analyse (Bugs & Altlasten)](#2-befunde-aus-der-analyse-bugs--altlasten)
-- [3. Zielbild: Dachplugin in drei Schichten](#3-zielbild-dachplugin-in-drei-schichten)
-- [4. Scope-Abgrenzung](#4-scope-abgrenzung)
-- [5. Architektur / Verzeichnisbaum](#5-architektur--verzeichnisbaum)
-- [6. Das Pack-System (LazySpec-Export)](#6-das-pack-system-lazyspec-export)
-- [7. Integrations-Adapter im Detail](#7-integrations-adapter-im-detail)
-- [8. Bindings: Keymaps, Usercmds, Autocmds](#8-bindings-keymaps-usercmds-autocmds)
-- [9. Öffentliche API & Defaults](#9-öffentliche-api--defaults)
-- [10. lib.nvim-Integration](#10-libnvim-integration)
-- [11. checkhealth & LspDoctor](#11-checkhealth--lspdoctor)
-- [12. Dokumentationspflichten](#12-dokumentationspflichten)
-- [13. Migrationsplan](#13-migrationsplan)
-- [14. Roadmap: neue Features](#14-roadmap-neue-features)
-- [15. Offene Fragen / Entscheidungen](#15-offene-fragen--entscheidungen)
+  - [1. Ist-Zustand](#1-ist-zustand)
+    - [1.1 `lua/lsp/**` — 130 Dateien, 11.645 LOC](#11-lualsp-130-dateien-11645-loc)
+    - [1.2 LSP-nahe Fremdplugins in `lua/plugins/**`](#12-lsp-nahe-fremdplugins-in-luaplugins)
+    - [1.3 Verstreute LSP-Keymaps (Ist-Zustand)](#13-verstreute-lsp-keymaps-ist-zustand)
+    - [1.4 Verstreute `lua/config/**`-Module mit LSP-Bezug](#14-verstreute-luaconfig-module-mit-lsp-bezug)
+  - [2. Befunde aus der Analyse (Bugs & Altlasten)](#2-befunde-aus-der-analyse-bugs-altlasten)
+  - [3. Zielbild: Dachplugin in drei Schichten](#3-zielbild-dachplugin-in-drei-schichten)
+  - [4. Scope-Abgrenzung](#4-scope-abgrenzung)
+    - [Geht mit nach `lsp.nvim`](#geht-mit-nach-lspnvim)
+    - [Geht NICHT mit, sondern zu `dap.nvim` — ✅ erledigt 2026-08-23](#geht-nicht-mit-sondern-zu-dapnvim-erledigt-2026-08-23)
+    - [Bleibt im Host (`nvim/`)](#bleibt-im-host-nvim)
+  - [5. Architektur / Verzeichnisbaum](#5-architektur-verzeichnisbaum)
+  - [6. Das Pack-System (LazySpec-Export)](#6-das-pack-system-lazyspec-export)
+    - [6.1 Funktionsweise](#61-funktionsweise)
+    - [6.2 Timing-Problem und Lösung](#62-timing-problem-und-lsung)
+    - [6.3 Nutzung ohne Pack](#63-nutzung-ohne-pack)
+  - [7. Integrations-Adapter im Detail](#7-integrations-adapter-im-detail)
+  - [8. Bindings: Keymaps, Usercmds, Autocmds](#8-bindings-keymaps-usercmds-autocmds)
+    - [8.1 Keymaps — ein Preset, vollständig überschreibbar](#81-keymaps-ein-preset-vollstndig-berschreibbar)
+    - [8.2 Usercmds — `:Lsp`-Composer](#82-usercmds-lsp-composer)
+    - [8.3 Autocmds](#83-autocmds)
+  - [9. Öffentliche API & Defaults](#9-ffentliche-api-defaults)
+  - [10. lib.nvim-Integration](#10-libnvim-integration)
+  - [11. checkhealth & LspDoctor](#11-checkhealth-lspdoctor)
+  - [12. Dokumentationspflichten](#12-dokumentationspflichten)
+  - [13. Migrationsplan](#13-migrationsplan)
+    - [Phase 0 — Vorarbeiten im Host (vor jedem Umzug)](#phase-0-vorarbeiten-im-host-vor-jedem-umzug)
+    - [Phase 1 — Gerüst](#phase-1-gerst)
+    - [Phase 2 — Kern umziehen (Schicht 1) — ✅ erledigt 2026-08-23](#phase-2-kern-umziehen-schicht-1-erledigt-2026-08-23)
+    - [Phase 3 — Bindings zentralisieren — ✅ erledigt 2026-08-23](#phase-3-bindings-zentralisieren-erledigt-2026-08-23)
+    - [Phase 4 — Integrationen (Schicht 2) — ✅ größtenteils erledigt 2026-08-23](#phase-4-integrationen-schicht-2-grtenteils-erledigt-2026-08-23)
+    - [Phase 5 — Pack (Schicht 3) — ✅ erledigt 2026-08-23](#phase-5-pack-schicht-3-erledigt-2026-08-23)
+    - [Phase 6 — Abschluss](#phase-6-abschluss)
+  - [14. Roadmap: neue Features](#14-roadmap-neue-features)
+  - [15. Entscheidungen & offene Fragen](#15-entscheidungen-offene-fragen)
+    - [Entschieden (2026-07-26)](#entschieden-2026-07-26)
+    - [Aus dem NEW_PROJECT-Durchlauf (2026-08-23)](#aus-dem-new_project-durchlauf-2026-08-23)
+    - [Offen](#offen)
+  - [Aus `MyPlugin-Notes/LSPDoctor/` (Analyse 2026-08-08)](#aus-myplugin-noteslspdoctor-analyse-2026-08-08)
+    - [1. Kennzahl „installiert vs. attached"](#1-kennzahl-installiert-vs-attached)
+    - [2. Fehlerprovokation als Testhilfe](#2-fehlerprovokation-als-testhilfe)
 
 ---
 
 ## 1. Ist-Zustand
+
+---
 
 ### 1.1 `lua/lsp/**` — 130 Dateien, 11.645 LOC
 
@@ -105,6 +133,8 @@ inkl. Host-Spezifika (`machine.is("workstation")`,
 `require("config.mason.ensure_install")`, `nvchad.config.lspconfig`).
 Aufruf erfolgt in init.lua:162: `require("lsp").setup({ ensure_installing = false })`.
 
+---
+
 ### 1.2 LSP-nahe Fremdplugins in `lua/plugins/**`
 
 Das ist der Teil, der im alten Konzept fehlte. Alle folgenden Plugins gehören
@@ -126,6 +156,8 @@ fachlich unter das Dach `lsp.nvim`:
 | `mrbjarksen/neo-tree-diagnostics.nvim` | `plugins/neotree.lua` | Diagnostics-Quelle im Filetree | Grenzfall → bleibt bei `filetree.nvim` |
 | `kevinhwang91/nvim-bqf` | `plugins/*` | Bessere Quickfix-UI | Grenzfall, Quickfix ist Diagnostics-Senke |
 | `folke/todo-comments.nvim` | `config/todo_comments/**` | TODO-Liste → Trouble/Quickfix | Grenzfall, kein LSP |
+
+---
 
 ### 1.3 Verstreute LSP-Keymaps (Ist-Zustand)
 
@@ -156,6 +188,8 @@ Heute an **fünf** verschiedenen Orten. Vollständige Inventur:
 | `<leader>dos` / `<leader>wos` | FzfLua Document-/Workspace-Symbols | `bindings/mappings/fzf.lua:13-14` |
 | `<leader>do` / `<leader>wo` | FzfLua Document-/Workspace-Diagnostics | `bindings/mappings/fzf.lua:16-17` |
 | `<leader>fq` | FzfLua Quickfix | `bindings/mappings/fzf.lua:19` |
+
+---
 
 ### 1.4 Verstreute `lua/config/**`-Module mit LSP-Bezug
 
@@ -251,6 +285,8 @@ Picker (fzf-lua/telescope/snacks/`pickers.nvim`) und `nvchad`.
 
 ## 4. Scope-Abgrenzung
 
+---
+
 ### Geht mit nach `lsp.nvim`
 
 - Alles aus `lua/lsp/**` **außer** `debug_adapters/**`
@@ -267,6 +303,8 @@ Picker (fzf-lua/telescope/snacks/`pickers.nvim`) und `nvchad`.
   `pickers.nvim`), damit nicht fzf-lua hart verdrahtet ist
 - Die Plugin-Specs aus `lua/plugins/lsp.lua` und `lua/plugins/trouble.lua`
   → `lua/lsp/pack/**`
+
+---
 
 ### Geht NICHT mit, sondern zu `dap.nvim` — ✅ erledigt 2026-08-23
 
@@ -324,6 +362,8 @@ Session-Aggregation, Dedup über Kategorien, externe Dependency-Guards) nach
   `dap.nvim` seine Installs wie bisher selbst).
 - Der heutige Aufruf `lsp/init.lua:198-220` (`cfg.ensure_installing`) wird zu
   `opts.mason` (s. §9), inklusive der `overrides`-Tabelle.
+
+---
 
 ### Bleibt im Host (`nvim/`)
 
@@ -441,6 +481,8 @@ Neu gebaut werden im Wesentlichen `config/`, `integrations/`, `pack/`,
 
 Das ist der Mechanismus, der `lsp.nvim` zum Dachplugin macht.
 
+---
+
 ### 6.1 Funktionsweise
 
 lazy.nvim kann Specs aus dem `lua/`-Verzeichnis eines Plugins importieren, wenn
@@ -463,6 +505,8 @@ Eintrag** in der User-Config:
 
 Ohne `import = "lsp.pack"` bekommt man nur Schicht 1+2 — `lsp.nvim` verdrahtet
 dann, was ohnehin installiert ist, und ignoriert den Rest.
+
+---
 
 ### 6.2 Timing-Problem und Lösung
 
@@ -492,6 +536,8 @@ vim.g.lsp_nvim = {
 darüber, damit es zur Laufzeit trotzdem **eine** aufgelöste Config gibt
 (`require("lsp.config").get()`). Widersprüche (z. B. `pack.completion = false`,
 aber `opts.completion.engine = "blink"`) meldet `:checkhealth lsp` als Warnung.
+
+---
 
 ### 6.3 Nutzung ohne Pack
 
@@ -548,6 +594,8 @@ sich nach der Dependency-Härte aus §3: **harte** Dependency fehlt → `error`,
 ---
 
 ## 8. Bindings: Keymaps, Usercmds, Autocmds
+
+---
 
 ### 8.1 Keymaps — ein Preset, vollständig überschreibbar
 
@@ -608,6 +656,8 @@ Zwei Punkte, die trotzdem in `docs/BINDINGS.md` gehören:
   auseinanderlaufen. Der Adapter muss deshalb die **buffer-lokale** Map bei
   `LspAttach` überschreiben, nicht nur die globale setzen.
 
+---
+
 ### 8.2 Usercmds — `:Lsp`-Composer
 
 Vorgabe: ein Composite-Usercommand `:Cmd [options?]` mit Autocompletion über
@@ -632,6 +682,8 @@ LSP-Steuerbefehl.
 Server-spezifische Commands (`:AstroDevStart`, `:MdFormat`, `:LuaLsReloadLibrary`,
 `:TypeDef*`, `:EslintFix`, …) bleiben wie sie sind — sie sind Filetype-gebunden
 und gehören nicht in einen globalen Composer.
+
+---
 
 ### 8.3 Autocmds
 
@@ -805,6 +857,8 @@ Aus [NEW_PROJECT.md](file:///C:/repos/WKDBooks/Development/wkdbook-Lua/Checklist
 
 Bewusst in Phasen, damit die Config zwischen den Phasen immer lauffähig bleibt.
 
+---
+
 ### Phase 0 — Vorarbeiten im Host (vor jedem Umzug)
 
 1. ✅ **B1 gefixt** (2026-07-26): Merge-Konflikt-Marker aus
@@ -833,6 +887,8 @@ Hänger kam von einem `vim.defer_fn`, das Neovim am Leben hielt, nicht von der
 Config. Verifikationen gegen die echte Config sind damit billig — das gilt für
 alle weiteren Phasen.
 
+---
+
 ### Phase 1 — Gerüst
 
 4. `C:\repos\lsp.nvim` aufbauen: `lua/lsp/{init,health}.lua`, `config/`,
@@ -853,6 +909,8 @@ alle weiteren Phasen.
    der Keymap-Katalog liegt in `config/KEYMAPS.lua` statt in `DEFAULTS.lua`
    (§8.1), und `NEW-20`s `--check`-CI-Job fehlt, weil `docs/map/` hier — wie in
    `dap.nvim` und `cascade.nvim` — nicht eingecheckt wird.
+
+---
 
 ### Phase 2 — Kern umziehen (Schicht 1) — ✅ erledigt 2026-08-23
 
@@ -902,6 +960,8 @@ alle weiteren Phasen.
 
     Zu `autocmds/events/utils/filetype.lua`: die Datei referenziert
     `lsp.languages.*` heute gar nicht mehr — der Hinweis war veraltet.
+
+---
 
 ### Phase 3 — Bindings zentralisieren — ✅ erledigt 2026-08-23
 
@@ -955,6 +1015,8 @@ Verifiziert gegen die echte Config: 42 Keymaps gebunden, 0 Setup-Warnungen, und
 `]q`/`[q`/`grn`/`<leader>rn`/`lsd`/`<leader>xt`/`<leader>dos`/`<leader>wq`/`]w`
 lösen alle auf Katalogeinträge auf.
 
+---
+
 ### Phase 4 — Integrationen (Schicht 2) — ✅ größtenteils erledigt 2026-08-23
 
 15. ✅ 12 Adapter: nvchad, cmp, blink, lazydev, conform, trouble, inc_rename,
@@ -1004,6 +1066,8 @@ Properties (die B1-Regression, die dieser Umbau plausibel hätte auslösen
 können), 8 Server, 42 Keymaps, 2 `on_attach`- und 1 `on_init`-Hook verdrahtet,
 und `lua_ls` attached an einem Lua-Buffer.
 
+---
+
 ### Phase 5 — Pack (Schicht 3) — ✅ erledigt 2026-08-23
 
 18. ✅ `pack/{init,core,ui,completion,completion_blink}.lua`. Die
@@ -1047,6 +1111,8 @@ blink korrekt abwesend, 8 Server, 42 Keymaps, 0 Warnungen, und die
 Konfiguration wirklich angewandt (Troubles Preview rechts mit Index-Formatter,
 `inccommand=split`, `:IncRename` registriert, lspsaga konfiguriert).
 
+---
+
 ### Phase 6 — Abschluss
 
 20. ✅ **Erledigt 2026-08-23** — als Portierung, nicht als Verschieben; siehe §4.
@@ -1084,6 +1150,8 @@ Für `docs/ROADMAP.md` des neuen Plugins — nicht alles sofort umsetzen:
 
 ## 15. Entscheidungen & offene Fragen
 
+---
+
 ### Entschieden (2026-07-26)
 
 | # | Frage | Entscheidung |
@@ -1092,6 +1160,8 @@ Für `docs/ROADMAP.md` des neuen Plugins — nicht alles sofort umsetzen:
 | E2 | **Mason-Zuständigkeit** | `ensure_install` zieht **vollständig nach `lsp.nvim`** (`integrations/mason/`), nicht nach `lib.nvim`. `dap.nvim` meldet seine DAP-Pakete per `register("dap", …)` an. → §4 |
 | E3 | **Keymap-Preset** (B10) | `ls*`-Belegung **bleibt**. Die Neovim-0.11-Defaults (`grr`/`gri`/`grn`/`grt`/`gO`) laufen buffer-lokal parallel weiter — kein Konflikt. → §8.1 |
 | E4 | **B1 (Merge-Konflikt in `capabilities.lua`)** | **Erledigt**, vor der Migration im Host gefixt. |
+
+---
 
 ### Aus dem NEW_PROJECT-Durchlauf (2026-08-23)
 
@@ -1119,19 +1189,24 @@ Für `docs/ROADMAP.md` des neuen Plugins — nicht alles sofort umsetzen:
 - **Das Gate nennt zwei veraltete Pfade**: `e:\repos\` in `NEW-01`,
   `C:\Users\bartl\…` in `NEW-35`.
 
+---
+
 ### Offen
 
 1. **Trouble als Default-Senke für `]d`/`[d`**: durch Trouble oder immer nativ?
    — *Vorschlag: `diagnostics.ui = "auto"` (Trouble, wenn geladen).*
+   Passt
 2. **Completion-Engine**: bleibt `nvim-cmp`, oder ist der Umzug auf `blink.cmp`
    Teil dieser Migration? Der auskommentierte Block in `plugins/lsp.lua:96-118`
    deutet auf einen abgebrochenen Versuch hin. — *Vorschlag: nicht Teil der
    Migration; beide Adapter bauen, Default `auto` (cmp bevorzugt, weil heute
    aktiv), Wechsel später als eigener Schritt.*
+   die sache ist, dass ichdamals mit blink nichg so gute egebnisse erzielen konnte. das kannaber an vielen liegen. beide adapter wären daher schon gut
 3. **Modulwurzel `lsp`**: freier Name, aber generisch. `dap.nvim` musste wegen
    Kollision auf `wkddap` ausweichen; bei `lsp` besteht diese Kollision nicht.
    — *Vorschlag: `lsp` behalten* (spart das Umschreiben aller `require`-Pfade,
    u. a. `autocmds/events/utils/filetype.lua:46-106`).
+   passt
 4. **Windows-Kompatibilität des Formatters** (B6): bewusste Einschränkung oder
    nachzuziehen? Die Workstation läuft auf Windows.
 5. **`lspdoctor` vs. `:checkhealth`**: bestätigen, dass beide denselben Kern
@@ -1160,6 +1235,8 @@ Stand ist `lspdoctor/**` mit 948 Zeilen und fünf Modi
 
 Aufgehoben, weil sie zwei Dinge enthält, die im Konzept noch nicht stehen:
 
+---
+
 ### 1. Kennzahl „installiert vs. attached"
 
 `lsprelive.md` hält fest, warum die häufige Sorge unbegründet ist: Ein
@@ -1175,6 +1252,8 @@ Das beantwortet die Frage, die man tatsächlich stellt, statt nur zu listen.
 **Aufwand:** Quick Win
 **Nutzen:** mittel.
 
+---
+
 ### 2. Fehlerprovokation als Testhilfe
 
 Die Notiz enthält absichtlich kaputte Snippets (Go: fehlende Klammer, JS:
@@ -1188,3 +1267,6 @@ Die Notiz enthält absichtlich kaputte Snippets (Go: fehlende Klammer, JS:
 **Aufwand:** Mittel
 **Nutzen:** hoch — der einzige Check, der die Kette End-to-End verifiziert
 statt nur Zustände abzufragen.
+
+---
+

@@ -13,7 +13,10 @@ local function find_htmx_lsp()
 end
 
 ---@param shared {capabilities?:table,on_attach?:fun(client,bufnr),on_init?:fun(client,init_result):boolean}|nil
----@param opts { enable?: boolean, filter_stderr?: boolean }|nil
+--- `filter_stderr` is gone with the filter it gated: nothing read it once the
+--- unreachable attempt was removed, and an option nothing reads is a promise
+--- the module does not keep. It returns when there is a mechanism behind it.
+---@param opts { enable?: boolean }|nil
 ---@return nil
 function M.setup(shared, opts)
   shared = shared or {}
@@ -29,24 +32,20 @@ function M.setup(shared, opts)
     return
   end
 
-  -- OPTIONAL: Filter INFO-Logs aus stderr
-  -- htmx-lsp schreibt JSON-Logs auf stderr, die Neovim als [ERROR] loggt
+  -- htmx-lsp writes JSON logs to stderr, which Neovim records as [ERROR].
   --
-  -- This table is filled below and then never passed to `vim.lsp.config` --
-  -- which is exactly why the "Filtering funktioniert nicht" note further down
-  -- is there. Wiring it in would not help either: stderr is not routed through
-  -- `handlers`. Left in place as the record of an attempt, not as working code.
-  -- luacheck: ignore handlers
-  ---@diagnostic disable-next-line: unused-local
-  local handlers = {}
-  if opts.filter_stderr ~= false then
-    local ok, stderr_filter = pcall(require, "lsp.servers.webdev.htmx.filter_logs") -- FIX: Filtering funktionert nicht
-    if ok and type(stderr_filter.create_json_filter) == "function" then
-      -- Use JSON filter to ignore INFO/DEBUG logs
-      ---@diagnostic disable-next-line: unused-local
-      handlers["stderr"] = stderr_filter.create_json_filter("htmx-lsp")
-    end
-  end
+  -- There used to be an attempt at filtering them here: a `handlers` table with
+  -- a `stderr` entry, built and then never passed anywhere -- next to a note
+  -- saying the filtering did not work. It could not have: `handlers` maps LSP
+  -- *methods* to response handlers, and stderr never goes through it. Neovim
+  -- reads the server's stderr itself and there is no client-config hook for it,
+  -- so filtering would mean wrapping `cmd` in a process that does the filtering
+  -- before Neovim ever sees the stream.
+  --
+  -- Removed rather than kept as a record: dead code that cannot work reads like
+  -- code that does. The finding is in the roadmap (B14), and
+  -- `htmx/filter_logs.lua` still holds the JSON filter for whoever builds the
+  -- mechanism that could use it.
 
   vim.lsp.config("htmx", {
     cmd = { htmx_cmd },
