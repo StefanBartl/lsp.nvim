@@ -27,6 +27,13 @@ jobs:
       - run: luarocks install luacheck
       - run: luacheck lua scripts tests
 
+      - uses: rhysd/action-setup-vim@v1
+        with: { neovim: true, version: stable }
+      # docs/BINDINGS.md's keymap tables are generated from the catalogue.
+      # Without this the two drift the first time an entry changes, which is
+      # exactly what generating them was meant to prevent.
+      - run: nvim --headless -l scripts/gen_bindings.lua --check
+
   smoke:
     # lib.nvim is a hard dependency, so the smoke test needs it checked out --
     # without it the plugin cannot even register `:Lsp`, which is one of the

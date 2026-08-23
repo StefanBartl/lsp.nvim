@@ -6,9 +6,9 @@
 --- is never mutated at runtime.
 ---
 --- Every key here is read by code. Options from `docs/ROADMAP.md` section 9
---- that nothing consumes yet (`completion`, `rename`, `integrations`) are
---- deliberately absent -- a default nothing reads is a promise the plugin does
---- not keep. They arrive with the layer that honors them.
+--- that nothing consumes yet (`completion`, `integrations`) are deliberately
+--- absent -- a default nothing reads is a promise the plugin does not keep.
+--- They arrive with the layer that honors them.
 ---
 ---@see lsp.config
 ---@see lsp.config.KEYMAPS
@@ -118,11 +118,15 @@ local DEFAULTS = {
   -- before the servers are registered.
   languages = { enable = true },
 
+  rename = {
+    -- "auto" prefers inc-rename when it is installed and falls back to
+    -- `vim.lsp.buf.rename`; "inc_rename" and "native" pin one. Both the `grn`
+    -- and `<leader>rn` entries go through this, so the two keys can no longer
+    -- do different things (roadmap finding B9).
+    provider = "auto",
+  },
+
   keymaps = {
-    -- The mechanism is on by default; the "default" catalogue entry is still
-    -- empty (see config/KEYMAPS.lua), so this binds nothing until the keymap
-    -- consolidation in roadmap phase 3. On by default now means no config
-    -- change is needed later, and no key is claimed in the meantime.
     enable = true,
     preset = "default",
     -- Per-action overrides, e.g. `map = { goto_definition = "gd", rename = false }`.

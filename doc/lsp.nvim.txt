@@ -152,6 +152,14 @@ tools.eslint_prettier.filetypes (string[])
 languages.enable      (boolean)   Apply the filetype-specific setup under
                                   `lsp/languages/**` before the servers are
                                   registered.
+rename.provider       ("auto"|"inc_rename"|"native")
+                                  Backend for the rename action, which both
+                                  bound rename keys go through. "auto" prefers
+                                  inc-rename when it is installed and falls
+                                  back to |vim.lsp.buf.rename()|. The two keys
+                                  used to run different renames; routing both
+                                  through one option is what stopped them
+                                  drifting apart.
 keymaps.enable        (boolean)   Master switch. false = the plugin binds no
                                   keys at all.
 keymaps.preset        ("default"|"minimal"|"none")
@@ -188,11 +196,32 @@ Keymaps are data. `lua/lsp/config/KEYMAPS.lua` holds one entry per action --
 left-hand side, mode, action, description -- and `bindings/keymaps.lua` binds
 what is left after your `keymaps.map` overrides are applied. Adding a mapping
 means adding a catalogue entry; nothing is hardcoded at the binding site.
+`docs/BINDINGS.md` is generated from the same table by
+`scripts/gen_bindings.lua`, which CI checks, so the list cannot drift from the
+code.
 
-The catalogue is currently EMPTY, so setup() binds no keys. That is deliberate:
-the LSP and diagnostics keys still live in the config being migrated, and
-claiming half of them here would give the same key two owners. They move in one
-step; see `docs/ROADMAP.md` section 8.1.
+The `default` preset binds 42 entries; `minimal` binds the 26 that have no
+Neovim 0.11 equivalent (it drops `grn`, `grt` and `]d`/`[d`, and the prefixless
+`ls*` family); `none` binds nothing.
+
+Overriding, per action: >lua
+    keymaps = {
+      map = {
+        goto_definition = "gd",   -- a string replaces the left-hand side
+        rename_leader = false,    -- false drops the mapping
+      },
+    }
+<
+Two properties of the bound keys are worth knowing:
+
+  - The prefixless `ls*` family costs every Normal-mode `l` a 'timeoutlen'
+    wait, because Neovim must see whether an `s` follows. That is the price of
+    a prefixless three-character mapping, and it is deliberate.
+  - `grn` and `grt` collide with Neovim 0.11's own `gr*` maps, which are set
+    BUFFER-LOCALLY on |LspAttach| and therefore beat a global mapping.
+    `bindings/autocmds.lua` re-binds those two on LspAttach so the catalogue's
+    version runs -- which matters as soon as `rename.provider` selects
+    inc-rename.
 
 ==============================================================================
 6. COMMANDS                                               *lsp.nvim-commands*

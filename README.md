@@ -181,8 +181,19 @@ leaving you with no language server at all.
 
 Keymaps are data, not code: `lua/lsp/config/KEYMAPS.lua` holds the catalogue,
 and `keymaps.map` overrides any entry by name without touching the plugin. The
-catalogue is empty for now — consolidating the LSP and diagnostics keys is
-migration phase 3 — so the mechanism is live while no key is claimed.
+`default` preset binds 42 entries, `minimal` the 26 with no native equivalent,
+`none` nothing. `docs/BINDINGS.md` is generated from the same table, so the two
+cannot drift.
+
+```lua
+keymaps = {
+  map = {
+    goto_definition = "gd",   -- rebind
+    rename_leader = false,    -- drop
+  },
+},
+rename = { provider = "auto" }, -- "auto" | "inc_rename" | "native"
+```
 
 An out-of-range value degrades to the documented default and shows up in
 `:checkhealth lsp` rather than raising at startup.

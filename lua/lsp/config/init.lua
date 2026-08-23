@@ -44,7 +44,7 @@ local function normalize_keymaps(cfg)
     km.enable = true
   end
 
-  if KEYMAPS[km.preset] == nil then
+  if KEYMAPS.presets[km.preset] == nil then
     if km.preset ~= nil then
       _warnings[#_warnings + 1] = ("keymaps.preset: unknown value %q, falling back to %q"):format(
         tostring(km.preset),
@@ -150,7 +150,16 @@ function M.setup(user_opts)
   normalize_switch(cfg, "usrcmds")
   normalize_switch(cfg, "which_key")
   normalize_servers(cfg)
+  if cfg.rename.provider ~= "inc_rename" and cfg.rename.provider ~= "native" then
+    if cfg.rename.provider ~= "auto" and cfg.rename.provider ~= nil then
+      _warnings[#_warnings + 1] = ('rename.provider: unknown value %q, using "auto"'):format(
+        tostring(cfg.rename.provider)
+      )
+    end
+    cfg.rename.provider = "auto"
+  end
   for _, key in ipairs({
+    "rename",
     "diagnostics",
     "formatter",
     "attach",

@@ -11,17 +11,14 @@ no autocommand; both are migration phase 3.
 
 ## Keymaps
 
-None. `keymaps.preset = "default"` currently resolves to an empty catalogue, so
-`setup()` binds nothing.
+The tables below are **generated** from `lua/lsp/config/KEYMAPS.lua` by
+`scripts/gen_bindings.lua`, which CI runs with `--check`. Editing them by hand
+is pointless: change the catalogue instead.
 
-This is deliberate, not an oversight: the LSP and diagnostics keys still live
-in the nvim config, spread across `bindings/mappings/lsp.lua`,
-`bindings/mappings/trouble.lua`, `config/inc_rename/`, the FzfLua LSP maps and
-`lsp/diagnostics/keymaps.lua`. Claiming half of them here would give two owners
-to the same key — one of the problems the umbrella exists to remove. They move
-in one step, in phase 3.
-
-The mechanism around them is already in place:
+These keys used to live in five places — `bindings/mappings/lsp.lua`,
+`bindings/mappings/trouble.lua`, the LSP lines of `bindings/mappings/fzf.lua`,
+`config/inc_rename/`, and this plugin's own `diagnostics/keymaps.lua` — with
+two pairs of them owned twice over. One catalogue, one owner.
 
 | Config | Effect |
 | ------ | ------ |
@@ -30,8 +27,81 @@ The mechanism around them is already in place:
 | `keymaps.map.<action> = "<lhs>"` | Bind that action to a different key |
 | `keymaps.map.<action> = false` | Drop that action's mapping |
 
-Bound prefixes are registered as which-key groups when `which-key.nvim` is
-installed and `which_key.enable` is true (which-key v2 and v3 APIs both).
+The `needs` column names a third-party plugin. It is recorded, not enforced:
+probing at bind time would force-load a plugin configured to load on demand.
+Those entries are command strings that stay inert until pressed, or Lua
+functions that require lazily. `:checkhealth lsp` reports any that are bound
+while their plugin is missing.
+
+Two things worth knowing about the left-hand sides:
+
+- The prefixless `ls*` family costs every Normal-mode `l` a `timeoutlen` wait,
+  because Neovim has to see whether an `s` follows. That is the price of a
+  prefixless three-character mapping and it is deliberate.
+- `grn` and `grt` collide with Neovim 0.11's own `gr*` maps, which are set
+  **buffer-locally** on `LspAttach` and therefore win over a global mapping.
+  `bindings/autocmds.lua` re-binds those two on `LspAttach` so the catalogue's
+  version is the one that runs — which matters as soon as `rename.provider`
+  selects inc-rename.
+
+<!-- BEGIN GENERATED KEYMAPS -->
+
+The `default` preset binds all 42 entries below. `minimal` binds the 26
+marked in the last column; `none` binds nothing.
+
+| action | lhs | mode | needs | minimal | description |
+| --- | --- | --- | --- | --- | --- |
+| `code_action` | `lsa` | n | — | — | Code action |
+| `diag_next` | `]d` | n, x, o | — | — | Next diagnostic (buffer) |
+| `diag_prev` | `[d` | n, x, o | — | — | Prev diagnostic (buffer) |
+| `diag_setqflist` | `<leader>tq` | n | — | yes | Diagnostics -> quickfix (plain) |
+| `diag_to_loclist` | `<leader>lq` | n | — | yes | Diagnostics -> loclist (buffer) |
+| `diag_to_qflist` | `<leader>wq` | n | — | yes | Diagnostics -> quickfix (workspace) |
+| `document_symbols` | `lss` | n | — | — | Document symbols |
+| `format_buffer` | `<leader>ft` | n | — | yes | Format buffer once |
+| `format_lsp` | `<leader>fl` | n | — | yes | Format via the language server directly |
+| `format_toggle` | `<leader>tft` | n | — | yes | Toggle format-on-save |
+| `goto_declaration` | `lsD` | n | — | — | Go to declaration |
+| `goto_definition` | `lsd` | n | — | — | Go to definition |
+| `goto_implementations` | `lsi` | n | — | — | List implementations |
+| `goto_references` | `lsr` | n | — | — | List references |
+| `goto_type_definition` | `lst` | n | — | — | Go to type definition |
+| `goto_type_definition_gr` | `grt` | n | — | — | Go to type definition (g-prefix variant) |
+| `loc_next` | `]l` | n | — | yes | Next location-list entry |
+| `loc_prev` | `[l` | n | — | yes | Prev location-list entry |
+| `marksman_hints` | `<leader>lb` | n | — | yes | Toggle Marksman markdown hints |
+| `picker_document_diagnostics` | `<leader>do` | n | `fzf-lua` | yes | Picker: document diagnostics |
+| `picker_document_symbols` | `<leader>dos` | n | `fzf-lua` | yes | Picker: document symbols |
+| `picker_workspace_diagnostics` | `<leader>wo` | n | `fzf-lua` | yes | Picker: workspace diagnostics |
+| `picker_workspace_symbols` | `<leader>wos` | n | `fzf-lua` | yes | Picker: workspace symbols (live) |
+| `qf_next` | `]q` | n | — | yes | Next quickfix entry |
+| `qf_prev` | `[q` | n | — | yes | Prev quickfix entry |
+| `rename` | `grn` | n | — | — | Rename symbol |
+| `rename_leader` | `<leader>rn` | n | — | yes | Rename symbol (leader variant) |
+| `root_scope_pick` | `<leader>lsp` | n | — | yes | Pick root scope (cwd / git root / file path) |
+| `signature_help` | `<M-s>` | i | — | yes | Signature help |
+| `trouble_all` | `<leader>xx` | n | `trouble` | yes | Trouble: all diagnostics |
+| `trouble_buffer` | `<leader>xd` | n | `trouble` | yes | Trouble: buffer diagnostics |
+| `trouble_definitions` | `<leader>xld` | n | `trouble` | — | Trouble: definitions |
+| `trouble_diag_next` | `]w` | n | `trouble` | yes | Next entry in the open Trouble diagnostics list |
+| `trouble_diag_prev` | `[w` | n | `trouble` | yes | Prev entry in the open Trouble diagnostics list |
+| `trouble_implementations` | `<leader>xli` | n | `trouble` | — | Trouble: implementations |
+| `trouble_loclist` | `<leader>xl` | n | `trouble` | yes | Trouble: location list |
+| `trouble_qflist` | `<leader>xq` | n | `trouble` | yes | Trouble: quickfix list |
+| `trouble_references` | `<leader>xlr` | n | `trouble` | — | Trouble: references |
+| `trouble_symbols` | `<leader>xls` | n | `trouble` | — | Trouble: document symbols |
+| `trouble_toggle` | `<leader>xt` | n | `trouble` | yes | Trouble: toggle diagnostics |
+| `trouble_type_definitions` | `<leader>xlt` | n | `trouble` | — | Trouble: type definitions |
+| `trouble_workspace` | `<leader>xw` | n | `trouble` | yes | Trouble: workspace diagnostics |
+
+which-key group labels:
+
+| prefix | label |
+| --- | --- |
+| `<leader>x` | Trouble / LSP lists |
+| `<leader>xl` | Trouble LSP views |
+
+<!-- END GENERATED KEYMAPS -->
 
 ## User Commands
 

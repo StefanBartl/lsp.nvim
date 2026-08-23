@@ -105,6 +105,45 @@ ok(vim.fn.exists(":LspDoctor") == 2, "`:LspDoctor` exists")
 ok(vim.fn.exists(":LspStatus") == 2, "`:LspStatus` (legacy) exists")
 ok(type(vim.g._formatter_api) == "table", "formatter API published for the keymaps")
 
+-- The keymap catalogue is real now (migration phase 3), so check that the
+-- mechanism around it actually does what the config options promise.
+ok(#status.keymaps > 30, "keymaps: default preset bound " .. #status.keymaps .. " entries")
+
+local KEYMAPS = require("lsp.config.KEYMAPS")
+local bound = {}
+for _, spec in ipairs(status.keymaps) do
+  bound[spec.name] = spec.lhs
+end
+ok(bound.qf_next == "]q", "keymaps: ]q comes from the catalogue")
+ok(bound.rename == "grn" and bound.rename_leader == "<leader>rn", "keymaps: both rename keys bound")
+ok(
+  KEYMAPS.entries.rename.rhs == KEYMAPS.entries.rename_leader.rhs,
+  "keymaps: both rename keys share one action (B9)"
+)
+ok(#KEYMAPS.presets.minimal < #KEYMAPS.presets.default, "keymaps: minimal is a subset")
+
+-- Overrides and the off switches, checked through a fresh setup rather than
+-- through the module's internals.
+package.loaded["lsp"] = nil
+local lsp2 = require("lsp")
+lsp2.setup({ keymaps = { map = { qf_next = "<leader>zz", rename = false } } })
+local bound2 = {}
+for _, spec in ipairs(lsp2.status().keymaps) do
+  bound2[spec.name] = spec.lhs
+end
+ok(bound2.qf_next == "<leader>zz", "keymaps.map: a string replaces the lhs")
+ok(bound2.rename == nil, "keymaps.map: false drops the mapping")
+
+package.loaded["lsp"] = nil
+local lsp3 = require("lsp")
+lsp3.setup({ keymaps = { preset = "none" } })
+ok(#lsp3.status().keymaps == 0, 'keymaps: preset "none" binds nothing')
+
+package.loaded["lsp"] = nil
+local lsp4 = require("lsp")
+lsp4.setup({ keymaps = { enable = false } })
+ok(#lsp4.status().keymaps == 0, "keymaps.enable = false binds nothing")
+
 -- health.check() must not throw, whatever the environment looks like.
 ok(pcall(require("lsp.health").check), "health.check() runs")
 

@@ -146,6 +146,30 @@ local function check_plugin()
     )
   else
     health.ok(("keymaps: %d bound from preset %q"):format(#status.keymaps, cfg.keymaps.preset))
+
+    -- `requires` is recorded at bind time, not enforced (see
+    -- lsp.bindings.keymaps for why). This is where it pays off: a key that is
+    -- bound but whose plugin is missing fails only when pressed, which is the
+    -- worst moment to find out.
+    ---@type table<string, string[]>
+    local missing = {}
+    for _, spec in ipairs(status.keymaps) do
+      if spec.requires ~= nil and not has(spec.requires) then
+        missing[spec.requires] = missing[spec.requires] or {}
+        table.insert(missing[spec.requires], spec.lhs)
+      end
+    end
+    for plugin, lhs_list in pairs(missing) do
+      table.sort(lhs_list)
+      health.warn(
+        ("%d keymap(s) bound for %s, which is not installed: %s"):format(
+          #lhs_list,
+          plugin,
+          table.concat(lhs_list, ", ")
+        ),
+        { ("Install %s, or switch them off via keymaps.map."):format(plugin) }
+      )
+    end
   end
 
   if not cfg.usrcmds.enable then

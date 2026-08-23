@@ -64,6 +64,15 @@ require("lsp.@types.vim_lsp")
 ---@class LspNvim.LanguagesOpts
 ---@field enable boolean # Apply the filetype-specific setup under `lsp/languages/**`.
 
+---@alias LspNvim.RenameProvider
+--- Which backend the rename action uses. Both bound rename keys go through it.
+---| '"auto"'       # inc-rename when installed, `vim.lsp.buf.rename` otherwise
+---| '"inc_rename"' # always inc-rename (no-op if it is not installed)
+---| '"native"'     # always `vim.lsp.buf.rename`
+
+---@class LspNvim.RenameOpts
+---@field provider LspNvim.RenameProvider
+
 ---@class LspNvim.Config
 --- The resolved configuration: DEFAULTS with the user's options merged over
 --- them, normalized so every field below is guaranteed present and valid.
@@ -75,6 +84,7 @@ require("lsp.@types.vim_lsp")
 ---@field lspdoctor table # Options forwarded to `lsp.lspdoctor.setup()`.
 ---@field tools LspNvim.ToolsOpts
 ---@field languages LspNvim.LanguagesOpts
+---@field rename LspNvim.RenameOpts
 ---@field keymaps LspNvim.KeymapsOpts
 ---@field usrcmds LspNvim.UsrcmdsOpts
 ---@field which_key LspNvim.WhichKeyOpts
@@ -90,7 +100,8 @@ require("lsp.@types.vim_lsp")
 ---@field mode string|string[] # Mode(s), as `vim.keymap.set` takes them.
 ---@field rhs string|fun(): nil # What the key does.
 ---@field desc string # Human-readable description; also the which-key label.
----@field requires string|nil # Name of an integration that must be available, or nil for "always".
+---@field requires string|nil # Third-party plugin this entry needs. Recorded, not enforced: see `lsp.bindings.keymaps`.
+---@field name string|nil # Catalogue key. Set by the binder on the returned copies, absent in the catalogue itself.
 
 -- #####################################################################
 -- init.lua, health.lua
