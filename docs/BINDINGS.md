@@ -5,9 +5,9 @@ documentation only; the source of truth is `lua/lsp/config/KEYMAPS.lua` (the
 keymap catalogue) and `lua/lsp/bindings/` (commands, autocommands). A change
 there must be reflected here.
 
-The plugin is still the scaffold described in [ROADMAP.md](ROADMAP.md): the
-mechanisms exist and the commands work, but the keymap catalogue is empty and
-no autocommand is registered. Both fill up during migration phases 2 and 3.
+The LSP core has moved in (migration phase 2), so the command family below is
+real. The keymap catalogue is still empty and `bindings/autocmds.lua` registers
+no autocommand; both are migration phase 3.
 
 ## Keymaps
 
@@ -49,10 +49,29 @@ unless `usrcmds.enable = false`.
 | `:Lsp log level` | `{trace\|debug\|info\|warn\|error\|off}` | no | Set the LSP log level |
 
 None of these takes a range: they report global state, not something a line
-range could narrow. The route tree designed in [ROADMAP.md](ROADMAP.md) §8.2
-(`start`, `stop`, `restart`, `format`, `diag`, `workspace`, `root`, `doctor`,
-`recover`) arrives with the code it drives, along with the roughly thirty
-`:Lsp*` legacy aliases the migration keeps.
+range could narrow.
+
+### Migrated command family
+
+These came with the core and are registered by `setup()`. Roadmap section 8.2
+folds them into `:Lsp` routes and keeps them as thin aliases; until then they
+are the primary form.
+
+| Command | Source | Effect |
+| ------- | ------ | ------ |
+| `:LspDoctor {health\|debug\|quick\|deep\|all}` | `lspdoctor/` | Per-buffer LSP diagnosis |
+| `:LspStatus` / `:LspInfo` / `:LspLog` | `usercmds/` | Buffer client status, info, log file |
+| `:LspRecover` / `:LspForceRestart` | `usercmds/` | Recover missing servers, force a restart |
+| `:LspStartHere` / `:LspStopHere` / `:LspRestartHere` | `usercmds/` | Act on the current buffer's client |
+| `:LspFormat*` | `usercmds/formatter.lua` | Format once, toggle on-save, show which formatter wins |
+| `:LspWorkspaceDiagnostics*` | `usercmds/workspace_diagnostics.lua` | Runtime toggle for workspace-wide diagnostics |
+| `:LspMdHints` | `usercmds/` | Marksman hint toggle |
+| `:Diag*` | `diagnostics/` | Diagnostics to quickfix/loclist, navigation |
+| `:TypeDef*` / `:EslintFix` | `tools/` | Type lookup, ESLint fix |
+
+`vim.g._formatter_api` is published by `setup()` for the format keymaps the
+config still owns. It disappears in phase 3, when the keymap catalogue can
+close over the formatter directly.
 
 Report output goes to a scratch split rather than a notification: it is
 multi-line and meant to be read and copied from.

@@ -46,6 +46,7 @@ local function status_lines()
     ("setup() has run:   %s"):format(tostring(status.initialized)),
     ("`:Lsp` registered: %s"):format(tostring(status.usrcmd)),
     ("keymaps bound:     %d"):format(#status.keymaps),
+    ("servers set up:    %d"):format(#status.servers),
     ("clients attached:  %d"):format(#status.clients),
   }
 
@@ -56,6 +57,8 @@ local function status_lines()
     lines[#lines + 1] = ("  keymaps.preset   = %q"):format(cfg.keymaps.preset)
     lines[#lines + 1] = ("  usrcmds.enable   = %s"):format(tostring(cfg.usrcmds.enable))
     lines[#lines + 1] = ("  which_key.enable = %s"):format(tostring(cfg.which_key.enable))
+    lines[#lines + 1] = ("  formatter.on_save = %s"):format(tostring(cfg.formatter.on_save))
+    lines[#lines + 1] = ("  servers          = %s"):format(table.concat(cfg.servers, ", "))
   end
 
   if #status.warnings > 0 then
@@ -66,10 +69,13 @@ local function status_lines()
     end
   end
 
-  lines[#lines + 1] = ""
-  lines[#lines + 1] = "This plugin is still the scaffold described in docs/ROADMAP.md."
-  lines[#lines + 1] = "It configures no language servers yet; the config's own lua/lsp/**"
-  lines[#lines + 1] = "still does that (migration phase 2)."
+  if #status.servers > 0 then
+    lines[#lines + 1] = ""
+    lines[#lines + 1] = "servers set up"
+    for _, name in ipairs(status.servers) do
+      lines[#lines + 1] = "  " .. name
+    end
+  end
 
   return lines
 end
@@ -78,12 +84,20 @@ end
 --- Human-readable lines describing the attached LSP clients.
 ---@return string[]
 local function server_lines()
+  local status = require("lsp").status()
   local clients = vim.lsp.get_clients()
-  if #clients == 0 then
-    return { "lsp.nvim - servers", "", "No LSP client is attached to any buffer." }
-  end
 
   local lines = { "lsp.nvim - servers", "" }
+  lines[#lines + 1] = ("set up: %s"):format(
+    #status.servers > 0 and table.concat(status.servers, ", ") or "(none)"
+  )
+  lines[#lines + 1] = ""
+
+  if #clients == 0 then
+    lines[#lines + 1] = "No LSP client is attached to any buffer."
+    return lines
+  end
+
   for _, client in ipairs(clients) do
     local buffers = vim.tbl_keys(client.attached_buffers or {})
     lines[#lines + 1] = ("%s (id %d)"):format(client.name, client.id)

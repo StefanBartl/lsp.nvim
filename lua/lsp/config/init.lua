@@ -81,6 +81,56 @@ local function normalize_switch(cfg, key)
   end
 end
 
+---@internal
+--- Force `servers` into a non-empty array of strings. An empty or malformed
+--- list would silently mean "no language server at all", which looks exactly
+--- like a broken installation -- so it degrades to the default set and says so.
+---@param cfg LspNvim.Config
+---@return nil
+local function normalize_servers(cfg)
+  local list = cfg.servers
+  if type(list) ~= "table" then
+    _warnings[#_warnings + 1] = "servers: expected a list of names, using defaults"
+    cfg.servers = vim.deepcopy(DEFAULTS.servers)
+    return
+  end
+
+  ---@type string[]
+  local clean = {}
+  for _, name in ipairs(list) do
+    if type(name) == "string" and name ~= "" then
+      clean[#clean + 1] = name
+    else
+      _warnings[#_warnings + 1] = ("servers: ignoring non-string entry %s"):format(
+        vim.inspect(name)
+      )
+    end
+  end
+
+  if #clean == 0 then
+    _warnings[#_warnings + 1] = "servers: list is empty, using defaults"
+    clean = vim.deepcopy(DEFAULTS.servers)
+  end
+  cfg.servers = clean
+end
+
+---@internal
+--- Force a sub-table back to its default when the user replaced it with
+--- something that is not a table at all. Deep-merge already filled in the
+--- fields; this only catches `formatter = false` style mistakes, where every
+--- field access downstream would error.
+---@param cfg LspNvim.Config
+---@param key string
+---@return nil
+local function normalize_table(cfg, key)
+  if type(cfg[key]) ~= "table" then
+    if cfg[key] ~= nil then
+      _warnings[#_warnings + 1] = ("%s: expected a table, using defaults"):format(key)
+    end
+    cfg[key] = vim.deepcopy(DEFAULTS[key])
+  end
+end
+
 --- Merge the user's options over the defaults, normalize, and store the result.
 ---@param user_opts? LspNvim.Config|table
 ---@return LspNvim.Config
@@ -99,6 +149,18 @@ function M.setup(user_opts)
   normalize_keymaps(cfg)
   normalize_switch(cfg, "usrcmds")
   normalize_switch(cfg, "which_key")
+  normalize_servers(cfg)
+  for _, key in ipairs({
+    "diagnostics",
+    "formatter",
+    "attach",
+    "mason",
+    "lspdoctor",
+    "tools",
+    "languages",
+  }) do
+    normalize_table(cfg, key)
+  end
 
   _active = cfg
   return cfg

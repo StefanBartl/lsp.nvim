@@ -55,9 +55,14 @@ which still carries its own `lua/lsp/**` shadows this plugin on the
     require("lsp").setup()
 <
 Calling setup() merges your options over the defaults, binds the configured
-keymap preset, registers |:Lsp| and installs the plugin's autocommands. It is
-safe to call once; a second call is refused with a warning rather than binding
-on top of the first.
+keymap preset and registers |:Lsp|, then bootstraps the LSP core: handlers,
+diagnostics, capabilities, attach, formatter, the command family, the language
+modules, the configured servers, and the extra tools. It is safe to call once;
+a second call is refused with a warning rather than doing all of that twice.
+
+Every bootstrap step is wrapped. One broken server module or tool does not take
+the rest of the setup with it -- it is recorded and shown by |:Lsp status| and
+|:checkhealth-lsp|. setup() returns true when at least one server was set up.
 
 With lazy.nvim: >lua
     {
@@ -73,25 +78,80 @@ With lazy.nvim: >lua
 <
 Returns a snapshot of what the plugin currently is: whether setup() has run,
 the resolved config, the keymaps actually bound, whether |:Lsp| registered, the
-attached LSP clients, and any configuration warnings. |:Lsp status| and
-|:checkhealth-lsp| both read this, so the two cannot disagree.
+servers that were set up, the attached LSP clients, and every warning collected
+during setup. |:Lsp status| and |:checkhealth-lsp| both read this, so the two
+cannot disagree.
 
 ==============================================================================
 4. CONFIGURATION                                            *lsp.nvim-config*
 
-Defaults: >lua
+Defaults (excerpt -- the full table is `lua/lsp/config/DEFAULTS.lua`): >lua
     {
-      keymaps = {
-        enable = true,
-        preset = "default",
-        map = {},
+      servers = { "bashls", "lua_ls", "gopls", "marksman", "html",
+                  "ts_ls", "tailwindcss", "csharp" },
+      diagnostics = {
+        update_in_insert = false,
+        severity_sort = true,
+        virtual_text = { spacing = 2, prefix = "●" },
+        float = { border = "rounded", source = "if_many" },
       },
+      formatter = { on_save = false, timeout_ms = 1500 },
+      attach = { use_workspace_diagnostics = true, use_lazydev = true },
+      mason = { ensure_install = false, overrides = { ... } },
+      lspdoctor = { use_notify = false, list_limit = 8, ... },
+      tools = {
+        eslint_prettier = { enable = true, filetypes = { ... } },
+        lsp_signature = { enable = true },
+        ts_type_lookup = { enable = true },
+        deprecated_help = { enable = true },
+      },
+      languages = { enable = true },
+      keymaps = { enable = true, preset = "default", map = {} },
       usrcmds = { enable = true },
       which_key = { enable = true },
     }
 <
 Field reference ~
 
+servers               (string[])  Server names to set up and enable. Each
+                                  resolves to `lsp.servers.<name>`, with
+                                  `lsp.servers.webdev.<name>` tried as a
+                                  fallback for names without a dot. This used
+                                  to be a hardcoded ACTIVE list inside
+                                  `core/registry.lua`, so turning a server on
+                                  or off meant editing the plugin. An empty or
+                                  malformed list falls back to the defaults --
+                                  "no language server at all" looks exactly
+                                  like a broken install and is never what a
+                                  typo should produce.
+diagnostics           (table)     Passed straight to |vim.diagnostic.config()|
+                                  after the servers are enabled, so a server
+                                  config cannot overwrite it.
+formatter.on_save     (boolean)   Format on write at startup. The runtime
+                                  toggle (|:LspFormatToggle|) owns it from
+                                  there; this is only the starting position.
+formatter.timeout_ms  (integer)   Upper bound for one format request.
+attach.use_workspace_diagnostics (boolean)
+                                  Populate workspace-wide diagnostics on
+                                  attach. On by default: the module measures
+                                  workspace size itself and refuses above its
+                                  own `max_files` gate.
+attach.use_lazydev    (boolean)   Wire lazydev into lua_ls attaches.
+mason.ensure_install  (boolean)   Install missing LSP/linter/formatter
+                                  packages on setup. Off by default --
+                                  installing software is a side effect a
+                                  plugin should not perform unasked.
+mason.overrides       (table)     Per-category force-on/off, keyed `lsp`,
+                                  `dap`, `linters`, `formatters`.
+lspdoctor             (table)     Forwarded to `lsp.lspdoctor.setup()`.
+tools.<name>.enable   (boolean)   Master switch per extra tool:
+                                  eslint_prettier, lsp_signature,
+                                  ts_type_lookup, deprecated_help.
+tools.eslint_prettier.filetypes (string[])
+                                  Filetypes that tool attaches to.
+languages.enable      (boolean)   Apply the filetype-specific setup under
+                                  `lsp/languages/**` before the servers are
+                                  registered.
 keymaps.enable        (boolean)   Master switch. false = the plugin binds no
                                   keys at all.
 keymaps.preset        ("default"|"minimal"|"none")
@@ -117,11 +177,9 @@ An out-of-range value never raises. It degrades to the documented default and
 is recorded as a warning, visible in |:Lsp status| and |:checkhealth-lsp| -- a
 typo in a config should cost a feature, not a startup.
 
-The full option surface designed for the finished plugin (`servers`,
-`diagnostics`, `formatter`, `completion`, `rename`, `tools`, `integrations`,
-`mason`) is documented in the repository's `docs/ROADMAP.md` section 9. Those
-keys are deliberately absent here until the code that honors them exists: a
-default nothing reads is a promise the plugin does not keep.
+`completion`, `rename` and `integrations` from `docs/ROADMAP.md` section 9 are
+still absent: nothing reads them yet, and a default nothing reads is a promise
+the plugin does not keep. They arrive with the integration layer (phase 4).
 
 ==============================================================================
 5. KEYMAPS                                                 *lsp.nvim-keymaps*
@@ -140,7 +198,11 @@ step; see `docs/ROADMAP.md` section 8.1.
 6. COMMANDS                                               *lsp.nvim-commands*
 
 One command with subcommands and <Tab> completion, built with
-`lib.nvim.usercmd.composer`.
+`lib.nvim.usercmd.composer`. The migrated command family (|:LspDoctor|,
+:LspStatus, :LspLog, :LspInfo, :LspRecover, :LspStartHere, :LspStopHere,
+:LspRestartHere, :LspForceRestart, :LspFormat*, :LspWorkspaceDiagnostics*,
+:LspMdHints, :Diag*, :TypeDef*, :EslintFix) is registered as well; folding it
+into `:Lsp` routes with thin aliases is roadmap section 8.2.
                                                                        *:Lsp*
     :Lsp status                                              *:Lsp-status*
                     Report what the plugin has set up: resolved config,
@@ -148,10 +210,10 @@ One command with subcommands and <Tab> completion, built with
                     configuration warnings.
 
     :Lsp servers                                            *:Lsp-servers*
-                    List the LSP clients currently attached, with each
-                    client's root directory and buffer count. Reads Neovim's
-                    own state, so it works regardless of what this plugin has
-                    configured.
+                    The servers this plugin set up, plus the LSP clients
+                    Neovim currently has attached with their root directory
+                    and buffer count. The gap between the two is what one
+                    usually wants to see.
 
     :Lsp health                                              *:Lsp-health*
                     Run |:checkhealth| for this plugin.
@@ -174,14 +236,15 @@ multi-line, and meant to be read and copied from.
 >vim
     :checkhealth lsp
 <
-Four sections: the environment (Neovim version, lib.nvim), what setup()
-registered, the LSP clients Neovim currently has attached, and which of the
-planned third-party integrations are installed.
+Five sections: the environment (Neovim version, lib.nvim), what setup()
+registered including every warning it worked around, servers configured versus
+set up versus attached, the ecosystem around the plugin, and a pointer to
+|:LspDoctor| for per-buffer diagnosis.
 
-The last section is informational by design. None of those plugins is wired
-yet, so a missing one is not a fault of this plugin -- reporting it as an error
-would describe a problem that does not exist. The severities tighten as the
-integration layer lands.
+Severity follows dependency hardness: something the plugin cannot work without
+is an error, something it uses when present is information. That is why
+trouble.nvim is still informational -- nothing wires it yet -- while a missing
+conform.nvim is not.
 
 ==============================================================================
 8. ARCHITECTURE                                       *lsp.nvim-architecture*
@@ -197,15 +260,19 @@ manager and makes swapping a completion engine a one-file change.
 `scripts/gen_map.lua` declares the rule so it can be checked rather than merely
 intended.
 
-Of these, only the scaffold exists today: `config/`, `bindings/`, `health.lua`
-and the public entry point. See `docs/ROADMAP.md` section 5 for the full tree.
+Core and the first integration exist today: `core/`, `servers/`, `languages/`,
+`formatter/`, `diagnostics/`, `lspdoctor/`, `tools/`, `usercmds/`,
+`completion/` and `integrations/mason/`, alongside `config/`, `bindings/` and
+`health.lua`. The remaining adapters are phase 4, `pack/` is phase 5. See
+`docs/ROADMAP.md` section 5 for the full tree.
 
 ==============================================================================
 9. STATUS AND ROADMAP                                       *lsp.nvim-status*
 
-This plugin configures no language servers yet. What works is the part that
-needs nothing from the migration: configuration, |:Lsp|, the keymap mechanism
-and |:checkhealth-lsp|.
+Migration phases 0 to 2 are done: the LSP core lives here and configures the
+servers. Outstanding are phase 3 (the keymap catalogue is still empty, the keys
+remain in the config), phase 4 (adapters for trouble, conform, lazydev and the
+completion engines) and phase 5 (the LazySpec pack).
 
 `docs/ROADMAP.md` in the repository carries the full concept -- the survey of
 the subsystem being extracted, the three-layer design, the pack system, the

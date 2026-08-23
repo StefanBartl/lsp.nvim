@@ -1,0 +1,297 @@
+*lspdoctor.txt*  Inspect Neovim LSP state; quick/deep report, export, health          *lspdoctor*
+
+Module:  lsp.lspdoctor
+Version: 0.1.0
+For:     Neovim 0.9+ (0.10+ recommended), Linux/macOS
+
+==============================================================================
+CONTENTS                                                        *lspdoctor-contents*
+
+Introduction ..................................................... |lspdoctor|
+Quick start .......................................... |lspdoctor-quickstart|
+Installation (Lazy) ..................................... |lspdoctor-install|
+Commands ................................................ |lspdoctor-commands|
+Configuration ............................................ |lspdoctor-config|
+Reports and checks ......................................... |lspdoctor-report|
+Export renderer ........................................... |lspdoctor-export|
+Health-style output ........................................ |lspdoctor-health|
+API (Lua) ...................................................... |lspdoctor-api|
+Troubleshooting ...................................... |lspdoctor-troubleshoot|
+FAQ ................................................................ |lspdoctor-faq|
+License and notices ........................................ |lspdoctor-legal|
+
+==============================================================================
+INTRODUCTION                                                               *lspdoctor*
+
+LSP Doctor is a small, dependency-free helper to inspect Neovim’s LSP state for
+the current buffer and the overall session. It provides:
+• quick summary and deep report
+• scratch-buffer export renderer
+• health-style output inspired by :checkhealth
+
+Focus: Linux/macOS. No hard runtime dependencies. Optional integrations detected
+only if installed (trouble.nvim, fidget.nvim, nvim-navic).
+
+==============================================================================
+QUICK START                                                    *lspdoctor-quickstart*
+
+After setup:
+
+>
+
+:LspDoctor            " quick summary
+:LspDoctor!           " deep report
+:LspDoctor export     " quick report → scratch buffer
+:LspDoctor! export    " deep report → scratch buffer
+:LspDoctor health     " compact health-style summary
+<
+Recommended mappings:
+
+>
+
+nnoremap <leader>ld :LspDoctor<CR>
+nnoremap <leader>lD :LspDoctor!<CR>
+nnoremap <leader>le :LspDoctor! export<CR>
+<
+
+==============================================================================
+INSTALLATION (LAZY.NVIM)                                      *lspdoctor-install*
+
+Example for a local module under nvim/usrcmds/lspdoctor:
+
+>
+
+{
+dir = vim.fn.stdpath("config") .. "/nvim/usrcmds/lspdoctor",
+name = "lspdoctor",
+lazy = true,
+config = function()
+require("usrcmds.lspdoctor").setup({
+use_notify = false,
+list_limit = 8,
+show_capabilities = true,
+show_workspace = true,
+show_tools = true,
+show_conflicts = true,
+formatter_priority = { "eslint", "null-ls", "lua_ls" },
+semantic_tokens_timeout = 300,
+scratch_filetype = "markdown",
+})
+require("usrcmds.lspdoctor").enable_usercmd()
+end,
+cmd = { "LspDoctor" },
+}
+<
+
+==============================================================================
+COMMANDS                                                       *lspdoctor-commands*
+
+*:LspDoctor*                                               :LspDoctor  *:LspDoctor*
+Render a quick report to the message area. With bang, a deep report is
+rendered instead.
+
+*:LspDoctor!*                                             :LspDoctor!  *:LspDoctor!*
+Same as :LspDoctor but selects deep mode.
+
+Subcommands:
+
+>
+
+:LspDoctor export     " render report → scratch buffer (read-only)
+:LspDoctor! export    " deep mode to scratch
+:LspDoctor health     " print compact health-style summary
+<
+Notes:
+• Without subcommand, the report is printed or notified (see |lspdoctor-config|).
+• Bang affects only the mode (quick vs deep).
+• Unknown subcommands are warned and ignored.
+
+==============================================================================
+CONFIGURATION                                                    *lspdoctor-config*
+
+Setup function:
+
+>
+
+require("usrcmds.lspdoctor").setup({ ... })
+<
+Options and defaults:
+
+## Name                       Type             Default        Description
+
+use_notify                 boolean          false          Use vim.notify instead of print
+list_limit                 integer          10             Max items per section (quick)
+show_capabilities          boolean          true           Deep: include capability subset
+show_workspace             boolean          true           Deep: root_dir, workspace, under-root
+show_tools                 boolean          true           External tools summary
+show_conflicts             boolean          true           Detect formatter/diagnostics overlaps
+formatter_priority         string[]         {}             Preferred formatter order
+semantic_tokens_timeout    integer (ms)     300            Probe timeout for semantic tokens
+scratch_filetype           string           "markdown"     Filetype for export buffer
+
+Example:
+
+>
+
+require("usrcmds.lspdoctor").setup({
+use_notify = true,
+formatter_priority = { "eslint", "null-ls", "lua_ls" },
+semantic_tokens_timeout = 250,
+})
+<
+
+==============================================================================
+REPORTS AND CHECKS                                               *lspdoctor-report*
+
+Quick report:
+• LSP clients attached to current buffer
+• Diagnostics totals by severity (ERROR/WARN/INFO/HINT)
+• Provider conflicts if multiple formatters/diagnostics are present
+• Offset-encoding summary and mismatch warning if mixed
+
+Deep report (adds):
+• Workspace/root_dir per client, workspace folders, buffer-under-root check
+• Capability subset per client (formatting, code actions, semantic tokens,
+CodeLens, inlay hints, etc.)
+• CodeLens and InlayHints support flags and best-effort enabled status
+• Semantic tokens probe with short timeout per client
+• External tools presence and optional integrations status
+
+Formatter policy:
+• Candidates are all clients with documentFormattingProvider=true
+• Winner chosen by formatter_priority (first match wins), else alphabetical
+
+Offset encoding:
+• Warns when multiple clients use different offset_encoding values
+(e.g., utf-8 vs utf-16), which can cause position mismatches.
+
+==============================================================================
+EXPORT RENDERER                                                  *lspdoctor-export*
+
+*:LspDoctor export*
+*:LspDoctor! export*
+Open a read-only scratch buffer containing the report in the selected mode.
+Buffer-local mappings:
+q   close buffer
+y   yank entire buffer
+gw  write to stdpath('cache')/lspdoctor_YYYYMMDD_HHMMSS.md
+
+Notes:
+• Filetype defaults to “markdown” and can be changed via scratch_filetype.
+• The export does not modify files or settings.
+
+==============================================================================
+HEALTH-STYLE OUTPUT                                              *lspdoctor-health*
+
+*:LspDoctor health*
+Print a compact summary in a style similar to :checkhealth. It does not
+hook into Neovim’s health providers; this is output only.
+
+Covers:
+• clients attached, diagnostics present or not
+• offset-encoding unified or mismatched
+• formatter winner and candidates
+• external tools presence
+
+==============================================================================
+API (LUA)                                                         *lspdoctor-api*
+
+*require('usrcmds.lspdoctor').setup()*
+
+>
+
+--- Configure behavior (call once)
+--- @param opts Lsp.Doctor.Options|nil
+require("usrcmds.lspdoctor").setup({
+use_notify = false,
+formatter_priority = { "eslint", "null-ls", "lua_ls" },
+})
+<
+
+*require('usrcmds.lspdoctor').run()*
+
+>
+
+--- Generate and render a report to the message area.
+--- @param mode '"quick"'|'"deep"'|nil
+--- @param bufnr integer|nil  -- 0 = current
+--- @return Lsp.Doctor.Report
+local rep = require("usrcmds.lspdoctor").run("quick", 0)
+<
+
+*require('usrcmds.lspdoctor').export()*
+
+>
+
+--- Generate and export a report to a scratch buffer.
+--- @param mode '"quick"'|'"deep"'|nil
+--- @param bufnr integer|nil
+--- @return integer  -- bufnr of the scratch buffer
+local b = require("usrcmds.lspdoctor").export("deep", 0)
+<
+
+*require('usrcmds.lspdoctor').health()*
+
+>
+
+--- Print a health-style summary to the message area.
+require("usrcmds.lspdoctor").health()
+<
+
+*require('usrcmds.lspdoctor').enable_usercmd()*
+
+>
+
+--- Define :LspDoctor with subcommands (export|health) and bang for deep.
+require("usrcmds.lspdoctor").enable_usercmd()
+<
+
+Report type:
+
+>
+
+---@class Lsp.Doctor.Report
+---@field mode '"quick"'|'"deep"'
+---@field ok boolean
+---@field summary string
+---@field sections { title: string, lines: string[] }[]
+---@field extras table<string, any>  -- e.g. formatter_winner, offset_encodings
+<
+
+==============================================================================
+TROUBLESHOOTING                                           *lspdoctor-troubleshoot*
+
+## Problem                             Cause / remedy
+
+No clients appear                   Ensure a server is configured and attached
+to this filetype; verify root detection.
+
+Formatting uses wrong client        Set formatter_priority so the preferred
+provider wins deterministically.
+
+Mixed offset_encoding warning       Align client configurations; mixed utf-8 and
+utf-16 can cause position mismatches.
+
+Semantic tokens probe timeout       Server may not implement the method or needs
+specific init; probe is best-effort.
+
+Export buffer not writable          Export is read-only by design; use gw to write
+a copy under stdpath('cache').
+
+==============================================================================
+FAQ                                                                   *lspdoctor-faq*
+
+Q: Why separate quick and deep modes?
+A: Quick gives fast signal (clients, diagnostics, conflicts, encodings). Deep
+adds workspace and capability details plus probes for deeper debugging.
+
+Q: Does this modify editor state?
+A: No. Reports are read-only. Export opens a scratch buffer only.
+
+Q: Can I capture the report programmatically?
+A: Yes. Use export(...) to get a buffer with the full report, or run(...) to
+get a structured Lsp.Doctor.Report for tooling.
+
+==============================================================================
+vim:tw=78:ft=help:et:ts=8:sts=2:sw=2
+
