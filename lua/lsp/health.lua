@@ -22,62 +22,6 @@ local health = vim.health
 
 local M = {}
 
---- Third-party plugins around the umbrella, with the module used to detect
---- them. `hard` marks the ones whose absence degrades the plugin's own
---- behaviour rather than merely removing an extra.
----@type { name: string, probe: string, hard: boolean, note: string }[]
-local ECOSYSTEM = {
-  {
-    name = "lib.nvim",
-    probe = "lib.nvim.map",
-    hard = true,
-    note = "commands, keymaps, notifications",
-  },
-  {
-    name = "conform.nvim",
-    probe = "conform",
-    hard = true,
-    note = "the formatter's primary engine",
-  },
-  {
-    name = "mason.nvim",
-    probe = "mason",
-    hard = false,
-    note = "only needed for `mason.ensure_install`",
-  },
-  {
-    name = "lazydev.nvim",
-    probe = "lazydev",
-    hard = false,
-    note = "lua_ls library resolution on attach",
-  },
-  {
-    name = "workspace-diagnostics.nvim",
-    probe = "workspace-diagnostics",
-    hard = false,
-    note = "workspace-wide diagnostics on attach",
-  },
-  { name = "nvim-cmp", probe = "cmp_nvim_lsp", hard = false, note = "completion capabilities" },
-  {
-    name = "blink.cmp",
-    probe = "blink.cmp",
-    hard = false,
-    note = "completion capabilities (alternative)",
-  },
-  {
-    name = "trouble.nvim",
-    probe = "trouble",
-    hard = false,
-    note = "diagnostics UI; not wired yet (phase 4)",
-  },
-  {
-    name = "which-key.nvim",
-    probe = "which-key",
-    hard = false,
-    note = "group labels for bound prefixes",
-  },
-}
-
 ---@internal
 ---@param modname string
 ---@return boolean
@@ -255,17 +199,26 @@ local function check_servers()
 end
 
 ---@internal
---- The plugins around the umbrella.
+--- The plugins around the umbrella, straight from the adapter registry.
+---
+--- This used to be a hardcoded list here, which meant the set of plugins the
+--- umbrella cares about was written down twice -- and two lists drift. There is
+--- one adapter per plugin now, and each answers for itself.
 ---@return nil
 local function check_ecosystem()
   health.start("Ecosystem")
 
-  for _, entry in ipairs(ECOSYSTEM) do
-    local present = has(entry.probe)
-    local line = ("%s -- %s"):format(entry.name, entry.note)
-    if present then
+  local rows = require("lsp.integrations").report()
+  if #rows == 0 then
+    health.warn("no integration adapter loaded")
+    return
+  end
+
+  for _, row in ipairs(rows) do
+    local line = ("%s -- %s"):format(row.plugin, row.note)
+    if row.available then
       health.ok(line)
-    elseif entry.hard then
+    elseif row.hard then
       health.error(line .. " [missing]")
     else
       health.info(line .. " [not installed]")

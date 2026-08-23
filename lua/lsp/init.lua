@@ -41,6 +41,7 @@
 ---@see lsp.health
 
 local config = require("lsp.config")
+local integrations = require("lsp.integrations")
 local notify = require("lib.nvim.notify").create("[lsp.nvim]")
 
 local M = {}
@@ -82,7 +83,7 @@ end
 local function build_capabilities()
   local ok, mod = pcall(require, "lsp.core.capabilities")
   if ok and mod and type(mod.get) == "function" then
-    local caps, warnings = mod.get()
+    local caps, warnings = mod.get(integrations.capability_contributors())
     for _, w in ipairs(warnings or {}) do
       _warnings[#_warnings + 1] = tostring(w.msg)
       if w.level == "error" then
@@ -108,7 +109,7 @@ local function build_attach(cfg)
   if ok and mod and type(mod.build) == "function" then
     return mod.build({
       use_workspace_diagnostics = cfg.attach.use_workspace_diagnostics,
-      use_lazydev = cfg.attach.use_lazydev,
+      hooks = integrations.attach_hooks(),
     })
   end
 
@@ -229,6 +230,11 @@ end
 ---@param cfg LspNvim.Config
 ---@return boolean ok
 local function bootstrap(cfg)
+  -- Before anything reads a contributor or an attach hook.
+  for _, w in ipairs(integrations.setup(cfg)) do
+    _warnings[#_warnings + 1] = w
+  end
+
   step("handlers", function()
     require("lsp.core.handlers").setup()
   end)
@@ -328,6 +334,17 @@ function M.setup(opts)
   _initialized = true
 
   return ok
+end
+
+--- Apply the resolved capabilities to every server config as a base.
+---
+--- The entry point the host should call: it passes the integration layer's
+--- contributors, which `lsp.core.capabilities.apply_globally()` cannot look up
+--- on its own without the core reaching into the integrations.
+---@return boolean ok
+---@return LspCaps.Warning[] warnings
+function M.apply_capabilities()
+  return require("lsp.core.capabilities").apply_globally(integrations.capability_contributors())
 end
 
 --- Snapshot of what the plugin currently is. `:Lsp status` and

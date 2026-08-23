@@ -104,6 +104,30 @@ require("lsp.@types.vim_lsp")
 ---@field name string|nil # Catalogue key. Set by the binder on the returned copies, absent in the catalogue itself.
 
 -- #####################################################################
+-- integrations/
+
+---@class LspNvim.Integration
+--- One third-party plugin's adapter. Everything except `available` is
+--- optional: most adapters only answer "is this installed", and the ones that
+--- contribute do so through whichever of the hooks applies.
+---@field plugin string # Plugin name, for the health report.
+---@field hard boolean|nil # true when the plugin's absence degrades this plugin's own behaviour.
+---@field note string|nil # One line for the health report saying what it is for.
+---@field available fun(): boolean # Is the plugin installed/loadable?
+---@field setup fun(cfg: LspNvim.Config)|nil # Called once during setup(), in adapter order.
+---@field capabilities LspCaps.Contributor|nil # Merge into the client capabilities.
+---@field on_attach fun(client: table, bufnr: integer)|nil # Run on every LspAttach.
+---@field on_init fun(client: table)|nil # Run on every client init.
+
+---@class LspNvim.IntegrationStatus
+--- One row of `integrations.report()`, consumed by `:checkhealth lsp`.
+---@field name string # Adapter module name.
+---@field plugin string # Plugin it wraps.
+---@field available boolean
+---@field hard boolean
+---@field note string
+
+-- #####################################################################
 -- init.lua, health.lua
 
 ---@class LspNvim.Status

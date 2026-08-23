@@ -19,7 +19,13 @@ local function has_valid_buf(bufnr)
   return true
 end
 
----@param opts { use_workspace_diagnostics?: boolean, use_lazydev?: boolean }|nil
+--- Build the on_attach/on_init pair every server is set up with.
+---
+--- `opts.hooks` is how third-party behaviour gets in. This module used to
+--- `pcall(require, ...)` lazydev and NvChad inline; both now live in
+--- `lsp.integrations.*` and are handed over as plain functions by `lsp.init`,
+--- so the core does not know which plugins exist (roadmap section 3).
+---@param opts { use_workspace_diagnostics?: boolean, hooks?: { on_attach?: function[], on_init?: function[] } }|nil
 ---@return { on_attach: fun(client,bufnr), on_init: fun(client,init_result):boolean }
 function M.build(opts)
   opts = opts or {}
@@ -33,10 +39,11 @@ function M.build(opts)
   local workspace_diagnostics = require("lsp.core.workspace_diagnostics")
   workspace_diagnostics.seed(opts.use_workspace_diagnostics == true)
 
+  local hooks = opts.hooks or {}
+
   local function on_init(client, _)
-    local ok, nvlsp = pcall(require, "nvchad.configs.lspconfig")
-    if ok and type(nvlsp.on_init) == "function" then
-      pcall(nvlsp.on_init, client)
+    for _, hook in ipairs(hooks.on_init or {}) do
+      pcall(hook, client)
     end
     return true
   end
@@ -61,13 +68,8 @@ function M.build(opts)
       workspace_diagnostics.schedule_populate(client, bufnr)
     end
 
-    if opts.use_lazydev and vim.bo[bufnr].filetype == "lua" then
-      pcall(require, "lazydev")
-    end
-
-    local ok, nvlsp = pcall(require, "nvchad.configs.lspconfig")
-    if ok and type(nvlsp.on_attach) == "function" then
-      pcall(nvlsp.on_attach, client, bufnr)
+    for _, hook in ipairs(hooks.on_attach or {}) do
+      pcall(hook, client, bufnr)
     end
   end
 

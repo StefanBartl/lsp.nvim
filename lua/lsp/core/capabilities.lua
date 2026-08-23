@@ -1,5 +1,16 @@
 ---@module 'lsp.core.capabilities'
---- Build client capabilities from multiple completion stacks (cmp, blink, NvChad).
+--- Build client capabilities from the base protocol plus injected contributors.
+---
+--- This module used to `pcall(require, ...)` NvChad, cmp and blink itself. It
+--- does not any more: each of those lives in `lsp.integrations.<name>` and is
+--- passed in as a plain function, so the core stays testable without a plugin
+--- manager and adding a completion engine touches one adapter instead of this
+--- file (roadmap section 3's layering).
+---
+--- What stays here is the part that is genuinely core: the base capabilities,
+--- the verification that *something* contributed completion support, and the
+--- hand-written fallback when nothing did. That check is why roadmap finding
+--- B1 -- a broken merge that silently degraded completion -- is visible at all.
 ---
 --- Never notifies directly: degraded/missing completion stacks are collected
 --- into `warnings` and returned alongside `caps`, so the caller (lsp/init.lua)
@@ -12,45 +23,35 @@ local M = {}
 
 ---@alias LspCaps.Warning { level: "warn"|"error", msg: string }
 
+---@alias LspCaps.Contributor fun(caps: table): table|nil, LspCaps.Warning[]|nil
+
+--- Build the client capabilities.
+---
+--- `contributors` are applied in order and each may return a new capability
+--- table, warnings, or neither. Order matters: `tbl_deep_extend("force", …)`
+--- lets a later contributor win, which is why `lsp.integrations` hands them
+--- over NvChad-first and completion-engine-after.
+---@param contributors LspCaps.Contributor[]|nil
 ---@return table caps
 ---@return LspCaps.Warning[] warnings
-function M.get()
+function M.get(contributors)
   -- Start with base LSP capabilities
   local caps = lsp.protocol.make_client_capabilities()
   ---@type LspCaps.Warning[]
   local warnings = {}
 
-  -- NvChad capabilities FIRST
-  do
-    local ok, nvlsp = pcall(require, "nvchad.configs.lspconfig")
-    if ok and type(nvlsp.capabilities) == "table" then
-      caps = tbl_deep_extend("force", caps, nvlsp.capabilities)
-    end
-  end
-
-  -- nvim-cmp capabilities (wichtig für completion)
-  do
-    local ok, cmp = pcall(require, "cmp_nvim_lsp")
-    if ok and type(cmp.default_capabilities) == "function" then
-      local cmp_caps = cmp.default_capabilities()
-      caps = tbl_deep_extend("force", caps, cmp_caps)
-
-      -- Verify completion capabilities wurden geladen
-      if not (caps.textDocument and caps.textDocument.completion) then
-        warnings[#warnings + 1] =
-          { level = "warn", msg = "⚠️  nvim-cmp loaded but no completion capabilities!" }
-      end
-    else
+  for _, contribute in ipairs(contributors or {}) do
+    local ok, contributed, contributed_warnings = pcall(contribute, caps)
+    if not ok then
       warnings[#warnings + 1] =
-        { level = "warn", msg = "⚠️  nvim-cmp not found! Completion may not work." }
-    end
-  end
-
-  -- Blink capabilities optional, als fallback
-  do
-    local ok, blink = pcall(require, "blink.cmp")
-    if ok and type(blink.get_lsp_capabilities) == "function" then
-      caps = tbl_deep_extend("force", caps, blink.get_lsp_capabilities(caps))
+        { level = "warn", msg = "capability contributor failed: " .. tostring(contributed) }
+    else
+      if type(contributed) == "table" then
+        caps = contributed
+      end
+      for _, w in ipairs(contributed_warnings or {}) do
+        warnings[#warnings + 1] = w
+      end
     end
   end
 
@@ -105,11 +106,17 @@ end
 ---(see module doc) -- always returns the warnings from M.get(), plus an
 ---extra entry when vim.lsp.config itself isn't available, so the caller
 ---can iterate a single list either way.
+---
+---Prefer `require("lsp").apply_capabilities()`: it passes the integration
+---layer's contributors, and calling this directly without them yields the bare
+---protocol capabilities plus the "no completion" fallback -- which looks like a
+---broken setup rather than a missing argument.
+---@param contributors LspCaps.Contributor[]|nil
 ---@return boolean ok
 ---@return LspCaps.Warning[] warnings
-function M.apply_globally()
+function M.apply_globally(contributors)
   -- Merge these caps into every named config as a base ("*")
-  local caps, warnings = M.get()
+  local caps, warnings = M.get(contributors)
   if type(lsp.config) ~= "table" then
     warnings[#warnings + 1] =
       { level = "error", msg = "vim.lsp.config not available (Neovim < 0.10?)" }
