@@ -5,8 +5,14 @@
 --- in this layer: without them servers advertise a far poorer completion
 --- protocol and the editor quietly feels worse, with nothing pointing at the
 --- cause. That is what roadmap finding B1 was -- a broken merge that silently
---- fell back -- so this adapter reports absence loudly rather than returning
---- nothing.
+--- fell back.
+---
+--- Silent when absent, like `lsp.integrations.blink`: since `pack.completion`
+--- made both engines genuinely selectable (2026-08-23), an absent nvim-cmp is
+--- no longer evidence of anything -- it may just mean the user chose blink.
+--- `core.capabilities.get()` still raises its own loud error if *no*
+--- contributor produced completion capabilities at all, which is where B1
+--- stays caught.
 ---
 ---@see lsp.integrations
 ---@see lsp.core.capabilities
@@ -44,7 +50,7 @@ end
 function M.capabilities(caps)
   local mod = cmp_lsp()
   if mod == nil then
-    return nil, { { level = "warn", msg = "nvim-cmp not found! Completion may not work." } }
+    return nil, nil
   end
 
   local merged = vim.tbl_deep_extend("force", caps, mod.default_capabilities())
