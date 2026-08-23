@@ -110,38 +110,63 @@ One command, `:Lsp <subcommand>`, built with
 `<Tab>` completion over subcommands and arguments. Registered by `setup()`
 unless `usrcmds.enable = false`.
 
-| subcommand | args | range | desc |
-| ---------- | ---- | ----- | ---- |
-| `:Lsp status` | — | no | Plugin state: config, bound keymaps, `:Lsp` registration, warnings |
-| `:Lsp servers` | — | no | Attached LSP clients with root directory and buffer count |
-| `:Lsp health` | — | no | Run `:checkhealth lsp` |
-| `:Lsp log open` | — | no | Open Neovim's LSP log file in a split |
-| `:Lsp log level` | `{trace\|debug\|info\|warn\|error\|off}` | no | Set the LSP log level |
+| subcommand | args | desc |
+| ---------- | ---- | ---- |
+| `:Lsp status` | — | Plugin state: config, bound keymaps, servers, warnings |
+| `:Lsp servers` | — | Servers set up, and the clients currently attached |
+| `:Lsp info` | — | Detailed LSP information for the current buffer |
+| `:Lsp health` | — | Run `:checkhealth lsp` |
+| `:Lsp doctor` | `{health\|debug\|quick\|deep\|all}` | Per-buffer diagnosis (default `health`) |
+| `:Lsp start` | `[server]` | Start servers here (auto-detect, or one by name) |
+| `:Lsp stop` | `[server]` | Stop clients here (all, or one by name) |
+| `:Lsp restart` | `[server]` | Restart clients here (all, or one by name) |
+| `:Lsp force-restart` | `{server}` | Restart one server with a full cleanup first |
+| `:Lsp recover` | — | Auto-recover servers that should be running here |
+| `:Lsp format` | `[once\|on\|off\|toggle\|status\|which]` | Format once (default), or control format-on-save |
+| `:Lsp diag` | `{qf\|loc\|next\|prev} [qf\|loc]` | Diagnostics into a list, or move within one |
+| `:Lsp workspace` | `[on\|off\|toggle\|status\|now]` | Workspace-wide diagnostics on attach (default `status`) |
+| `:Lsp root` | `[pick\|show]` | Root scope: pick between cwd / git root / path (default `pick`) |
+| `:Lsp log open` | — | Open Neovim's LSP log file in a split |
+| `:Lsp log level` | `{trace\|debug\|info\|warn\|error\|off}` | Set the LSP log level |
 
-None of these takes a range: they report global state, not something a line
-range could narrow.
+None of these takes a range: they act on the current buffer or on global
+state, neither of which a line range narrows.
 
-### Migrated command family
+Every closed argument set completes with `<Tab>`. `[server]` completes from the
+**live** set — attached clients first, then everything in `servers` — through a
+custom argument type, because an enum captured when the verb was registered
+would go stale the moment a server is added (NEW-26).
 
-These came with the core and are registered by `setup()`. Roadmap section 8.2
-folds them into `:Lsp` routes and keeps them as thin aliases; until then they
-are the primary form.
+### Legacy aliases
 
-| Command | Source | Effect |
-| ------- | ------ | ------ |
-| `:LspDoctor {health\|debug\|quick\|deep\|all}` | `lspdoctor/` | Per-buffer LSP diagnosis |
-| `:LspStatus` / `:LspInfo` / `:LspLog` | `usercmds/` | Buffer client status, info, log file |
-| `:LspRecover` / `:LspForceRestart` | `usercmds/` | Recover missing servers, force a restart |
-| `:LspStartHere` / `:LspStopHere` / `:LspRestartHere` | `usercmds/` | Act on the current buffer's client |
-| `:LspFormat*` | `usercmds/formatter.lua` | Format once, toggle on-save, show which formatter wins |
-| `:LspWorkspaceDiagnostics*` | `usercmds/workspace_diagnostics.lua` | Runtime toggle for workspace-wide diagnostics |
-| `:LspMdHints` | `usercmds/` | Marksman hint toggle |
-| `:Diag*` | `diagnostics/` | Diagnostics to quickfix/loclist, navigation |
-| `:TypeDef*` / `:EslintFix` | `tools/` | Type lookup, ESLint fix |
+The flat commands the migration brought along are still registered, and reach
+the same functions as the routes above. Switch them off with
+`usrcmds.legacy_aliases = false`.
 
-`vim.g._formatter_api` is published by `setup()` for the format keymaps the
-config still owns. It disappears in phase 3, when the keymap catalogue can
-close over the formatter directly.
+| Alias | Route |
+| ----- | ----- |
+| `:LspStatus` | `:Lsp servers` (it reports the buffer's clients) |
+| `:LspInfo` | `:Lsp info` |
+| `:LspLog` | `:Lsp log open` |
+| `:LspRecover` | `:Lsp recover` |
+| `:LspForceRestart {server}` | `:Lsp force-restart {server}` |
+| `:LspStartHere` / `:LspStopHere` / `:LspRestartHere` | `:Lsp start` / `stop` / `restart` |
+| `:LspFormat` / `On` / `Off` / `Toggle` / `Status` / `Which` | `:Lsp format [once\|on\|off\|toggle\|status\|which]` |
+| `:LspWorkspaceDiagnostics{On,Off,Toggle,Status,Now}` | `:Lsp workspace [on\|off\|toggle\|status\|now]` |
+| `:DiagQF` / `:DiagLoc` | `:Lsp diag qf` / `:Lsp diag loc` |
+| `:DiagNextQF` / `:DiagPrevQF` | `:Lsp diag next qf` / `:Lsp diag prev qf` |
+| `:DiagNextLoc` / `:DiagPrevLoc` | `:Lsp diag next loc` / `:Lsp diag prev loc` |
+
+Two commands are **not** aliases and stay registered either way:
+
+- `:LspDoctor` — a diagnostic tool with its own renderer and five modes, not an
+  LSP control command. It is reachable as `:Lsp doctor` as well.
+- `:LspMdHints` — marksman-specific. Server commands do not belong in a global
+  verb, which is also why `:TypeDef*`, `:EslintFix`, `:AstroDevStart`,
+  `:MdFormat` and `:LuaLsReloadLibrary` are untouched: they are filetype-bound.
+
+`vim.g._formatter_api` is published by `setup()` so the formatter actions can
+find the instance the bootstrap built.
 
 Report output goes to a scratch split rather than a notification: it is
 multi-line and meant to be read and copied from.

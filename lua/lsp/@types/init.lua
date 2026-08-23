@@ -35,6 +35,7 @@ require("lsp.@types.vim_lsp")
 
 ---@class LspNvim.UsrcmdsOpts
 ---@field enable boolean # Register the `:Lsp` verb on setup.
+---@field legacy_aliases boolean # Also register the flat `:Lsp*`/`:Diag*` commands as aliases onto the same functions.
 
 ---@class LspNvim.WhichKeyOpts
 ---@field enable boolean # Label the bound key prefixes as which-key groups.

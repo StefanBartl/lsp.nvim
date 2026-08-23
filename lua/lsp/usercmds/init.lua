@@ -30,8 +30,20 @@ local completion = function()
   return require("lsp.usercmds.completion")
 end
 
---- Register all LSP usercommands
-function M.attach()
+--- Register the flat command family.
+---
+--- Everything up to `:LspMdHints` is an alias onto a `:Lsp` route and is
+--- skipped when `usrcmds.legacy_aliases` is off. `:LspMdHints` is not: it is
+--- marksman-specific, and a server command does not belong in the global verb
+--- (roadmap section 8.2), so it is registered either way.
+---@param legacy boolean|nil # false skips the aliases.
+---@return nil
+function M.attach(legacy)
+  if legacy == false then
+    M.attach_md_hints()
+    return
+  end
+
   pcall(nvim_create_user_command, "LspLog", function()
     local logfile = vim.lsp.log.get_filename()
     vim.cmd("split " .. vim.fn.fnameescape(logfile))
@@ -119,6 +131,13 @@ function M.attach()
     desc = desc_tag .. "Show LSP information for current buffer",
   })
 
+  M.attach_md_hints()
+end
+
+--- Register `:LspMdHints`. Kept out of `:Lsp` on purpose: it is a marksman
+--- command, and server commands do not belong in a global verb.
+---@return nil
+function M.attach_md_hints()
   -- LspMdHints: toggle marksman's Hint-severity diagnostics ("lightbulb").
   -- `path = {}` is the verb's root route (no literal subcommand word,
   -- matching the flat `:LspMdHints [on|off|toggle|status]` grammar) — the

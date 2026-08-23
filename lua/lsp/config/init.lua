@@ -79,6 +79,11 @@ local function normalize_switch(cfg, key)
   if type(sub.enable) ~= "boolean" then
     sub.enable = DEFAULTS[key].enable
   end
+  -- `usrcmds` carries a second boolean; normalizing it here keeps the switch
+  -- guards downstream from having to re-check its type.
+  if key == "usrcmds" and type(sub.legacy_aliases) ~= "boolean" then
+    sub.legacy_aliases = DEFAULTS.usrcmds.legacy_aliases
+  end
 end
 
 ---@internal

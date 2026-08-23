@@ -255,14 +255,21 @@ local function bootstrap(cfg)
   -- keymap catalogue can close over the formatter directly.
   vim.g._formatter_api = formatter
 
-  step("formatter commands", function()
-    require("lsp.usercmds.formatter").attach(formatter)
-  end)
+  -- The flat command family. `:Lsp` reaches the same functions through its own
+  -- routes, so these are aliases; `usrcmds.legacy_aliases = false` drops them.
+  -- `lsp.usercmds.attach` is told rather than skipped, because it also owns
+  -- `:LspMdHints`, which is not an alias.
+  local legacy = cfg.usrcmds.legacy_aliases
+  if legacy then
+    step("formatter commands", function()
+      require("lsp.usercmds.formatter").attach(formatter)
+    end)
+    step("workspace-diagnostics commands", function()
+      require("lsp.usercmds.workspace_diagnostics").attach()
+    end)
+  end
   step("lsp commands", function()
-    require("lsp.usercmds").attach()
-  end)
-  step("workspace-diagnostics commands", function()
-    require("lsp.usercmds.workspace_diagnostics").attach()
+    require("lsp.usercmds").attach(legacy)
   end)
 
   if cfg.languages.enable then
@@ -306,9 +313,12 @@ local function bootstrap(cfg)
 
   setup_tools(cfg)
 
-  step("diagnostics", function()
-    require("lsp.diagnostics").setup()
-  end)
+  if cfg.usrcmds.legacy_aliases then
+    -- `:Diag*` are aliases onto `:Lsp diag` for the same reason.
+    step("diagnostics commands", function()
+      require("lsp.diagnostics").setup()
+    end)
+  end
 
   return #_servers > 0
 end

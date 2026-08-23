@@ -136,18 +136,24 @@ One verb with subcommands and `<Tab>` completion. Full cheatsheet:
 
 | Command | Effect |
 | ------- | ------ |
-| `:Lsp status` | What the plugin has set up, and what it has not |
-| `:Lsp servers` | Servers set up, and the clients currently attached |
-| `:Lsp health` | Run `:checkhealth lsp` |
-| `:Lsp log open` | Open Neovim's LSP log file in a split |
-| `:Lsp log level {level}` | Set the LSP log level (`trace`…`error`, `off`) |
+| `:Lsp status` / `servers` / `info` / `health` | What is set up, what is attached, what is wrong |
+| `:Lsp doctor [mode]` | Per-buffer diagnosis (`health`, `debug`, `quick`, `deep`, `all`) |
+| `:Lsp start` / `stop` / `restart` `[server]` | Lifecycle for this buffer's clients |
+| `:Lsp force-restart {server}` | Restart one server with a full cleanup first |
+| `:Lsp recover` | Auto-recover servers that should be running here |
+| `:Lsp format [action]` | Format once, or control format-on-save |
+| `:Lsp diag {qf\|loc\|next\|prev} [qf\|loc]` | Diagnostics into a list, or move within one |
+| `:Lsp workspace [action]` | Workspace-wide diagnostics on attach |
+| `:Lsp root [pick\|show]` | Root scope: cwd / git root / file path |
+| `:Lsp log open` / `level {level}` | Open the LSP log, or set its level |
 
-The migrated command family is registered as well: `:LspDoctor`, `:LspStatus`,
-`:LspLog`, `:LspInfo`, `:LspRecover`, `:LspStartHere`, `:LspStopHere`,
-`:LspRestartHere`, `:LspForceRestart`, `:LspFormat*`,
-`:LspWorkspaceDiagnostics*`, `:LspMdHints`, `:Diag*`, `:TypeDef*`,
-`:EslintFix`. Folding them into `:Lsp` routes with thin aliases is roadmap
-section 8.2.
+Every closed argument set completes with `<Tab>`, and `[server]` completes from
+the live set rather than a list frozen at startup.
+
+The ~25 flat commands the migration brought along (`:LspStatus`, `:LspFormat*`,
+`:LspWorkspaceDiagnostics*`, `:Diag*`, …) are still registered as aliases onto
+the same functions; `usrcmds.legacy_aliases = false` drops them. `:LspDoctor`
+and `:LspMdHints` are not aliases and stay either way.
 
 ## Configuration
 

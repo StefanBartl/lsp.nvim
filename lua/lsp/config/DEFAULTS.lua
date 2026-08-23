@@ -135,6 +135,10 @@ local DEFAULTS = {
 
   usrcmds = {
     enable = true,
+    -- Keep the ~25 flat `:Lsp*`/`:Diag*` commands as aliases onto the `:Lsp`
+    -- routes. On by default: muscle memory beats tidiness and an alias costs a
+    -- line. Off gives you `:Lsp` alone.
+    legacy_aliases = true,
   },
 
   which_key = {

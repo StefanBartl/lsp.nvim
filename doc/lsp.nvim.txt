@@ -199,6 +199,12 @@ keymaps.map           (table<string, string|false>)
                                   left-hand side; `false` drops the mapping; an
                                   absent key keeps the preset's default.
 usrcmds.enable        (boolean)   Register the |:Lsp| verb on setup.
+usrcmds.legacy_aliases (boolean)  Also register the ~25 flat `:Lsp*`/`:Diag*`
+                                  commands as aliases onto the same functions
+                                  the routes call. On by default: muscle
+                                  memory beats tidiness and an alias costs a
+                                  line. `:LspDoctor` and `:LspMdHints` are not
+                                  aliases and are registered either way.
 which_key.enable      (boolean)   Label the bound key prefixes as which-key
                                   groups. which-key is a soft dependency: when
                                   it is absent this does nothing and no mapping

@@ -77,6 +77,106 @@ function M.format_lsp()
   vim.lsp.buf.format({ async = true })
 end
 
+--- Turn format-on-save on.
+---@return nil
+function M.format_on()
+  local api = formatter()
+  if api then
+    api.enable()
+  end
+end
+
+--- Turn format-on-save off.
+---@return nil
+function M.format_off()
+  local api = formatter()
+  if api then
+    api.disable()
+  end
+end
+
+--- Report whether format-on-save is active.
+---@return nil
+function M.format_status()
+  local api = formatter()
+  local state = (api ~= nil and api.is_enabled()) and "on" or "off"
+  require("lib.nvim.notify").create("[lsp.nvim]").info("format-on-save: " .. state)
+end
+
+--- Show which formatter would run for this buffer, and whether it is present.
+---@return nil
+function M.format_which()
+  local ok, conform = pcall(require, "lsp.formatter.conform")
+  if ok and type(conform.which) == "function" then
+    conform.which(0)
+    return
+  end
+  require("lib.nvim.notify").create("[lsp.nvim]").warn("conform helper unavailable")
+end
+
+-- ---------------------------------------------------------------- workspace
+
+---@internal
+--- The runtime toggle for workspace-wide diagnostics on attach.
+---@return table|nil
+local function workspace()
+  local ok, mod = pcall(require, "lsp.core.workspace_diagnostics")
+  return ok and mod or nil
+end
+
+--- Toggle workspace-wide diagnostics on attach.
+---@return nil
+function M.workspace_toggle()
+  local wd = workspace()
+  if wd then
+    wd.toggle()
+  end
+end
+
+--- Enable workspace-wide diagnostics on attach.
+---@return nil
+function M.workspace_on()
+  local wd = workspace()
+  if wd then
+    wd.set(true)
+  end
+end
+
+--- Disable workspace-wide diagnostics on attach.
+---@return nil
+function M.workspace_off()
+  local wd = workspace()
+  if wd then
+    wd.set(false)
+  end
+end
+
+--- Report the current state of the workspace-diagnostics toggle.
+---@return nil
+function M.workspace_status()
+  local wd = workspace()
+  local state = (wd ~= nil and wd.enabled()) and "ON" or "OFF"
+  require("lib.nvim.notify").create("[lsp.nvim]").info("workspace diagnostics on attach: " .. state)
+end
+
+--- Populate workspace diagnostics for this buffer now, toggle or not.
+---@return nil
+function M.workspace_now()
+  local notify = require("lib.nvim.notify").create("[lsp.nvim]")
+  local wd = workspace()
+  if wd == nil then
+    notify.warn("workspace diagnostics module unavailable")
+    return
+  end
+
+  local ok, count_or_err = wd.populate_now(0)
+  if not ok then
+    notify.warn(tostring(count_or_err))
+    return
+  end
+  notify.info(("populated workspace diagnostics for %d client(s)"):format(count_or_err))
+end
+
 -- ---------------------------------------------------------------- rename
 
 --- Rename the symbol under the cursor.
@@ -200,6 +300,21 @@ end
 ---@return nil
 function M.marksman_hints_toggle()
   require("lsp.servers.marksman.hints").toggle()
+end
+
+--- Report the active root scope without opening the picker.
+---@return nil
+function M.root_show()
+  local notify = require("lib.nvim.notify").create("[lsp.nvim]")
+  local ok, scope = pcall(require, "lsp.core.root_scope")
+  if not ok then
+    notify.warn("root scope module unavailable")
+    return
+  end
+
+  local mode = scope.get()
+  local label = type(scope.label) == "function" and scope.label(mode) or tostring(mode)
+  notify.info("root scope: " .. label)
 end
 
 return M
