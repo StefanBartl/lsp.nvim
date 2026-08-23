@@ -64,10 +64,13 @@ nicht zutreffend, mit Begründung.
 - [x] `NEW-17` lib.nvim-Module statt Eigenbauten: `lib.nvim.map`,
       `lib.nvim.notify`, `lib.nvim.usercmd.composer`,
       `lib.nvim.window.open_scratch_split`.
-- [ ] `NEW-18` Funktionen nach `lib.nvim` transferieren — nichts zu
-      transferieren: das Gerüst enthält keine Funktion, die über dieses Plugin
-      hinaus interessant wäre. Bei der Migration erneut prüfen; die Roadmap
-      nennt in §10 bereits drei Root-Resolver, die dort landen sollen.
+- [x] `NEW-18` Funktionen nach `lib.nvim` transferieren — erledigt 2026-08-23,
+      nach der Migration. `lib.nvim.fs.polymorphic_rootresolver` hat einen
+      `resolve`-Hook bekommen, damit beide Root-Resolver dieses Plugins sich das
+      Argument-Plumbing teilen statt es zu kopieren (B8). Beim selben Durchgang
+      ist ein Bug **oben** behoben statt hier umgangen (LUA-02):
+      `lib.nvim.autocmd.group` cachte Augroup-IDs und prüfte sie nie wieder
+      (B19).
 - [x] `NEW-19` `documentation.nvim` als Dev-Dependency eingerichtet
       (`scripts/gen_map.lua`, CI-Checkout nach `.deps/`).
 - [~] `NEW-20` `scripts/gen_map.lua` übernommen, `--check` **nicht** in CI.
