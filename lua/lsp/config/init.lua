@@ -135,14 +135,18 @@ end
 ---@param user_opts? LspNvim.Config|table
 ---@return LspNvim.Config
 function M.setup(user_opts)
+  -- Cleared first, not after the type check below: appending a warning and
+  -- then resetting the list discards it, which is exactly what used to happen
+  -- to the "expected a table" warning -- the one case where the caller most
+  -- needs to be told.
+  _warnings = {}
+
   if type(user_opts) ~= "table" then
     if user_opts ~= nil then
       _warnings[#_warnings + 1] = "setup(): expected a table of options, ignoring"
     end
     user_opts = {}
   end
-
-  _warnings = {}
 
   ---@diagnostic disable-next-line: missing-fields
   local cfg = vim.tbl_deep_extend("force", vim.deepcopy(DEFAULTS), user_opts)

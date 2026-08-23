@@ -63,7 +63,13 @@ function M.setup_all(shared, servers)
       if last_error then
         notify.warn((desc_tag .. "setup failed for '%s': %s"):format(name, last_error or "?"))
       else
-        notify.info((desc_tag .. ("server module '%s' unavailable"):format()):format(name))
+        -- This used to read `("… '%s' unavailable"):format()):format(name)` --
+        -- an inner `format()` with no argument for its `%s`, which raises
+        -- "bad argument #1 to 'format'". Nothing here is pcall-wrapped, so a
+        -- single configured server without a module aborted the whole loop and
+        -- took `setup()` with it. It never fired only because every configured
+        -- name happened to resolve.
+        notify.info((desc_tag .. "server module '%s' unavailable"):format(name))
       end
     end
   end
