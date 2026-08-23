@@ -17,7 +17,6 @@
 --- decides whether/how to surface them.
 
 local lsp = vim.lsp
-local tbl_deep_extend = vim.tbl_deep_extend
 
 local M = {}
 
