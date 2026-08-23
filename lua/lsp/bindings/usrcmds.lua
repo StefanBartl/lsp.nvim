@@ -340,11 +340,21 @@ function M.setup()
         desc = "Diagnostics into a list, or move within one",
         run = function(ctx)
           local list = ctx.args.list or "loc"
+          -- `1`, not the action's default: the navigation actions fall back to
+          -- `v:count1` when called with no argument, which is right for a
+          -- keypress and wrong here -- `v:count` holds whatever the last
+          -- keypress left behind, not something the user typed into this
+          -- command.
+          local once = function(fn)
+            return function()
+              fn(1)
+            end
+          end
           dispatch({
             qf = actions.diag_to_qflist,
             loc = actions.diag_to_loclist,
-            next = (list == "qf") and actions.qf_next or actions.diag_next,
-            prev = (list == "qf") and actions.qf_prev or actions.diag_prev,
+            next = once((list == "qf") and actions.qf_next or actions.diag_next),
+            prev = once((list == "qf") and actions.qf_prev or actions.diag_prev),
           }, ctx.args.action, "loc")
         end,
       },

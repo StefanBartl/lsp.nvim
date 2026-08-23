@@ -33,7 +33,12 @@ Those entries are command strings that stay inert until pressed, or Lua
 functions that require lazily. `:checkhealth lsp` reports any that are bound
 while their plugin is missing.
 
-Two things worth knowing about the left-hand sides:
+The eight motion keys honour a count: `3]q` moves three quickfix entries,
+`2]d` two diagnostics. `]d`/`[d`, `]q`/`[q`, `]l`/`[l` and `]w`/`[w` are the
+ones that mean "move"; the leader-prefixed actions populate a list or toggle a
+setting and have no ordered target for a count to index into (NEW-25).
+
+Three things worth knowing about the left-hand sides:
 
 - The prefixless `ls*` family costs every Normal-mode `l` a `timeoutlen` wait,
   because Neovim has to see whether an `s` follows. That is the price of a

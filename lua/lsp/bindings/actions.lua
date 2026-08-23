@@ -208,7 +208,7 @@ end
 --- Move inside an open Trouble diagnostics list without focusing it.
 ---@param direction "next"|"prev"
 ---@return nil
-local function trouble_move(direction)
+local function trouble_move(direction, count)
   local ok, trouble = pcall(require, "trouble")
   if not ok then
     return
@@ -217,22 +217,49 @@ local function trouble_move(direction)
     require("lib.nvim.notify").create("[lsp.nvim]").info("Trouble diagnostics list is not open")
     return
   end
-  trouble[direction]({ mode = "diagnostics", skip_groups = true, jump = true })
+  -- A loop, unlike the others: Trouble's next/prev take no count, and moving
+  -- one entry at a time is what "3]w" means anyway.
+  for _ = 1, steps(count) do
+    trouble[direction]({ mode = "diagnostics", skip_groups = true, jump = true })
+  end
 end
 
 --- Next entry in the open Trouble diagnostics list.
+---@param count integer|nil # Explicit repeat; from a keypress, `v:count1`.
 ---@return nil
-function M.trouble_diag_next()
-  trouble_move("next")
+function M.trouble_diag_next(count)
+  trouble_move("next", count)
 end
 
 --- Previous entry in the open Trouble diagnostics list.
+---@param count integer|nil # Explicit repeat; from a keypress, `v:count1`.
 ---@return nil
-function M.trouble_diag_prev()
-  trouble_move("prev")
+function M.trouble_diag_prev(count)
+  trouble_move("prev", count)
 end
 
 -- ---------------------------------------------------------------- diagnostics
+
+---@internal
+--- How many times a navigation action should move.
+---
+--- `nil` means "this came from a keypress": Vim calls a keymap callback with no
+--- arguments, so the count is `v:count1` -- 1 when nothing was typed, N after
+--- `3]d`. The `:Lsp diag` routes pass 1 explicitly instead, because `v:count`
+--- is whatever the last *keypress* left behind and has nothing to do with a
+--- command the user typed out.
+---
+--- NEW-25 asks for exactly this on any mapping that means "move": these are
+--- `]d`/`[d`, `]q`/`[q`, `]l`/`[l` and `]w`/`[w`. The leader-prefixed actions
+--- (populate a list, toggle a setting) have no ordered target and get none.
+---@param count integer|nil
+---@return integer
+local function steps(count)
+  if type(count) == "number" and count > 0 then
+    return count
+  end
+  return vim.v.count1
+end
 
 --- Buffer diagnostics into the location list, and open it.
 ---@return nil
@@ -247,15 +274,17 @@ function M.diag_to_qflist()
 end
 
 --- Next diagnostic in the buffer's location list.
+---@param count integer|nil # Explicit repeat; from a keypress, `v:count1`.
 ---@return nil
-function M.diag_next()
-  require("lsp.diagnostics.loclist").next_loc(nil)
+function M.diag_next(count)
+  require("lsp.diagnostics.loclist").next_loc(nil, steps(count))
 end
 
 --- Previous diagnostic in the buffer's location list.
+---@param count integer|nil # Explicit repeat; from a keypress, `v:count1`.
 ---@return nil
-function M.diag_prev()
-  require("lsp.diagnostics.loclist").prev_loc(nil)
+function M.diag_prev(count)
+  require("lsp.diagnostics.loclist").prev_loc(nil, steps(count))
 end
 
 --- Next quickfix entry.
@@ -265,27 +294,31 @@ end
 --- of the list Vim raises E553, and swallowing it is the friendlier behaviour
 --- for a key one holds down. That was the whole of roadmap finding B3 -- two
 --- owners, not two behaviours.
+---@param count integer|nil # Explicit repeat; from a keypress, `v:count1`.
 ---@return nil
-function M.qf_next()
-  require("lsp.diagnostics.quickfix").next_qf()
+function M.qf_next(count)
+  require("lsp.diagnostics.quickfix").next_qf(steps(count))
 end
 
 --- Previous quickfix entry.
+---@param count integer|nil # Explicit repeat; from a keypress, `v:count1`.
 ---@return nil
-function M.qf_prev()
-  require("lsp.diagnostics.quickfix").prev_qf()
+function M.qf_prev(count)
+  require("lsp.diagnostics.quickfix").prev_qf(steps(count))
 end
 
 --- Next location-list entry.
+---@param count integer|nil # Explicit repeat; from a keypress, `v:count1`.
 ---@return nil
-function M.loc_next()
-  pcall(vim.cmd, "lnext")
+function M.loc_next(count)
+  pcall(vim.cmd, steps(count) .. "lnext")
 end
 
 --- Previous location-list entry.
+---@param count integer|nil # Explicit repeat; from a keypress, `v:count1`.
 ---@return nil
-function M.loc_prev()
-  pcall(vim.cmd, "lprevious")
+function M.loc_prev(count)
+  pcall(vim.cmd, steps(count) .. "lprevious")
 end
 
 -- ---------------------------------------------------------------- misc

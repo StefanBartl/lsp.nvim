@@ -2,7 +2,10 @@
 
 Durchlauf des Gates
 `WKDBooks/Development/wkdbook-Lua/Checklists/gates/NEW_PROJECT.md`
-(`NEW-01` … `NEW-35`), Stand 2026-08-23.
+(`NEW-01` … `NEW-35`). Erstmals durchgegangen am 2026-08-23, als das Repo noch
+ein Gerüst war; nach der Migration am selben Tag nachgeführt — mehrere Punkte
+waren damals mit „noch leer“ oder „noch nicht zutreffend“ begründet und sind
+es nicht mehr.
 
 Regel des Gates: was nicht zutrifft, wird abgehakt **mit** Notiz, warum nicht.
 Entsprechend steht hinter jedem offenen oder abweichenden Punkt eine
@@ -36,9 +39,11 @@ nicht zutreffend, mit Begründung.
       dazu `which_key.lua` und ein `init.lua`, das die Reihenfolge festlegt.
 - [x] `NEW-09` `@types`-Ordner je Ebene (`lsp/`, `lsp/config/`,
       `lsp/bindings/`), alle mit `return {}`.
-- [x] `NEW-10` `:checkhealth lsp` — vier Sektionen, liest
-      `require("lsp").status()`, damit Health und `:Lsp status` nicht
-      auseinanderlaufen können.
+- [x] `NEW-10` `:checkhealth lsp` — fünf Sektionen (Umgebung, Plugin, Server,
+      Ökosystem, Verweis auf `:LspDoctor`), liest `require("lsp").status()`,
+      damit Health und `:Lsp status` nicht auseinanderlaufen können. Die
+      Plugin-Liste kommt aus der Adapter-Registry, nicht aus einer zweiten
+      handgepflegten Tabelle.
 
 ## 3. Dokumentation
 
@@ -53,17 +58,24 @@ nicht zutreffend, mit Begründung.
       unangetastet. Abweichung vom Gate-Wortlaut, dokumentiert.
 - [x] `NEW-14` `docs/ROADMAP.md` — Spiegel des Konzeptpapiers aus der
       nvim-Config (dort die Source of Truth), deutsch.
-- [x] `NEW-15` `docs/BINDINGS.md` — Keymaps (derzeit keine, mit Begründung),
-      `:Lsp`-Routen, Autocommands (derzeit keine).
+- [x] `NEW-15` `docs/BINDINGS.md` — 42 Keymaps, 15 `:Lsp`-Routen samt
+      Alias-Zuordnung, Autocommands. Die Keymap-Tabellen werden von
+      `scripts/gen_bindings.lua` aus dem Katalog **generiert**, CI prüft mit
+      `--check`; Doku und Code können nicht mehr auseinanderlaufen.
+      Zusätzlich die sechs Seiten aus §12 des Konzepts (`installation`,
+      `configuration`, `features`, `commands`, `architecture`, `health`).
 
 ## 4. Abhängigkeiten und Bibliothek
 
 - [x] `NEW-16` `lib.nvim` als Dependency in allen Installations-Specs und im
       CI-Checkout. **Hart** im Sinne von `LUA-01`: nacktes `require`, kein
       Fallback, und in der Doku nirgends als optional dargestellt.
-- [x] `NEW-17` lib.nvim-Module statt Eigenbauten: `lib.nvim.map`,
-      `lib.nvim.notify`, `lib.nvim.usercmd.composer`,
-      `lib.nvim.window.open_scratch_split`.
+- [x] `NEW-17` lib.nvim-Module statt Eigenbauten: `map`, `notify`,
+      `usercmd`, `usercmd.composer`, `autocmd`, `window.open_scratch_split`,
+      `fs.polymorphic_rootresolver`, `fs.is_subpath`. Der Durchgang nach der
+      Migration hat 21 direkte `nvim_create_user_command`-Aufrufe, die
+      Autocommand-Registrierung, ein `vim.keymap.set` und ein `vim.notify`
+      ersetzt — `LUA-01` verlangt Konsistenz, und lib.nvim ist hier hart.
 - [x] `NEW-18` Funktionen nach `lib.nvim` transferieren — erledigt 2026-08-23,
       nach der Migration. `lib.nvim.fs.polymorphic_rootresolver` hat einen
       `resolve`-Hook bekommen, damit beide Root-Resolver dieses Plugins sich das
@@ -87,26 +99,50 @@ nicht zutreffend, mit Begründung.
 ## 5. Bedienung
 
 - [x] `NEW-21` Keymaps modifizierbar und deaktivierbar: `keymaps.enable`
-      (alles), `keymaps.preset` (Umfang), `keymaps.map.<action>` (einzeln —
-      String ersetzt das lhs, `false` entfernt die Map). Der Mechanismus steht;
-      der Katalog ist leer (siehe `docs/BINDINGS.md`).
+      (alles), `keymaps.preset` (`default`/`minimal`/`none`),
+      `keymaps.map.<action>` (einzeln — String ersetzt das lhs, `false`
+      entfernt die Map). Der Katalog hat 42 Einträge; Specs prüfen, dass keine
+      zwei dieselbe Taste im selben Mode beanspruchen und dass `minimal`
+      Teilmenge von `default` bleibt.
 - [x] `NEW-22` which-key-Unterstützung, v2- und v3-API, weiche Abhängigkeit.
       Gruppen werden aus den tatsächlich gebundenen Keymaps abgeleitet, nicht
       aus einer zweiten handgepflegten Liste.
 - [x] `NEW-23` Compound-Usercommand `:Lsp <subcommand>` über
       `lib.nvim.usercmd.composer`, mit `<Tab>`-Completion.
-  - [ ] Range (`v`, `v-line`, `v-block`): für die vorhandenen Routen nicht
-        sinnvoll — `status`, `servers`, `health` und `log` berichten globalen
-        Zustand, eine Zeilen-Range hat dort keine Bedeutung. Bei den Routen aus
-        Roadmap §8.2 erneut prüfen: `format` und `diag` sind die Kandidaten,
-        bei denen eine Range etwas heißt.
+  - [x] Range (`v`, `v-line`, `v-block`): geprüft, auch für die inzwischen
+        vorhandenen Routen aus §8.2 — **keine** bekommt eine. `status`,
+        `servers`, `info`, `health`, `doctor`, `log`, `root`, `workspace` und
+        die Lifecycle-Routen betreffen den Buffer oder globalen Zustand, den
+        eine Zeilen-Range nicht einschränkt. `format` wäre der plausibelste
+        Kandidat, aber conform formatiert über `formatter.format(bufnr)` den
+        ganzen Buffer; eine Range-Variante wäre eine andere Operation, kein
+        Argument — sie gehört in §14, nicht in eine stillschweigend ignorierte
+        `range = true`-Flagge.
 - [x] `NEW-24` Default-aktiv: `require("lsp").setup()` ohne Argumente ergibt
       ein vollständiges Setup, alle Schalter stehen auf `true`.
-- [ ] `NEW-25` Count-Support — nicht zutreffend, solange keine Keymap
-      existiert. Die Prüfung gehört an den Katalog aus Phase 3; Kandidaten sind
-      dort `]d`/`[d` und `]q`/`[q` (natürliches „N mal weiter").
-- [x] `NEW-26` Completion für Ex-Argumente: `:Lsp log level` completet über die
-      geschlossene Menge der Log-Level. Andere Argumente gibt es noch nicht.
+- [x] `NEW-25` Count-Support — erledigt 2026-08-23, nachdem der Katalog
+      existierte. `v:count1` wirkt auf genau die acht Tasten, die eine Bewegung
+      sind: `]d`/`[d`, `]q`/`[q`, `]l`/`[l`, `]w`/`[w`. `3]q` springt drei
+      Quickfix-Einträge weiter.
+
+      Kein naives `for i = 1, count`: `:{count}cnext` und
+      `vim.diagnostic.jump({ count = N })` können das nativ, feuern die
+      Autocommands einmal statt N-mal und laufen so weit wie möglich, statt am
+      ersten E553 stehenzubleiben. Nur Troubles `next`/`prev` brauchen eine
+      Schleife, weil sie keinen Count kennen.
+
+      **Keinen** Count bekommen die leader-präfixierten Aktionen: eine Liste
+      füllen oder eine Einstellung umschalten hat kein geordnetes Ziel, in das
+      ein Count indizieren könnte. Die `:Lsp diag next|prev`-Routen übergeben
+      explizit `1`, weil `v:count` dort den Rest eines früheren Tastendrucks
+      enthielte — ein Command ist kein Tastendruck.
+- [x] `NEW-26` Completion für Ex-Argumente: jede geschlossene Menge completet
+      (`format`, `diag`, `workspace`, `root`, `doctor`, `log level`).
+      Server-Namen laufen über einen eigenen Composer-Argumenttyp und kommen
+      aus dem **lebenden** Satz — attachte Clients zuerst, dann alles aus
+      `servers` — weil ein bei der Registrierung eingefrorenes Enum veraltet,
+      sobald ein Server dazukommt. Genau der Fall, den `NEW-26` mit „live aus
+      dem aktuellen Zustand“ meint.
 
 ## 6. Konfigurierbarkeit
 
@@ -114,20 +150,23 @@ nicht zutreffend, mit Begründung.
       Zugriff ausschließlich über `config.get()`.
 - [x] `NEW-28` Jeder Konfigurations-Key hat einen Typ (`lsp/@types/init.lua`:
       `LspNvim.Config`, `LspNvim.KeymapsOpts`, `LspNvim.KeymapPreset`, …).
-- [x] `NEW-29` Abgeklopft. Die großen Optionsgruppen aus Roadmap §9
-      (`servers`, `diagnostics`, `formatter`, `completion`, `rename`, `tools`,
-      `integrations`, `mason`) fehlen **bewusst**: ein Default, den kein Code
-      liest, ist ein Versprechen, das das Plugin nicht hält. Sie kommen mit dem
-      Code, der sie auswertet.
+- [x] `NEW-29` Abgeklopft, zuletzt nach Phase 5. Vorhanden sind `servers`,
+      `diagnostics`, `formatter`, `attach`, `mason`, `lspdoctor`, `tools`,
+      `languages`, `rename`, `keymaps`, `usrcmds`, `which_key` — jeder Key wird
+      von Code gelesen. `completion` und `integrations` aus §9 fehlen weiterhin
+      **bewusst**: ein Default, den kein Code liest, ist ein Versprechen, das
+      das Plugin nicht hält. Die Engine-Wahl liegt aus Timing-Gründen in
+      `vim.g.lsp_nvim.pack.completion`, nicht in `opts`.
 
 ## 7. Cross-Plattform
 
 - [x] `NEW-30` Kein OS-spezifischer Code; Pfade laufen über `vim.fn`/`vim.fs`,
       `.gitattributes` erzwingt LF.
-- [ ] `NEW-31` Alternative bereitstellen — nicht nötig, es gibt keine
-      plattformabhängige Stelle. Bei der Migration relevant: Roadmap-Befund B6
-      (`formatter/init.lua` dokumentiert sich als „Linux/macOS only", die
-      Workstation läuft auf Windows).
+- [x] `NEW-31` Alternative bereitstellen — die plattformabhängigen Stellen
+      kamen mit dem Kern und behandeln Windows bereits:
+      `formatter/conform.lua` verzweigt auf PATH-Separator, `.cmd`-Suffix und
+      Mason-Bin-Pfad. B6 war nur ein veralteter Kopfkommentar in
+      `formatter/init.lua`, der das als Einschränkung des Moduls las.
 
 ## 8. Abschluss
 

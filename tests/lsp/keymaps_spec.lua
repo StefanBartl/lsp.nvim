@@ -237,3 +237,70 @@ describe("lsp.bindings.keymaps", function()
     end)
   end)
 end)
+
+describe("count support (NEW-25)", function()
+  local actions = require("lsp.bindings.actions")
+
+  after_each(function()
+    vim.cmd("normal! \27")
+  end)
+
+  it("the navigation actions accept an explicit count", function()
+    -- The `:Lsp diag next` route passes 1 rather than letting the action read
+    -- `v:count1`, which holds whatever the last keypress left behind.
+    for _, name in ipairs({
+      "diag_next",
+      "diag_prev",
+      "qf_next",
+      "qf_prev",
+      "loc_next",
+      "loc_prev",
+      "trouble_diag_next",
+      "trouble_diag_prev",
+    }) do
+      assert.are.equal("function", type(actions[name]), name)
+      assert.has_no.errors(function()
+        actions[name](1)
+      end, name .. " tolerates an explicit count")
+    end
+  end)
+
+  it("quickfix navigation asks Vim for the count rather than looping", function()
+    -- `:{count}cnext` is native. A loop would fire the autocommands N times
+    -- and stop at the first E553 instead of moving as far as it can.
+    local seen
+    local orig = vim.cmd
+    vim.cmd = function(c)
+      seen = c
+    end
+    require("lsp.diagnostics.quickfix").next_qf(3)
+    vim.cmd = orig
+    assert.are.equal("3cnext", seen)
+  end)
+
+  it("diagnostic navigation passes the count to vim.diagnostic.jump", function()
+    local seen
+    local orig = vim.diagnostic.jump
+    vim.diagnostic.jump = function(opts)
+      seen = opts
+    end
+    require("lsp.diagnostics.loclist").next_loc(nil, 4)
+    require("lsp.diagnostics.loclist").prev_loc(nil, 2)
+    local backward = seen
+    vim.diagnostic.jump = orig
+
+    assert.are.equal(-2, backward.count, "prev negates the count")
+  end)
+
+  it("only the ordered-motion keys are meant to take one", function()
+    local KEYMAPS = require("lsp.config.KEYMAPS")
+    -- Leader-prefixed actions populate a list or toggle a setting; there is no
+    -- ordered target for a count to index into.
+    for _, name in ipairs({ "diag_to_qflist", "diag_to_loclist", "format_toggle" }) do
+      assert.is_true(
+        KEYMAPS.entries[name].lhs:sub(1, 8) == "<leader>",
+        name .. " is leader-prefixed, so no count is expected"
+      )
+    end
+  end)
+end)
