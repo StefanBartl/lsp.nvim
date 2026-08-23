@@ -5,9 +5,9 @@
 > Source of Truth**; hier steht die Kopie, damit das Repo nicht ohne Roadmap
 > dasteht. Relative Links in die Config wurden zu reinem Text reduziert.
 >
-> Stand 2026-08-23: Phasen 0, 1 und 2 (§13) sind abgeschlossen — der LSP-Kern
-> liegt in diesem Repo und konfiguriert die Server. Offen sind Phase 3
-> (Keymaps), Phase 4 (Integrations-Adapter) und Phase 5 (Pack).
+> Stand 2026-08-23: Phasen 0 bis 3 (§13) sind abgeschlossen — der LSP-Kern liegt
+> in diesem Repo, konfiguriert die Server und besitzt alle LSP-Tasten. Offen
+> sind Phase 4 (Integrations-Adapter) und Phase 5 (Pack).
 
 # `lsp.nvim` — Konzept (Dachplugin)
 
@@ -33,8 +33,9 @@ Modulwurzel `wkddap`) und den anderen extrahierten `*.nvim`-Plugins
 >   keinem require-Pfad mehr.
 >
 > Aus Phase 6 ist der Umzug von `debug_adapters/**` nach `dap.nvim` ebenfalls
-> erledigt. Offen sind Phase 3 (Keymap-Konsolidierung), Phase 4
-> (Integrations-Adapter) und Phase 5 (Pack).
+> erledigt, und **Phase 3 ist durch**: alle 42 LSP-Tasten kommen aus dem
+> Katalog, `docs/BINDINGS.md` wird daraus generiert (CI prüft mit `--check`).
+> Offen sind Phase 4 (Integrations-Adapter) und Phase 5 (Pack).
 
 Die Grundsatzentscheidung ist in nvim.nvim.md (Abschnitt
 „`lsp.nvim` vs. `options.nvim`“, 2026-07-17) getroffen: `lua/lsp/` ist
@@ -164,13 +165,13 @@ beheben, nicht 1:1 mitschleppen:
 |---|---|---|---|
 | B1 | **Unaufgelöste Git-Merge-Konflikt-Marker** (`<<<<<<< HEAD` / `=======` / `>>>>>>>`) im Sourcecode | `lsp/core/capabilities.lua:61-71, 106-113` | 🔴 **Kritisch — ✅ ERLEDIGT (2026-07-26).** Datei war syntaktisch kaputt → `pcall(require, "lsp.core.capabilities")` schlug fehl → `lsp/init.lua:53` fiel still auf `make_client_capabilities()` zurück; **Completion-Capabilities von cmp/blink/NvChad wurden gar nicht angewandt.** Aufgelöst zugunsten der `8b6135fd`-Seite (String-Level `"error"`/`"warn"`), weil `lsp/init.lua:44` genau darauf vergleicht — mit `vim.log.levels.ERROR` (Zahl) wäre jeder Fehler still zur Warnung degradiert. Zusätzlich die doppelte `local warnings = {}`-Deklaration entfernt. |
 | B2 | Keymap auf nicht existierendes Modul `mylsp.nav.lua_root` | `bindings/mappings/lsp.lua:8` | ✅ **ERLEDIGT (2026-08-23).** `mylsp` existiert nirgends — nicht in `lua/`, nicht in einem installierten Plugin — die Taste warf bei jedem Druck. Keymap entfernt, mit Kommentar an ihrer Stelle. Das Feature selbst („zum umschließenden Lua-Table-/Funktions-Root springen") ist zu schade zum Wegwerfen und steht jetzt in §14, statt als kaputte Taste am Leben gehalten zu werden. |
-| B3 | `]q`/`[q` **doppelt** gebunden (diagnostics + trouble); trouble gewinnt durch spätere Registrierung in `bindings/mappings/init.lua` | `lsp/diagnostics/keymaps.lua:33` vs. `bindings/mappings/trouble.lua:53` | Genau der Fall, den das Dachplugin auflöst: eine Quelle, eine Entscheidung |
+| B3 | `]q`/`[q` **doppelt** gebunden (diagnostics + trouble); trouble gewinnt durch spätere Registrierung in `bindings/mappings/init.lua` | `lsp/diagnostics/keymaps.lua:33` vs. `bindings/mappings/trouble.lua:53` | ✅ **ERLEDIGT (2026-08-23)** — mit korrigierter Diagnose. Es war **kein Verhaltenskonflikt**: `quickfix.next_qf()` ist `pcall(vim.cmd, "cnext")`, Troubles Variante `<cmd>cnext<cr>`. Einziger Unterschied: das geschluckte E553 am Listenende. Zwei Besitzer, ein Verhalten. Jetzt ein Katalogeintrag, die `pcall`-Variante behalten. |
 | B4 | `require("lsp.lspdoctor").setup()` wird **zweimal hintereinander** mit widersprüchlichen `formatter_priority` aufgerufen | `lsp/init.lua:223-235` | ✅ **ERLEDIGT (2026-08-23)** — mit korrigierter Diagnose: „erster ist toter Code" stimmte **nicht**. `lspdoctor.setup()` merged Key für Key in ein persistentes `Opts` (`lspdoctor/init.lua:115`), also wirkten *alle* Keys aus beiden Aufrufen; überschrieben wurde nur `formatter_priority`. `list_limit`, `semantic_tokens_timeout` und `scratch_filetype` waren nie verloren. Zu einem Aufruf zusammengezogen, der exakt den bisherigen Effektivzustand trägt — sichtbar am Aufrufort statt aus der Merge-Semantik erschlossen. Nebenbefund: `null-ls` in der Prioritätsliste ist wirkungslos, es ist nirgends installiert (conform formatiert); bewusst stehen gelassen, weil das eine Entscheidung ist und kein Aufräumen. |
 | B5 | Conform wird **zweimal** konfiguriert: `plugins/lsp.lua:126` (`format_on_save = {…}`) und `lsp/formatter/conform.lua` + `lsp/formatter/init.lua` (`format_on_save = false`, eigener Autocmd) | beide | Zwei konkurrierende Format-on-Save-Pfade. Muss im Dachplugin **eine** Wahrheit werden |
 | B6 | `formatter/init.lua` dokumentiert sich als „Linux/macOS only; no Windows-specific branches“ — Workstation läuft auf Windows | `lsp/formatter/init.lua:3` | ✅ **ERLEDIGT (2026-08-23).** Veralteter Kommentar, keine reale Einschränkung. `formatter/init.lua` braucht selbst nichts Plattformabhängiges (Autocmds + View-Erhaltung); die Stellen, die es tun, liegen in `formatter/conform.lua` und verzweigen dort korrekt auf Windows (PATH-Separator `;`, `.cmd`-Suffix, Mason-Bin-Pfad — `conform.lua:20,40`). Kopfkommentar entsprechend richtiggestellt. |
 | B7 | `ACTIVE`-Serverliste hart im Sourcecode, Server an/aus = Code-Edit | `lsp/core/registry.lua:10-33` | ✅ **ERLEDIGT (2026-08-23).** Liste nach `config/DEFAULTS.lua` als `servers`, `registry.setup_all(shared, servers)` bekommt sie übergeben. Leere oder kaputte Liste fällt auf die Defaults zurück statt „gar kein Sprachserver" zu ergeben — das sieht aus wie eine kaputte Installation und darf nie das Ergebnis eines Tippfehlers sein. |
 | B8 | Drei eigene Root-Resolver (`core/root_scope.lua`, `servers/lua_ls/rootresolver.lua`, `servers/marksman/rootresolver.lua`) trotz `lib.nvim.fs` | siehe §10 | Dedup-Kandidat |
-| B9 | `<leader>rn` (inc-rename) und `grn` (`vim.lsp.buf.rename`) machen dasselbe, unterschiedlich | `config/inc_rename` vs. `bindings/mappings/lsp.lua` | Im Dachplugin: **ein** Rename-Keymap, Backend konfigurierbar (`rename.provider = "inc_rename"\|"native"`) |
+| B9 | `<leader>rn` (inc-rename) und `grn` (`vim.lsp.buf.rename`) machen dasselbe, unterschiedlich | `config/inc_rename` vs. `bindings/mappings/lsp.lua` | ✅ **ERLEDIGT (2026-08-23).** Abweichung vom Vorschlag: **beide** Tasten bleiben, statt auf eine zu reduzieren — das Muskelgedächtnis für beide ist real, das Problem war nicht die Anzahl der Tasten, sondern dass sie Verschiedenes taten. Sie zeigen jetzt auf **eine** Aktion, `rename.provider` (`auto\|inc_rename\|native`) entscheidet das Backend. inc-rename läuft über `feedkeys` statt über ein `expr`-Mapping, weil ein `expr`-Mapping zur Drückzeit nicht entscheiden kann, keines zu sein. |
 | B10 | `lsr`/`lsi`/`lss`/`lsd`/`lsD`/`lst`/`lsa` sind **prefixlose** 3-Zeichen-Maps im Normal-Mode | `bindings/mappings/lsp.lua:27-33` | Blockieren `ls…`-Sequenzen und verzögern `l`-Bewegungen nicht, aber kollidieren mit Neovim-0.11-Defaults (`grr`, `gri`, `grn`, `gO`). Bei der Preset-Definition neu bewerten |
 | B11 | `blink.cmp` vollständig auskommentiert, `nvim-cmp` aktiv — Capabilities-Modul unterstützt beide | `plugins/lsp.lua:96-118` | Dachplugin macht Engine-Wahl zur Option (`completion.engine = "cmp"\|"blink"\|"auto"`) |
 | B12 | `lspdoctor/health.lua` schrieb in ein nacktes `Opts`, also in eine **globale** Variable | `lsp/lspdoctor/health.lua:10` | ✅ Global beseitigt (2026-08-23). **Aber:** die Datei *liest* `Opts` nirgends — `:LspDoctor health` ignoriert damit `list_limit`, `show_capabilities`, `show_workspace`, `show_tools` und `show_conflicts` vollständig. Der Doctor reicht sie durch, sie landen im Nichts. Verdrahten ist offen. |
@@ -891,15 +892,40 @@ alle weiteren Phasen.
     Zu `autocmds/events/utils/filetype.lua`: die Datei referenziert
     `lsp.languages.*` heute gar nicht mehr — der Hinweis war veraltet.
 
-### Phase 3 — Bindings zentralisieren
+### Phase 3 — Bindings zentralisieren — ✅ erledigt 2026-08-23
 
-11. `bindings/mappings/lsp.lua` + `bindings/mappings/trouble.lua` +
-    `config/inc_rename` (Keymap) + die vier FzfLua-LSP-Keymaps nach
-    `lsp/bindings/keymaps.lua` überführen, als deklarative Tabelle.
-12. `:Lsp`-Composer + Legacy-Aliase (`bindings/usercmds.lua`).
-13. which-key-Gruppen, `docs/BINDINGS.md` generieren.
-14. Im Host: die migrierten Keymap-Module aus `bindings/mappings/init.lua`
-    austragen und löschen.
+11. ✅ 42 Einträge in `config/KEYMAPS.lua`, aus fünf Quellen zusammengezogen
+    (die vier oben genannten plus das plugin-eigene
+    `diagnostics/keymaps.lua`, das dieselben `]q`/`[q` band — der Katalog
+    liegt in `config/`, nicht in `bindings/`, weil er Konfigurationsdaten ist
+    und `bindings/keymaps.lua` ihn nur ausführt). Presets sind Namenslisten
+    über **einer** Eintragstabelle, nicht drei Kopien davon. Das Verhalten
+    steckt in `bindings/actions.lua`: ein Eintrag *benennt* eine Aktion, er
+    implementiert keine.
+12. ⚠️ **Teilweise.** Der `:Lsp`-Composer steht (Phase 1), die rund 30
+    `:Lsp*`-Einzelcommands existieren (Phase 2) — aber sie sind noch **keine**
+    Aliase auf `:Lsp`-Routen, sondern weiterhin die primäre Form. Das
+    Zusammenfalten nach §8.2 steht aus.
+13. ✅ `docs/BINDINGS.md` wird von `scripts/gen_bindings.lua` aus dem Katalog
+    **generiert**, CI prüft mit `--check` — die Doku kann nicht mehr driften.
+    which-key labelt bewusst nur `<leader>x`: aus den gebundenen Prefixen
+    abgeleitete Labels hätten auch `<leader>f` (der Find-Prefix der Config)
+    „LSP" genannt.
+14. ✅ `bindings/mappings/{lsp,trouble}.lua` gelöscht und ausgetragen, die vier
+    FzfLua-LSP-Zeilen entfernt (`<leader>fq` bleibt — ein Quickfix-Picker ist
+    kein LSP), `config/inc_rename` bindet keine Taste mehr, behält aber sein
+    Setup (den `post_hook`-Auto-Save).
+
+**Neu dabei, stand nicht im Plan:** `bindings/autocmds.lua` bindet `grn` und
+`grt` bei `LspAttach` buffer-lokal nach. Neovim 0.11 setzt seine eigenen
+`gr*`-Maps genau dort buffer-lokal, und buffer-lokal schlägt global — ohne das
+wäre der Katalog-Rename genau in den Buffern überschattet, für die er gedacht
+ist. Harmlos solange beide `vim.lsp.buf.rename` riefen, falsch sobald
+`rename.provider` inc-rename wählt. §8.1 hatte das als Anforderung notiert.
+
+Verifiziert gegen die echte Config: 42 Keymaps gebunden, 0 Setup-Warnungen, und
+`]q`/`[q`/`grn`/`<leader>rn`/`lsd`/`<leader>xt`/`<leader>dos`/`<leader>wq`/`]w`
+lösen alle auf Katalogeinträge auf.
 
 ### Phase 4 — Integrationen (Schicht 2)
 
