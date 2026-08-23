@@ -913,10 +913,27 @@ alle weiteren Phasen.
     über **einer** Eintragstabelle, nicht drei Kopien davon. Das Verhalten
     steckt in `bindings/actions.lua`: ein Eintrag *benennt* eine Aktion, er
     implementiert keine.
-12. ⚠️ **Teilweise.** Der `:Lsp`-Composer steht (Phase 1), die rund 30
-    `:Lsp*`-Einzelcommands existieren (Phase 2) — aber sie sind noch **keine**
-    Aliase auf `:Lsp`-Routen, sondern weiterhin die primäre Form. Das
-    Zusammenfalten nach §8.2 steht aus.
+12. ✅ **Erledigt 2026-08-23.** `:Lsp` hat jetzt 15 Subcommands
+    (`status servers info health doctor start stop restart force-restart
+    recover format diag workspace root log`), die flachen ~25 Commands sind
+    Aliase darauf — abschaltbar über `usrcmds.legacy_aliases = false`,
+    standardmäßig an, weil Muskelgedächtnis mehr wiegt als Ordnung und ein
+    Alias eine Zeile kostet. Beide Wege rufen dieselben Funktionen in
+    `bindings/actions.lua` bzw. `lsp.usercmds.*`, können also nicht mehr
+    auseinanderlaufen.
+
+    Zwei Abweichungen vom Entwurf: `force-restart` ist ein eigener Subcommand
+    statt eines Flags an `restart` (ein Literal nach `restart` wäre mehrdeutig
+    mit einem Server, der tatsächlich „force“ heißt), und `:LspMdHints` wird
+    **nicht** eingefaltet — es ist marksman-spezifisch, und Server-Commands
+    gehören nicht in ein globales Verb. `:LspDoctor` behält wie vorgesehen sein
+    eigenes Verb und ist zusätzlich als `:Lsp doctor` erreichbar.
+
+    Server-Namen vervollständigen aus dem **lebenden** Satz — attachte Clients
+    zuerst, dann alles aus `servers` — über einen eigenen Composer-Argumenttyp.
+    Genau das verlangt `NEW-26`: eine Wertemenge, die sich zur Laufzeit ändert,
+    muss zur Completion-Zeit berechnet werden; ein bei der Registrierung
+    eingefrorenes Enum wäre veraltet, sobald ein Server dazukommt.
 13. ✅ `docs/BINDINGS.md` wird von `scripts/gen_bindings.lua` aus dem Katalog
     **generiert**, CI prüft mit `--check` — die Doku kann nicht mehr driften.
     which-key labelt bewusst nur `<leader>x`: aus den gebundenen Prefixen
