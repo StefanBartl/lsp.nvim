@@ -5,6 +5,8 @@ local api = vim.api
 local lsp = vim.lsp
 local desc_tag = "[lsp] "
 local Autocmd = require("lib.nvim.autocmd")
+local usercmd = require("lib.nvim.usercmd")
+local map = require("lib.nvim.map")
 
 local M = {}
 
@@ -51,7 +53,7 @@ function M.enable()
     M.setup_reference_hl()
 
     -- Buffer-local format keymap
-    pcall(vim.keymap.set, "n", "<leader>fm", function()
+    map("n", "<leader>fm", function()
       local ok, conform = pcall(require, "conform")
       if ok and type(conform.format) == "function" then
         conform.format({ bufnr = ev.buf, timeout_ms = 2000, lsp_fallback = false })
@@ -68,7 +70,7 @@ function M.enable()
   -- ------------------------------------------------------------------
   -- User commands
   -- ------------------------------------------------------------------
-  pcall(api.nvim_create_user_command, "MdFormat", function()
+  usercmd.create("MdFormat", function()
     local ft = vim.bo.filetype
     local ok, conform = pcall(require, "conform")
     if not ok or type(conform.format) ~= "function" then
@@ -80,7 +82,7 @@ function M.enable()
     conform.format({ formatters = formatters, timeout_ms = 2000, lsp_fallback = false })
   end, { desc = desc_tag .. "Format Markdown (prefer mdformat for .md)" })
 
-  pcall(api.nvim_create_user_command, "MdFormatPrettier", function()
+  usercmd.create("MdFormatPrettier", function()
     local ok, conform = pcall(require, "conform")
     if ok and type(conform.format) == "function" then
       conform.format({

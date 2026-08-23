@@ -19,6 +19,7 @@
 ---@see lsp.bindings.keymaps
 ---@see lsp.config.KEYMAPS
 
+local autocmd = require("lib.nvim.autocmd")
 local keymaps = require("lsp.bindings.keymaps")
 
 local M = {}
@@ -45,22 +46,23 @@ function M.setup(cfg)
     return 0
   end
 
-  local group = vim.api.nvim_create_augroup(M.GROUP, { clear = true })
-
-  vim.api.nvim_create_autocmd("LspAttach", {
-    group = group,
+  autocmd.create("LspAttach", function(args)
+    for _, name in ipairs(LSP_ATTACH_REBIND) do
+      keymaps.rebind_buffer_local(cfg, name, args.buf)
+    end
+  end, {
+    group = autocmd.group(M.GROUP, true),
     desc = "lsp.nvim: re-bind catalogue entries Neovim shadows with its own gr* defaults",
-    callback = function(args)
-      for _, name in ipairs(LSP_ATTACH_REBIND) do
-        keymaps.rebind_buffer_local(cfg, name, args.buf)
-      end
-    end,
   })
 
   return 1
 end
 
 --- Remove every autocommand this plugin registered.
+---
+--- `autocmd.group(name, true)` in `setup()` already clears the group on
+--- re-registration; this exists for the case where the plugin is told to stop
+--- owning autocommands at all.
 ---@return nil
 function M.clear()
   pcall(vim.api.nvim_del_augroup_by_name, M.GROUP)

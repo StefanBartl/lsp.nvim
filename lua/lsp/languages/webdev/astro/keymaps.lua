@@ -165,7 +165,7 @@ function M.attach()
     -- the opener returned and only worked on Linux.
     local ok_open, err = pcall(vim.ui.open, url)
     if not ok_open then
-      vim.notify("Could not open " .. url .. ": " .. tostring(err), vim.log.levels.WARN)
+      notify.warn("Could not open " .. url .. ": " .. tostring(err))
     end
   end, { buffer = bufnr, desc = "Preview in browser" })
 

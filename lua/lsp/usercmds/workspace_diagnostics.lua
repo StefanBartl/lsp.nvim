@@ -4,9 +4,8 @@
 --- on every LSP attach (see lsp.core.workspace_diagnostics for why this is
 --- toggleable rather than a fixed startup-only flag).
 
+local usercmd = require("lib.nvim.usercmd")
 local notify = require("lib.nvim.notify").create("[lsp.usercmds.workspace_diagnostics]")
-
-local nvim_create_user_command = vim.api.nvim_create_user_command
 
 local M = {}
 
@@ -16,23 +15,23 @@ local desc_tag = "[lsp_workspace_diagnostics] "
 function M.attach()
   local wd = require("lsp.core.workspace_diagnostics")
 
-  pcall(nvim_create_user_command, "LspWorkspaceDiagnosticsToggle", function()
+  usercmd.create("LspWorkspaceDiagnosticsToggle", function()
     wd.toggle()
   end, { desc = desc_tag .. "toggle workspace-wide diagnostics populate on LSP attach" })
 
-  pcall(nvim_create_user_command, "LspWorkspaceDiagnosticsOn", function()
+  usercmd.create("LspWorkspaceDiagnosticsOn", function()
     wd.set(true)
   end, { desc = desc_tag .. "enable workspace-wide diagnostics populate on LSP attach" })
 
-  pcall(nvim_create_user_command, "LspWorkspaceDiagnosticsOff", function()
+  usercmd.create("LspWorkspaceDiagnosticsOff", function()
     wd.set(false)
   end, { desc = desc_tag .. "disable workspace-wide diagnostics populate on LSP attach" })
 
-  pcall(nvim_create_user_command, "LspWorkspaceDiagnosticsStatus", function()
+  usercmd.create("LspWorkspaceDiagnosticsStatus", function()
     notify.info("workspace diagnostics on LSP attach: " .. (wd.enabled() and "ON" or "OFF"))
   end, { desc = desc_tag .. "show current state" })
 
-  pcall(nvim_create_user_command, "LspWorkspaceDiagnosticsNow", function()
+  usercmd.create("LspWorkspaceDiagnosticsNow", function()
     local ok, count_or_err = wd.populate_now(0)
     if not ok then
       notify.warn(tostring(count_or_err))

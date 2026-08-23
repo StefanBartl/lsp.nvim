@@ -4,10 +4,10 @@
 
 local notify = require("lib.nvim.notify").create("[lsp.usrcmds] ")
 local composer = require("lib.nvim.usercmd.composer")
+local usercmd = require("lib.nvim.usercmd")
 
 local M = {}
 
-local nvim_create_user_command = vim.api.nvim_create_user_command
 local desc_tag = "[lps.usercmds] "
 
 -- Lazy-loaded submodules
@@ -44,12 +44,12 @@ function M.attach(legacy)
     return
   end
 
-  pcall(nvim_create_user_command, "LspLog", function()
+  usercmd.create("LspLog", function()
     local logfile = vim.lsp.log.get_filename()
     vim.cmd("split " .. vim.fn.fnameescape(logfile))
   end, { desc = desc_tag .. "Open LSP log file" })
 
-  pcall(nvim_create_user_command, "LspStatus", function()
+  usercmd.create("LspStatus", function()
     local bufnr = 0
     local clients = vim.lsp.get_clients({ bufnr = bufnr })
 
@@ -70,13 +70,13 @@ function M.attach(legacy)
   end, { desc = desc_tag .. "Show LSP status for current buffer" })
 
   -- LspRecover: Auto-recover missing servers
-  pcall(nvim_create_user_command, "LspRecover", function()
+  usercmd.create("LspRecover", function()
     local recovery = require("lsp.usercmds.recovery")
     recovery.auto_recover(vim.api.nvim_get_current_buf())
   end, { desc = desc_tag .. "Auto-recover missing LSP servers" })
 
   -- LspForceRestart: Force-restart with cleanup
-  pcall(nvim_create_user_command, "LspForceRestart", function(args)
+  usercmd.create("LspForceRestart", function(args)
     local recovery = require("lsp.usercmds.recovery")
     if args.args and args.args ~= "" then
       recovery.force_restart(args.args, vim.api.nvim_get_current_buf())
@@ -92,7 +92,7 @@ function M.attach(legacy)
   })
 
   -- LspStartHere: Start servers (auto-detect or specify)
-  pcall(nvim_create_user_command, "LspStartHere", function(args)
+  usercmd.create("LspStartHere", function(args)
     commands.start().execute(args)
   end, {
     nargs = "?",
@@ -103,7 +103,7 @@ function M.attach(legacy)
   })
 
   -- LspStopHere: Stop servers
-  pcall(nvim_create_user_command, "LspStopHere", function(args)
+  usercmd.create("LspStopHere", function(args)
     commands.stop().execute(args)
   end, {
     nargs = "?",
@@ -114,7 +114,7 @@ function M.attach(legacy)
   })
 
   -- LspRestartHere: Restart servers
-  pcall(nvim_create_user_command, "LspRestartHere", function(args)
+  usercmd.create("LspRestartHere", function(args)
     commands.restart().execute(args)
   end, {
     nargs = "?",
@@ -125,7 +125,7 @@ function M.attach(legacy)
   })
 
   -- LspInfo: Show detailed info
-  pcall(nvim_create_user_command, "LspInfo", function()
+  usercmd.create("LspInfo", function()
     commands.info().execute()
   end, {
     desc = desc_tag .. "Show LSP information for current buffer",
