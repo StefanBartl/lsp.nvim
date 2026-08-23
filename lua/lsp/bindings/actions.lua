@@ -202,11 +202,33 @@ function M.rename()
   vim.lsp.buf.rename()
 end
 
+---@internal
+--- How many times a navigation action should move.
+---
+--- `nil` means "this came from a keypress": Vim calls a keymap callback with no
+--- arguments, so the count is `v:count1` -- 1 when nothing was typed, N after
+--- `3]d`. The `:Lsp diag` routes pass 1 explicitly instead, because `v:count`
+--- is whatever the last *keypress* left behind and has nothing to do with a
+--- command the user typed out.
+---
+--- NEW-25 asks for exactly this on any mapping that means "move": these are
+--- `]d`/`[d`, `]q`/`[q`, `]l`/`[l` and `]w`/`[w`. The leader-prefixed actions
+--- (populate a list, toggle a setting) have no ordered target and get none.
+---@param count integer|nil
+---@return integer
+local function steps(count)
+  if type(count) == "number" and count > 0 then
+    return count
+  end
+  return vim.v.count1
+end
+
 -- ---------------------------------------------------------------- trouble
 
 ---@internal
 --- Move inside an open Trouble diagnostics list without focusing it.
 ---@param direction "next"|"prev"
+---@param count integer|nil # Explicit repeat; from a keypress, `v:count1`.
 ---@return nil
 local function trouble_move(direction, count)
   local ok, trouble = pcall(require, "trouble")
@@ -239,27 +261,6 @@ function M.trouble_diag_prev(count)
 end
 
 -- ---------------------------------------------------------------- diagnostics
-
----@internal
---- How many times a navigation action should move.
----
---- `nil` means "this came from a keypress": Vim calls a keymap callback with no
---- arguments, so the count is `v:count1` -- 1 when nothing was typed, N after
---- `3]d`. The `:Lsp diag` routes pass 1 explicitly instead, because `v:count`
---- is whatever the last *keypress* left behind and has nothing to do with a
---- command the user typed out.
----
---- NEW-25 asks for exactly this on any mapping that means "move": these are
---- `]d`/`[d`, `]q`/`[q`, `]l`/`[l` and `]w`/`[w`. The leader-prefixed actions
---- (populate a list, toggle a setting) have no ordered target and get none.
----@param count integer|nil
----@return integer
-local function steps(count)
-  if type(count) == "number" and count > 0 then
-    return count
-  end
-  return vim.v.count1
-end
 
 --- Buffer diagnostics into the location list, and open it.
 ---@return nil

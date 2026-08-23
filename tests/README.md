@@ -24,6 +24,20 @@ nvim --headless -u NONE -c "set rtp^=." -c "set rtp^=../lib.nvim" \
   -c "luafile tests/smoke.lua" -c "qa!"
 ```
 
+## Lint
+
+CI runs `stylua --check` and `luacheck` before the suite, and luacheck is worth
+having locally: it is scope-aware, so it catches a `local function` used above
+its own declaration — which reads fine, passes review, and is `nil` at runtime.
+It found exactly that in `bindings/actions.lua`, in a branch the specs could
+not reach because trouble.nvim is not installed in the test environment.
+
+```sh
+luarocks install luacheck
+export LUA_PATH="$(luarocks path --lr-path);;" LUA_CPATH="$(luarocks path --lr-cpath);;"
+lua "$(luarocks path --lr-bin)/luacheck" lua scripts tests
+```
+
 `rtp^=` and `rtp:prepend` are not cosmetic: `-u NONE` still leaves the user's
 config directory on the runtimepath, and while a config carries its own
 `lua/lsp/**` an appended entry loses — the tests would silently exercise that
@@ -39,6 +53,7 @@ instead of this plugin.
 | `integrations_spec.lua` | The adapter contract, contribution order, and that a broken adapter is recorded rather than propagated. |
 | `pack_spec.lua` | The `vim.g.lsp_nvim.pack` gating, and that the two completion engines exclude each other. |
 | `registry_spec.lua` | Server-name resolution, the `webdev.*` fallback, and what happens to a name whose module is missing or throws. |
+| `usrcmds_spec.lua` | The `:Lsp` route table: every route reachable, the legacy aliases mapping onto real routes, and the argument completion. |
 | `smoke.lua` | End-to-end: every module loads, `setup()` runs the whole bootstrap, servers and commands are registered. |
 
 The specs run against stubs, not against real servers or plugins: a real

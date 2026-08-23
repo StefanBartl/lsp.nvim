@@ -292,8 +292,31 @@ describe("count support (NEW-25)", function()
     assert.are.equal(-2, backward.count, "prev negates the count")
   end)
 
+  it("the Trouble path loops, because Trouble's next/prev take no count", function()
+    -- Worth stubbing rather than skipping: `trouble_move` is the one action
+    -- that cannot delegate the count, and with trouble.nvim absent every
+    -- assertion about it passes vacuously -- which is how a nil `steps` got
+    -- past this file once already.
+    local moved = 0
+    package.loaded["trouble"] = {
+      is_open = function()
+        return true
+      end,
+      next = function()
+        moved = moved + 1
+      end,
+      prev = function()
+        moved = moved - 1
+      end,
+    }
+    actions.trouble_diag_next(3)
+    assert.are.equal(3, moved, "next moved three entries")
+    actions.trouble_diag_prev(2)
+    assert.are.equal(1, moved, "prev moved two back")
+    package.loaded["trouble"] = nil
+  end)
+
   it("only the ordered-motion keys are meant to take one", function()
-    local KEYMAPS = require("lsp.config.KEYMAPS")
     -- Leader-prefixed actions populate a list or toggle a setting; there is no
     -- ordered target for a count to index into.
     for _, name in ipairs({ "diag_to_qflist", "diag_to_loclist", "format_toggle" }) do
