@@ -32,9 +32,9 @@ Modulwurzel `wkddap`) und den anderen extrahierten `*.nvim`-Plugins
 >   Plugin; `lua/lsp/**` heißt dort jetzt `lua/lsp_legacy/**` und liegt auf
 >   keinem require-Pfad mehr.
 >
-> Offen sind Phase 3 (Keymap-Konsolidierung), Phase 4 (Integrations-Adapter),
-> Phase 5 (Pack) und aus Phase 6 der Umzug von `debug_adapters/**` nach
-> `dap.nvim` — die stecken noch in `lsp_legacy`.
+> Aus Phase 6 ist der Umzug von `debug_adapters/**` nach `dap.nvim` ebenfalls
+> erledigt. Offen sind Phase 3 (Keymap-Konsolidierung), Phase 4
+> (Integrations-Adapter) und Phase 5 (Pack).
 
 Die Grundsatzentscheidung ist in nvim.nvim.md (Abschnitt
 „`lsp.nvim` vs. `options.nvim`“, 2026-07-17) getroffen: `lua/lsp/` ist
@@ -256,14 +256,37 @@ Picker (fzf-lua/telescope/snacks/`pickers.nvim`) und `nvchad`.
 - Die Plugin-Specs aus `lua/plugins/lsp.lua` und `lua/plugins/trouble.lua`
   → `lua/lsp/pack/**`
 
-### Geht NICHT mit, sondern zu `dap.nvim`
+### Geht NICHT mit, sondern zu `dap.nvim` — ✅ erledigt 2026-08-23
 
 `lua/lsp/debug_adapters/**` (bash, node, go, dotnet, webdev/browser). DAP ist
 fachlich unabhängig vom LSP — die einzige Gemeinsamkeit ist „Mason installiert
 beides“. `lsp/debug_adapters/init.lua` ist ohnehin nur eine Sammlung
-auskommentierter `require`s, also faktisch inaktiv. Reines Verschieben ohne
-Funktionsverlust; `dap.nvim` hat mit `lua/wkddap/adapters/` bereits den
-passenden Platz.
+auskommentierter `require`s, also faktisch inaktiv. **„Reines Verschieben ohne Funktionsverlust" ging allerdings nicht** — die
+Annahme war falsch. `dap.nvim` hat eine eigene Architektur (`registry` +
+`languages/<lang>.lua` mit `setup()`/`load()`, Binary-Auflösung über
+`config.get_adapter_path`), in die die alten Module nicht hineinpassten: sie
+registrierten alles beim Laden des Moduls. Ergebnis:
+
+- **Portiert** als `wkddap.languages.{bash,csharp,browser}` — die drei Ziele,
+  die `dap.nvim` noch nicht hatte. Dabei zwei echte Fehler behoben: der
+  netcoredbg-Pfad war auf **eine Maschine** hart verdrahtet
+  (`C:/tools/DebugAdapterProtocol/netcoredbg/netcoredbg.exe`), und
+  `set noshellslash` lief als globaler Seiteneffekt schon beim bloßen
+  `require`.
+- **Verworfen** statt portiert: `go` und `node`. `wkddap.languages.go` und
+  `.javascript` decken sie mit mehr Konfigurationen und richtiger
+  Adapter-Auflösung ab — die alten Kopien wären Duplikate gewesen, keine
+  Migration.
+- Registry, `adapter_binaries` und `language_aliases` erweitert
+  (`sh|zsh|ksh` → `bash`, `cs|fsharp|dotnet` → `csharp`); `browser` bewusst
+  ohne Alias, weil es kein Filetype ist, sondern ein eigenständig wählbares
+  Ziel.
+- Nebenbefund: `dap.nvim`s CI war auf `main` **rot**, aus zwei voneinander
+  unabhängigen Gründen — `rust.lua` war nicht stylua-formatiert, und die
+  zig-„Launch (build first)"-Specs prüften noch gegen ein
+  `vim.system(...):wait()`-Stub, obwohl die Implementierung längst auf die
+  Callback-Form umgestellt war (damit der Build den Editor nicht mehr
+  einfriert). Beides behoben, Suite 12/12.
 
 **Mason (entschieden 2026-07-26): `ensure_install` zieht vollständig nach
 `lsp.nvim`.** Nicht nach `lib.nvim` — es ist kein generischer Baustein, sondern
@@ -895,7 +918,7 @@ alle weiteren Phasen.
 
 ### Phase 6 — Abschluss
 
-20. `debug_adapters/**` nach `dap.nvim` verschieben (unabhängig terminierbar).
+20. ✅ **Erledigt 2026-08-23** — als Portierung, nicht als Verschieben; siehe §4.
 21. `docs/**`, `doc/lsp.txt`, README, ROADMAP finalisieren; `gh repo edit`
     (Description, Topics), committen & pushen.
     (Branch `main` ist seit 2026-08-23 erledigt — s. Phase 1.)
