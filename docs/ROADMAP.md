@@ -1097,7 +1097,7 @@ Für `docs/ROADMAP.md` des neuen Plugins — nicht alles sofort umsetzen:
 | **Sprung zum Lua-Table-/Funktions-Root** (ehem. `<leader>gtt`) | Aus B2 gerettet: aus einer tief verschachtelten Lua-Tabelle an den Kopf der umschließenden Struktur springen, optional zentriert. Die Taste war jahrelang auf ein Modul gemappt, das es nie gab — das Feature war also gewollt, nur nie gebaut | mittel |
 | **Diagnostics-Debounce** bei `publishDiagnostics` | `core/handlers.lua` dedupliziert, debounced aber nicht (chatty Server wie `ts_ls`) | klein |
 | **Test-Entry-Point** (`tools/_test`) | ✅ **ERLEDIGT (2026-08-23)** — als `tests/lsp/*_spec.lua` auf plenarys busted-Harness (wie `dap.nvim`), nicht als `tools/_test`: der Ort aus dem Konzept hätte die Tests unter *ein* Werkzeug gehängt, gehören tun sie zum ganzen Plugin. 124 Specs über Config-Normalisierung, Keymap-Katalog, Capabilities-Kette, Adapter-Registry, Pack-Gating, die `:Lsp`-Routen und Server-Registry — also genau die Stellen, aus denen die Bugs dieser Migration kamen. Dazu bleibt `tests/smoke.lua` als End-to-End-Lauf. |
-| **Eigene Completion-Quellen engine-neutral machen + Frequenz-Ranking** | ⭐ **Konkret gewünscht (2026-08-23).** Siehe §16 — eigener Abschnitt, weil zwei Dinge zusammenhängen: die beiden handgeschriebenen Quellen sind cmp-only und verschwinden unter blink, und das Frequenz-Ranking existiert erst in einer der beiden | mittel |
+| **Eigene Completion-Quellen engine-neutral machen + Frequenz-Ranking** | ✅ **ERLEDIGT (2026-08-24)** — `lsp.completion.usage` (geteilter Zähler), `lsp.completion.register` (Registrar) und `lsp.completion.blink` (Adapter); beide Quellen kennen ihre Engine nicht mehr, `md_words` hat das Ranking. Details und die drei Befunde aus dem Bau in §16 |
 | **Signature-Help-Modul reduzieren** | `tools/lsp_signature/**` ist eine komplette Eigenimplementierung (~800 LOC) | groß (erstmal nur beobachten) |
 | **Keymap-Kollisionsprüfer** in `:checkhealth lsp` | Halb erledigt: `keymaps_spec.lua` prüft, dass keine zwei Katalog-Einträge dieselbe Taste im selben Mode beanspruchen — zur Build-Zeit, wo ein Fehler nichts kostet. Offen bleibt die Laufzeit-Frage, die nur `:checkhealth` sehen kann: kollidiert der Katalog mit einer Taste, die *du* oder ein anderes Plugin gesetzt hast | klein |
 | **Profil-Presets** (`preset = "lean"\|"default"\|"full"`) | Ein Schalter statt 20 Einzeloptionen für „schlank auf schwacher Maschine“ | mittel |
@@ -1230,68 +1230,89 @@ nicht weil sie entschieden wurden, sondern weil der Code die Frage beantwortet:
 
 ## 16. Eigene Completion-Quellen: engine-neutral + Frequenz-Ranking
 
-**Status: geplant, nicht umgesetzt.** Aufgenommen 2026-08-23 aus zwei
-Beobachtungen beim Blink-Test.
+**Status: erledigt 2026-08-24.** Aufgenommen 2026-08-23 aus zwei Beobachtungen
+beim Blink-Test, gebaut einen Tag später. Der Abschnitt bleibt stehen, weil der
+Bau drei Dinge gefunden hat, die der Entwurf unten nicht vorhergesehen hat.
 
 ### Der Befund
 
-Es gibt genau zwei handgeschriebene Completion-Quellen, beide **cmp-only**:
+Es gab genau zwei handgeschriebene Completion-Quellen, beide **cmp-only**:
 
 | Quelle | Was sie liefert | Frequenz-Ranking? |
 |---|---|---|
 | `lsp.completion.personal_names` | die ~30 gepunkteten `*.nvim`-Plugin-Namen als je *ein* Kandidat | **ja** — persistenter Zähler in `stdpath("state")/personal_names_usage.json`, als nullgepolsterter `sortText`-Rang kodiert |
 | `lsp.languages.documentation.markdown_words` | das projektweite Wort-Wörterbuch für Markdown | **nein** — `table.sort` rein alphabetisch (`words_to_items`) |
 
-Beide hängen an `cmp.register_source` und warnen beim Fehlen von nvim-cmp.
-Unter blink ist das die Meldung, die den Punkt überhaupt ausgelöst hat:
+Beide hingen an `cmp.register_source` und warnten beim Fehlen von nvim-cmp.
+Unter blink war das die Meldung, die den Punkt überhaupt ausgelöst hat:
 `[md_words] nvim-cmp not found – source will not appear in completions.`
 
-Das gewünschte Feature — „oft verwendete Vorschläge weiter oben“ — ist also
+Das gewünschte Feature — „oft verwendete Vorschläge weiter oben“ — war also
 **nicht neu zu erfinden**, sondern aus `personal_names` herauszulösen und auf
 `markdown_words` anzuwenden.
 
-### Was das Portieren einfach macht
+### Was gebaut wurde
+
+| Datei | Rolle |
+|---|---|
+| `lua/lsp/completion/usage.lua` | der persistente Zähler, aus `personal_names` herausgezogen: `bump`/`count`/`ranked` plus die `sortText`-Kodierung. Eine Datei (`stdpath("state")/lsp_completion_usage.json`), zwei Top-Level-Namensräume — die unten offene Frage, so entschieden. Die alte `personal_names_usage.json` wird beim ersten Laden einmalig eingefaltet, sonst wären monatelang gesammelte Zähler stillschweigend weg |
+| `lua/lsp/completion/register.lua` | der Registrar. Eine Quelle übergibt `{ name, items, namespace?, filetypes?, keyword_pattern?, on_pick? }` und erfährt nie, welche Engine gewonnen hat |
+| `lua/lsp/completion/blink.lua` | der blink-Provider, der einen registrierten Spec bedient. blink löst Provider über einen `module`-Pfad auf und kann keinen Closure bekommen — deshalb trägt `opts.source` den Namen, und der Spec wird zur Anfragezeit nachgeschlagen |
+| `lua/lsp/pack/completion_blink.lua` | deklariert beide Quellen als Provider; `md_words` per `per_filetype` mit `inherit_defaults` statt global |
+| `tests/lsp/completion_spec.lua` | 19 Specs auf die Naht: Ranking engine-unabhängig, Namensräume dicht, Pick wird gezählt egal welche Engine ihn meldet |
+
+Die Optionen liegen unter `completion.personal_names` (`enable`, `labels`), und
+`labels` ist ein *Reader*, keine Liste: die Plugin-Namen sind Daten der
+Host-Config, die sie übergibt, statt dass dieses Plugin in `plugins.personal`
+hineingreift.
+
+### Drei Befunde aus dem Bau
+
+1. **Die Registrierung darf nicht im Engine-Spec stehen.** `personal_names`
+   wurde aus der `opts`-Funktion von nvim-cmp heraus aufgerufen — die unter
+   blink nie läuft. Ergebnis beim ersten Live-Test: `sources = {}`, die Quelle
+   war unter blink weiterhin weg, obwohl der ganze Registrar dafür gebaut war.
+   Der Aufruf gehört in `lsp.setup()`, also dorthin, wo keine Engine ihn sehen
+   kann.
+2. **Ein Pick darf das Wörterbuch nicht neu bauen.** Der erste Wurf setzte nach
+   jedem angenommenen Wort `items = nil`. Das löste einen vollständigen
+   Projekt-Rescan aus — Datei-I/O pro Wort, und weil ein laufender Rebuild
+   nichts zurückgibt, wäre das Menü direkt nach dem Pick leer gewesen. Danach
+   nur noch neu sortiert, statt neu zu scannen: gemessen **31 ms pro Wort** für
+   24703 Einträge, immer noch zu teuer. Jetzt bekommen nur die Labels *mit*
+   Zähler einen Rang gestempelt, in place: **0,003 ms**.
+3. **Ein fehlendes `sortText` heißt „keine Meinung“, nicht „ganz nach hinten“.**
+   Beide Engines überspringen das Paar und geben es an den nächsten Komparator
+   weiter (`blink/cmp/fuzzy/sort.lua:35`, `cmp/config/compare.lua:97`). Die
+   naheliegende Sparmaßnahme — ungenutzten Items gar kein `sortText` geben —
+   hätte also genau die Eigenschaft verloren, für die das Modul existiert.
+   Ungenutzte Items tragen deshalb `"~" .. label`: alphabetisch untereinander,
+   hinter jedem Rang, und hinter dem, was ein LSP-Server typischerweise sendet.
+
+### Was das Portieren einfach gemacht hat
 
 Geprüft am installierten blink.cmp v1.x, nicht angenommen:
 
 - **`sortText` wirkt in beiden Engines identisch.** blinks Default ist
   `fuzzy.sorts = { "score", "sort_text" }` (`lua/blink/cmp/config/fuzzy.lua`),
   cmps Default-Kette enthält `compare.sort_text`. Die Ranking-Mechanik ist
-  damit **engine-neutral** und braucht keine zweite Implementierung — nur
-  Registrierung und Accept-Hook unterscheiden sich.
-- **blinks Accept-Hook ist sauberer als cmps.** Eine blink-Source darf
-  `execute(ctx, item, callback, default)` implementieren, also am eigenen Item;
-  cmp braucht das globale `cmp.event:on("confirm_done")` mit Filterung auf den
-  Source-Namen. Beide erfüllen denselben Zweck: Zähler erhöhen, Items
-  invalidieren.
+  damit **engine-neutral** — nur Registrierung und Accept-Hook unterscheiden
+  sich.
+- **blinks Accept-Hook ist sauberer als cmps.** Eine blink-Source implementiert
+  `execute(ctx, item, callback, default)` am eigenen Item; cmp braucht das
+  globale `cmp.event:on("confirm_done")` mit Filterung auf den Source-Namen.
 - **Der Item-Aufbau ist derselbe** (`label`/`kind`/`filterText`/`insertText`/
   `sortText`) — blink nimmt LSP-`CompletionItem`s genau wie cmp.
 
-### Vorgeschlagener Zuschnitt
+### Die offenen Fragen, beantwortet
 
-1. **`lsp.completion.usage`** (neu) — der persistente Zähler aus
-   `personal_names` herausgezogen: `load()`, `bump(label)`, `rank(labels)`.
-   Eine Datei, zwei Nutzer. Kein lib.nvim-Kandidat: das ist Completion-Semantik,
-   keine allgemeine Neovim-Hilfe.
-2. **Jede Quelle exportiert `items()`** — eine reine Liste von
-   CompletionItems, ohne zu wissen, welche Engine fragt.
-3. **Zwei dünne Registrare** — `lsp.completion.register.cmp` und `….blink`,
-   ausgewählt über `lsp.config.pack.completion()`. Das ist das „Opt-in“, nach
-   dem die Frage lautete: die `languages/`-Quelle entscheidet **nicht** selbst,
-   sie meldet sich beim Registrar an, und der weiß, welche Engine läuft.
-4. **`markdown_words` bekommt das Ranking** über (1) — der eigentliche Wunsch.
-
-### Bewusst offen
-
-- **Ob der Wörterbuch-Zähler dieselbe Datei nutzt wie `personal_names`.**
-  Getrennte Namensräume wären sauberer (ein Markdown-Wort und ein Plugin-Name
-  können gleich heißen), eine Datei wäre weniger I/O. Tendenz: eine Datei, zwei
-  Top-Level-Schlüssel.
-- **Ob `personal_names` unter blink überhaupt gebraucht wird.** blinks
-  Fuzzy-Matcher trennt an `.` anders als cmps Default-Keyword-Pattern —
-  möglicherweise löst blink das Ursprungsproblem („do“ findet nie
-  „documentation.nvim“) schon von allein. **Vor dem Portieren messen**, sonst
-  wird eine Quelle nachgebaut, die unter der neuen Engine überflüssig ist.
+- **Eine Datei oder zwei?** Eine, mit zwei Top-Level-Schlüsseln — die Tendenz
+  aus dem Entwurf, und die Namensräume sind nicht optional: ein Markdown-Wort
+  und ein Plugin-Name können gleich heißen, und ein gemeinsamer Zähler würde
+  das Schreiben von Prosa die Plugin-Liste umsortieren lassen.
+- **Wird `personal_names` unter blink überhaupt gebraucht?** Ja. Vor dem
+  Portieren gemessen, wie der Entwurf verlangt: blinks Fuzzy-Matcher bringt
+  „do“ ebenfalls nicht auf „documentation.nvim“.
 
 ---
 

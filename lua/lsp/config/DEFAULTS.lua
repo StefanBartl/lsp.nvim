@@ -118,6 +118,24 @@ local DEFAULTS = {
   -- before the servers are registered.
   languages = { enable = true },
 
+  --- Hand-written completion sources.
+  ---
+  --- `personal_names.labels` is a reader, not a list: the plugin names it
+  --- completes are the *host config's* data, so the config hands them over
+  --- rather than this plugin reaching into `plugins.personal.list`. Without a
+  --- reader the source falls back to `extra.lua` alone.
+  ---
+  --- Read at setup time regardless of which completion engine is active --
+  --- that is the whole point. Wiring it from nvim-cmp's `opts` (as the config
+  --- did until 2026-08-23) meant switching to blink silently dropped it.
+  completion = {
+    personal_names = {
+      enable = true,
+      ---@type (fun(): (string|{name: string})[])|nil
+      labels = nil,
+    },
+  },
+
   rename = {
     -- "auto" prefers inc-rename when it is installed and falls back to
     -- `vim.lsp.buf.rename`; "inc_rename" and "native" pin one. Both the `grn`

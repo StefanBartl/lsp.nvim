@@ -8,9 +8,12 @@
 ---
 --- `lsp.core.capabilities` has supported blink all along through
 --- `lsp.integrations.blink`; what was missing was a way to install it. This is
---- the spec that used to sit commented out in the config's `plugins/lsp.lua`,
---- which is why the roadmap (section 15) still lists the choice between the
---- engines as open: it was never actually available.
+--- the spec that used to sit commented out in the config's `plugins/lsp.lua`.
+---
+--- The two hand-written sources are declared here as providers. blink resolves
+--- a provider from its `module` path lazily, so these names cost nothing until
+--- a completion is actually requested -- and `opts.source` is how the shared
+--- adapter knows which registered spec it is standing in for.
 ---
 ---@see lsp.pack
 ---@see lsp.config.pack
@@ -27,12 +30,32 @@ return {
     version = "1.*",
     opts = {
       sources = {
-        default = { "lazydev", "lsp", "path", "snippets", "buffer" },
+        default = { "lazydev", "lsp", "path", "snippets", "buffer", "personal_names" },
+        -- md_words only makes sense where the dictionary was built, so it is
+        -- added per filetype rather than globally. `inherit_defaults` keeps the
+        -- normal sources instead of replacing them.
+        per_filetype = {
+          markdown = { inherit_defaults = true, "md_words" },
+          mdx = { inherit_defaults = true, "md_words" },
+        },
         providers = {
           lazydev = {
             name = "LazyDev",
             module = "lazydev.integrations.blink",
             score_offset = 100,
+          },
+          personal_names = {
+            name = "personal_names",
+            module = "lsp.completion.blink",
+            opts = { source = "personal_names" },
+          },
+          md_words = {
+            name = "md_words",
+            module = "lsp.completion.blink",
+            opts = { source = "md_words" },
+            -- Plain dictionary words are a fallback behind real LSP items, the
+            -- same standing the cmp side gave it with `priority = 100`.
+            score_offset = -3,
           },
         },
       },

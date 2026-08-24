@@ -1,10 +1,11 @@
 ---@module 'lsp.languages.documentation.markdown_words'
---- nvim-cmp source that provides project-wide word completions for Markdown files.
+--- Completion source providing project-wide word completions for Markdown files.
 ---
 --- How it works:
 ---   1. Scans all .md / .mdx files under a configurable root directory (defaults to cwd).
 ---   2. Tokenises every file into words, deduplicates them, and caches the result.
----   3. Registers itself as a cmp source named "md_words".
+---   3. Registers itself as a completion source named "md_words", with
+---      whichever engine `lsp.completion.register` says is active.
 ---   4. The cache is rebuilt lazily (once per session unless manually invalidated).
 ---
 --- Integration:
@@ -21,6 +22,11 @@ local Autocmd = require("lib.nvim.autocmd")
 local notify = require("lib.nvim.notify").create("[lsp.languages.documentation.markdown_words]")
 local usercmd = require("lib.nvim.usercmd")
 local debounce = require("lib.nvim.debounce")
+local register = require("lsp.completion.register")
+local usage = require("lsp.completion.usage")
+
+---@type string
+local SOURCE_NAME = "md_words"
 
 -- ============================================================================
 -- Guard: prevent double-setup
@@ -33,17 +39,25 @@ local _initialized = false
 -- ============================================================================
 
 ---@class MdWords.State
----@field root       string|nil
----@field words      table<string,true>
----@field items      table[]|nil
----@field building   boolean
----@field _user_root string|nil
+---@field root        string|nil
+---@field words       table<string,true>
+---@field items       table[]|nil
+---@field by_label    table<string, table> # label -> the item in `items`
+---@field ranks_stale boolean
+---@field building    boolean
+---@field _user_root  string|nil
 
 ---@type MdWords.State
 local state = {
   root = nil,
   words = {},
   items = nil,
+  --- The same tables `items` holds, keyed by label. A pick re-stamps a handful
+  --- of them in place, so it needs to find them without walking the list.
+  by_label = {},
+  --- Set when a pick changed the ranking. Distinct from `items = nil`, which
+  --- means "no word set at all, go scan the project" -- see get_items().
+  ranks_stale = false,
   building = false,
   _user_root = nil,
 }
@@ -191,35 +205,64 @@ end
 -- Cache management
 -- ============================================================================
 
---- Convert a word set to a sorted list of cmp completion items.
+--- Stamp the ranked `sortText` onto the items whose word carries a use count.
+---
+--- Everything else keeps the `sortText` it was built with, so this only ever
+--- touches the few dozen words that have actually been picked -- not the ~25000
+--- in the dictionary. Rebuilding the whole list instead measured 31 ms, which
+--- is what every accepted word would have cost.
+---
+--- Counts never decrease, so a word that has a rank keeps one: a word overtaken
+--- by another is re-stamped by this same pass, and there is nothing to clear.
+---@return nil
+local function apply_ranks()
+  for i, word in ipairs(usage.ranked(SOURCE_NAME)) do
+    local item = state.by_label[word]
+    -- Absent after a root change that dropped the word from the project.
+    if item ~= nil then
+      item.sortText = usage.sort_text(i)
+      item.documentation.value = ("(md_words) used %d×"):format(usage.count(SOURCE_NAME, word))
+    end
+  end
+end
+
+--- Convert a word set to a list of completion items.
+---
+--- Ordering used to be plain alphabetical, which meant a word typed fifty times
+--- ranked below one seen once in a file you never opened again. The counts come
+--- from `lsp.completion.usage`, shared with personal_names but in its own
+--- namespace -- a Markdown word and a plugin name can be spelled alike without
+--- meaning the same thing.
+---
+--- The list order itself carries no meaning: both engines re-sort by score and
+--- `sortText` before drawing the menu, so sorting 25000 words here would be
+--- work neither of them reads.
+---
 --- Items are built once and cached; call only after a successful scan.
 ---@param word_set table<string,true>
 ---@return table[]
 local function words_to_items(word_set)
-  -- Pre-count for preallocation
-  local n = 0
-  for _ in pairs(word_set) do
-    n = n + 1
-  end
-
-  ---@type {label:string, kind:integer, filterText:string, insertText:string, documentation:{kind:string,value:string}}[]
+  ---@type table[]
   local items = {}
-  local i = 0
-  for w in pairs(word_set) do
-    i = i + 1
-    ---@diagnostic disable-next-line: assign-type-mismatch
-    items[i] = {
-      label = w,
+  state.by_label = {}
+
+  for word in pairs(word_set) do
+    local item = {
+      label = word,
       kind = 1, -- CompletionItemKind.Text
-      filterText = w,
-      insertText = w,
-      documentation = { kind = "plaintext", value = "(md_words)" },
+      sortText = usage.sort_text_unranked(word),
+      filterText = word,
+      insertText = word,
+      documentation = {
+        kind = "plaintext",
+        value = "(md_words)",
+      },
     }
+    items[#items + 1] = item
+    state.by_label[word] = item
   end
 
-  table.sort(items, function(a, b)
-    return tostring(a.label) < tostring(b.label)
-  end)
+  apply_ranks()
   return items
 end
 
@@ -247,9 +290,19 @@ local function rebuild_async(root, on_done)
   end, 0)
 end
 
---- Return cached cmp items, triggering a background build if not ready yet.
+--- Return cached items, triggering a background build if not ready yet.
 ---@return table[]
 local function get_items()
+  -- A pick changes one word's rank, never the word set, so re-stamp the ranked
+  -- items in place. Dropping the cache instead would send this back through
+  -- rebuild_async and rescan every markdown file in the project -- per accepted
+  -- completion -- and since a rebuild in flight returns nothing, the menu would
+  -- go empty right after you picked a word.
+  if state.ranks_stale then
+    apply_ranks()
+    state.ranks_stale = false
+  end
+
   if state.items then
     return state.items
   end
@@ -257,43 +310,7 @@ local function get_items()
   if not state.building then
     rebuild_async(root, nil)
   end
-  return {} -- Return empty while building; cmp will re-query on next keystroke
-end
-
--- ============================================================================
--- nvim-cmp source
--- ============================================================================
-
----@class MdWords.Source
-local Source = {}
-Source.__index = Source
-
----@return MdWords.Source
-function Source.new()
-  return setmetatable({}, Source)
-end
-
----@return boolean
-function Source:is_available()
-  local ft = vim.bo.filetype
-  return ft == "markdown" or ft == "mdx" or ft == "markdown.mdx"
-end
-
----@return string
-function Source:get_debug_name()
-  return "md_words"
-end
-
----@return string
-function Source:get_keyword_pattern()
-  return [[\%(-\?\d\+\%(\.\d\+\)\?\|\h\w*\%(-\w*\)*\)]]
-end
-
----@param _ table
----@param callback fun(result: table)
----@return nil
-function Source:complete(_, callback)
-  callback({ items = get_items(), isIncomplete = false })
+  return {} -- Empty while building; the engine re-queries on the next keystroke
 end
 
 -- ============================================================================
@@ -374,62 +391,42 @@ function M.setup(opts)
   end
 
   -- -------------------------------------------------------------------------
-  -- Register nvim-cmp source
+  -- Register the completion source
   -- -------------------------------------------------------------------------
-  -- `require("cmp")` happens inside the FileType handler, never at setup time.
-  -- setup() runs on the synchronous startup path (via lsp.languages.documentation
-  -- .markdown), and a top-level require here force-loaded nvim-cmp despite its
-  -- `lazy = true` spec — 469 ms, plus LuaSnip (272 ms) and nvim-autopairs (79 ms)
-  -- pulled in as its dependencies. Deferring to the first markdown buffer keeps
-  -- cmp lazy for sessions that never open one.
-  local source_registered = false
-  local warned_missing = false
+  -- Deferred to the first markdown buffer, not done at setup time. setup() runs
+  -- on the synchronous startup path (via lsp.languages.documentation.markdown),
+  -- and under nvim-cmp the registrar requires cmp -- which used to force-load it
+  -- despite its `lazy = true` spec: 469 ms, plus LuaSnip (272 ms) and
+  -- nvim-autopairs (79 ms) as dependencies. Waiting for a markdown buffer keeps
+  -- the engine lazy for sessions that never open one.
+  --
+  -- Which engine gets the source is `lsp.completion.register`'s decision, not
+  -- this module's. Before that split this block reached for cmp directly and
+  -- warned when it was absent, so choosing blink cost the source *and* printed
+  -- a message about nvim-cmp that had nothing to do with the real cause.
+  local registered = false
 
-  -- Inject our source into buffer-local cmp config for markdown files.
-  -- Uses `once = false` so every new markdown buffer picks it up,
-  -- but the duplicate-guard inside prevents double-appending.
   Autocmd.create("FileType", function()
-    local ok_cmp, cmp = pcall(require, "cmp")
-    if not ok_cmp then
-      if not warned_missing then
-        warned_missing = true
-        notify.warn("[md_words] nvim-cmp not found – source will not appear in completions.")
-      end
+    if registered then
       return
     end
+    registered = true
 
-    -- Registration is global, so it must happen exactly once — but only now
-    -- that we know cmp is actually loaded.
-    if not source_registered then
-      source_registered = true
-      cmp.register_source("md_words", Source.new())
-    end
-
-    -- Read the *buffer-local* config so we see what's already active here
-    local bufcfg = cmp.get_config()
-    if not bufcfg then
-      return
-    end
-
-    local sources = bufcfg.sources or {}
-    for _, s in ipairs(sources) do
-      if s.name == "md_words" then
-        return
-      end -- already present
-    end
-
-    -- Build new list with md_words appended at low priority
-    local new_sources = {}
-    for i, s in ipairs(sources) do
-      new_sources[i] = s
-    end
-    new_sources[#sources + 1] = { name = "md_words", priority = 100 }
-
-    cmp.setup.buffer({ sources = new_sources })
+    register.source({
+      name = SOURCE_NAME,
+      namespace = SOURCE_NAME,
+      items = get_items,
+      filetypes = { "markdown", "mdx", "markdown.mdx" },
+      keyword_pattern = [[\%(-\?\d\+\%(\.\d\+\)\?\|\h\w*\%(-\w*\)*\)]],
+      -- Re-stamp the ranks on the next request, without touching the word set.
+      on_pick = function()
+        state.ranks_stale = true
+      end,
+    })
   end, {
-    group = Autocmd.group("MdWordsCmpSource", true),
+    group = Autocmd.group("MdWordsCompletionSource", true),
     pattern = { "markdown", "mdx" },
-    desc = "[md_words] Inject cmp source into markdown buffer",
+    desc = "[md_words] Register the completion source on first markdown buffer",
   })
 
   -- -------------------------------------------------------------------------

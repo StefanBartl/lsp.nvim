@@ -1,72 +1,42 @@
 ---@module 'lsp.completion.personal_names'
---- nvim-cmp source completing this config's ~30 dotted personal-plugin names
+--- Completion source for this config's ~30 dotted personal-plugin names
 --- (e.g. "documentation.nvim", "markdown.nvim", see plugins.personal.list) as
 --- one atomic candidate each. The default cmp keyword pattern splits words at
 --- ".", so typing "do" would otherwise only ever surface "documentation" (a
 --- plain buffer word), never the full plugin name.
 ---
---- Ranking: cmp's own default sorting chain (unmodified in this repo, see
---- lua/plugins/lsp.lua) already ranks a better textual match above a worse
---- one (compare.offset/exact/score) and "picked earlier this session" above
---- "never picked" (compare.recently_used) — both apply to this source for
---- free. Missing: *persistent* frequency across restarts, since
---- recently_used's history is an in-memory table that resets every session.
---- This source closes that gap with a tiny disk-persisted per-label use
---- counter, encoded into each item's `sortText` (compare.sort_text is next
---- in cmp's default chain right after recently_used) — so it only ever
---- breaks ties between equally-good textual matches, never overrides a
---- genuinely better one.
+--- Ranking is `lsp.completion.usage`'s job: an engine already ranks a better
+--- textual match above a worse one and remembers this session's picks, but
+--- forgets across restarts. That module closes the gap and is shared with
+--- md_words.
+---
+--- Engine-neutral since 2026-08-23. It builds items and nothing else; getting
+--- them in front of the user is `lsp.completion.register`'s problem, so this
+--- file no longer knows whether nvim-cmp or blink is running. Measured before
+--- porting: blink's fuzzy matcher does *not* make this source redundant —
+--- typing "do" there still does not surface "documentation.nvim".
 ---
 --- Anything beyond the personal-plugin list — filenames, module paths,
 --- whatever comes up — goes in `extra.lua`, a plain hand-edited string list
 --- merged in and deduplicated. `:CmpReloadWords` picks up edits to it (and
 --- any change to the resolved plugin list) without a restart.
+---
+---@see lsp.completion.register
+---@see lsp.completion.usage
 
 local M = {}
 
 local notify = require("lib.nvim.notify").create("[lsp.completion.personal_names]")
-local json = require("lib.nvim.fs.json")
+local register = require("lsp.completion.register")
+local usage = require("lsp.completion.usage")
 
 local SOURCE_NAME = "personal_names"
-local STATE_FILE = vim.fs.joinpath(vim.fn.stdpath("state"), "personal_names_usage.json")
-
--- ============================================================================
--- Persistent usage counts
--- ============================================================================
-
----@type table<string, integer>
-local counts = {}
-local counts_loaded = false
 
 --- Reader supplied by the host through `setup({ labels = fn })`, returning the
 --- entries whose names should be completed. Each entry may be a string or a
 --- table with a `name` field. nil until `setup()` provides one.
 ---@type (fun(): (string|{name: string})[])|nil
 local label_source = nil
-
-local function load_counts()
-  if counts_loaded then
-    return
-  end
-  counts_loaded = true
-  local decoded = json.read(STATE_FILE)
-  if type(decoded) == "table" then
-    counts = decoded
-  end
-end
-
-local function save_counts()
-  json.write(STATE_FILE, counts)
-end
-
----Bump a label's use count and persist immediately — picking a completion is
----a human-paced, infrequent event, so a write on every bump costs nothing.
----@param label string
-local function bump(label)
-  load_counts()
-  counts[label] = (counts[label] or 0) + 1
-  save_counts()
-end
 
 -- ============================================================================
 -- Items
@@ -114,77 +84,53 @@ local function collect_labels()
   return labels
 end
 
----Rebuild `items` from `collect_labels()` plus each label's persisted use
----count, encoded as a zero-padded `sortText` rank (compare.sort_text sorts
----ascending, so the most-used label needs the *smallest* string — rank 1
----wins).
+---Rebuild `items` from `collect_labels()`, with the picked names carrying a
+---`sortText` rank and the rest sorted by their own label.
+---
+---Rebuilt whole on every pick rather than re-stamped in place the way md_words
+---does it: thirty labels, so the machinery that saves the dictionary 31 ms
+---would only cost clarity here.
 local function build_items()
-  local labels = collect_labels()
-  load_counts()
-
-  -- Highest count first, alphabetical among ties.
-  table.sort(labels, function(a, b)
-    local ca, cb = counts[a] or 0, counts[b] or 0
-    if ca ~= cb then
-      return ca > cb
-    end
-    return a < b
-  end)
-
   items = {}
-  for i, label in ipairs(labels) do
-    items[i] = {
+
+  ---@type table<string, table>
+  local by_label = {}
+
+  for _, label in ipairs(collect_labels()) do
+    local item = {
       label = label,
       kind = 1, -- CompletionItemKind.Text
-      sortText = ("%04d"):format(i),
+      sortText = usage.sort_text_unranked(label),
       filterText = label,
       insertText = label,
       documentation = {
         kind = "plaintext",
-        value = ("(personal_names) used %d×"):format(counts[label] or 0),
+        value = "(personal_names)",
       },
     }
+    items[#items + 1] = item
+    by_label[label] = item
+  end
+
+  for i, label in ipairs(usage.ranked(SOURCE_NAME)) do
+    local item = by_label[label]
+    -- A name that was picked before it was removed from the plugin list.
+    if item ~= nil then
+      item.sortText = usage.sort_text(i)
+      item.documentation.value = ("(personal_names) used %d×"):format(
+        usage.count(SOURCE_NAME, label)
+      )
+    end
   end
 end
 
--- ============================================================================
--- nvim-cmp source
--- ============================================================================
-
----@class PersonalNames.Source
-local Source = {}
-Source.__index = Source
-
----@return PersonalNames.Source
-function Source.new()
-  return setmetatable({}, Source)
-end
-
----@return boolean
-function Source:is_available()
-  return true
-end
-
----@return string
-function Source:get_debug_name()
-  return SOURCE_NAME
-end
-
----Includes "." (alongside md_words' "-") so the pattern spans a whole name
----like "documentation.nvim" once part of it has been typed — matching a bare
----"do" still resolves to just "do", since no dot has been typed yet.
----@return string
-function Source:get_keyword_pattern()
-  return [[\%(-\?\d\+\%(\.\d\+\)\?\|\h\w*\%([-.]\w*\)*\)]]
-end
-
----@param _ table
----@param callback fun(result: table)
-function Source:complete(_, callback)
+---Every item, rebuilt on demand. The engine adapter calls this.
+---@return table[]
+local function get_items()
   if not items then
     build_items()
   end
-  callback({ items = items, isIncomplete = false })
+  return items
 end
 
 -- ============================================================================
@@ -193,11 +139,11 @@ end
 
 local _initialized = false
 
----Register the source and wire persistent-usage tracking. Call once, from
----nvim-cmp's own `opts` function (lua/plugins/lsp.lua) — cmp is guaranteed
----already loading at that point (this function is part of building its own
----config), so there is no eager-load concern to guard against here, unlike
----md_words' deferred FileType registration.
+---Register the source with whichever engine is configured.
+---
+---Call once. Under nvim-cmp this belongs in cmp's own `opts` function, where
+---cmp is already loading; under blink the call can happen any time before the
+---first completion request, since blink resolves its providers lazily.
 ---@param opts? { labels?: fun(): (string|{name: string})[] }
 function M.setup(opts)
   if _initialized then
@@ -209,21 +155,19 @@ function M.setup(opts)
     label_source = opts.labels
   end
 
-  local ok, cmp = pcall(require, "cmp")
-  if not ok then
-    notify.warn("nvim-cmp not found — personal_names source will not appear in completions.")
-    return
-  end
-
-  cmp.register_source(SOURCE_NAME, Source.new())
-
-  cmp.event:on("confirm_done", function(event)
-    local entry = event.entry
-    if entry and entry.source and entry.source.name == SOURCE_NAME then
-      bump(entry.completion_item.label)
-      items = nil -- force a re-sort on the next complete() with the fresh count
-    end
-  end)
+  register.source({
+    name = SOURCE_NAME,
+    namespace = SOURCE_NAME,
+    items = get_items,
+    -- Includes "." (alongside md_words' "-") so the pattern spans a whole name
+    -- like "documentation.nvim" once part of it has been typed -- matching a
+    -- bare "do" still resolves to just "do", since no dot has been typed yet.
+    keyword_pattern = [[\%(-\?\d\+\%(\.\d\+\)\?\|\h\w*\%([-.]\w*\)*\)]],
+    -- Drop the cache so the next request re-sorts with the fresh count.
+    on_pick = function()
+      items = nil
+    end,
+  })
 
   require("lib.nvim.usercmd").create("CmpReloadWords", function()
     package.loaded["lsp.completion.personal_names.extra"] = nil

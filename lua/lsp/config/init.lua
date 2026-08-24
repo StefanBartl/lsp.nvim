@@ -176,8 +176,21 @@ function M.setup(user_opts)
     "lspdoctor",
     "tools",
     "languages",
+    "completion",
   }) do
     normalize_table(cfg, key)
+  end
+
+  -- `labels` is the one option that is a function rather than data. Anything
+  -- else there would blow up at the call site inside the source, far from the
+  -- setup() call that caused it, so it is rejected here instead.
+  if type(cfg.completion.personal_names) ~= "table" then
+    cfg.completion.personal_names = vim.deepcopy(DEFAULTS.completion.personal_names)
+  end
+  local labels = cfg.completion.personal_names.labels
+  if labels ~= nil and type(labels) ~= "function" then
+    _warnings[#_warnings + 1] = "completion.personal_names.labels: expected a function, ignoring"
+    cfg.completion.personal_names.labels = nil
   end
 
   _active = cfg

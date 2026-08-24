@@ -272,6 +272,16 @@ local function bootstrap(cfg)
     require("lsp.usercmds").attach(legacy)
   end)
 
+  if cfg.completion.personal_names.enable then
+    -- Engine-neutral on purpose: `lsp.completion.register` decides who gets the
+    -- source, so this runs the same under nvim-cmp and blink.
+    step("completion sources", function()
+      require("lsp.completion.personal_names").setup({
+        labels = cfg.completion.personal_names.labels,
+      })
+    end)
+  end
+
   if cfg.languages.enable then
     -- Before the servers: language modules install filetype-specific
     -- quality-of-life setup that the server configs then build on.
