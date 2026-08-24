@@ -1,9 +1,12 @@
 # Roadmap — `lsp.nvim`
 
-> Dieses Dokument ist die Spiegelung des Konzeptpapiers aus der nvim-Config
-> (`~/AppData/Local/nvim/docs/ROADMAP/personal/lsp.nvim.md`). **Dort liegt die
-> Source of Truth**; hier steht die Kopie, damit das Repo nicht ohne Roadmap
-> dasteht. Relative Links in die Config wurden zu reinem Text reduziert.
+> **Dies ist das Original.** Bis 2026-08-23 war es die Spiegelung eines
+> Konzeptpapiers in der nvim-Config; das wurde dort zusammen mit den Roadmaps
+> der anderen ausgelagerten Plugins gelöscht, nachdem die Migration durch war
+> (Config-Commit `32d7a760`). Ein ausgelagertes Plugin trägt seine Roadmap
+> selbst — sonst pflegt man sie an einem Ort und liest sie an einem anderen.
+> Die ursprünglichen relativen Links in die Config sind zu reinem Text
+> reduziert, weil sie von hier aus ins Leere zeigen.
 >
 > Stand 2026-08-23: **alle fünf Migrationsphasen (§13) sind durch**, ebenso die
 > Einzelpunkte danach — Schritt 12, B8, B12, B14, B16–B19, die Doku-Seiten aus
@@ -1094,6 +1097,7 @@ Für `docs/ROADMAP.md` des neuen Plugins — nicht alles sofort umsetzen:
 | **Sprung zum Lua-Table-/Funktions-Root** (ehem. `<leader>gtt`) | Aus B2 gerettet: aus einer tief verschachtelten Lua-Tabelle an den Kopf der umschließenden Struktur springen, optional zentriert. Die Taste war jahrelang auf ein Modul gemappt, das es nie gab — das Feature war also gewollt, nur nie gebaut | mittel |
 | **Diagnostics-Debounce** bei `publishDiagnostics` | `core/handlers.lua` dedupliziert, debounced aber nicht (chatty Server wie `ts_ls`) | klein |
 | **Test-Entry-Point** (`tools/_test`) | ✅ **ERLEDIGT (2026-08-23)** — als `tests/lsp/*_spec.lua` auf plenarys busted-Harness (wie `dap.nvim`), nicht als `tools/_test`: der Ort aus dem Konzept hätte die Tests unter *ein* Werkzeug gehängt, gehören tun sie zum ganzen Plugin. 124 Specs über Config-Normalisierung, Keymap-Katalog, Capabilities-Kette, Adapter-Registry, Pack-Gating, die `:Lsp`-Routen und Server-Registry — also genau die Stellen, aus denen die Bugs dieser Migration kamen. Dazu bleibt `tests/smoke.lua` als End-to-End-Lauf. |
+| **Eigene Completion-Quellen engine-neutral machen + Frequenz-Ranking** | ⭐ **Konkret gewünscht (2026-08-23).** Siehe §16 — eigener Abschnitt, weil zwei Dinge zusammenhängen: die beiden handgeschriebenen Quellen sind cmp-only und verschwinden unter blink, und das Frequenz-Ranking existiert erst in einer der beiden | mittel |
 | **Signature-Help-Modul reduzieren** | `tools/lsp_signature/**` ist eine komplette Eigenimplementierung (~800 LOC) | groß (erstmal nur beobachten) |
 | **Keymap-Kollisionsprüfer** in `:checkhealth lsp` | Halb erledigt: `keymaps_spec.lua` prüft, dass keine zwei Katalog-Einträge dieselbe Taste im selben Mode beanspruchen — zur Build-Zeit, wo ein Fehler nichts kostet. Offen bleibt die Laufzeit-Frage, die nur `:checkhealth` sehen kann: kollidiert der Katalog mit einer Taste, die *du* oder ein anderes Plugin gesetzt hast | klein |
 | **Profil-Presets** (`preset = "lean"\|"default"\|"full"`) | Ein Schalter statt 20 Einzeloptionen für „schlank auf schwacher Maschine“ | mittel |
@@ -1221,6 +1225,73 @@ nicht weil sie entschieden wurden, sondern weil der Code die Frage beantwortet:
 | 5 | **`lspdoctor` vs. `:checkhealth`** | Können nicht divergieren: beide lesen `require("lsp").status()`, es gibt keine zweite Stelle, an der sich das Plugin selbst beschreibt. `:checkhealth` verweist für die Buffer-Ebene auf `:LspDoctor`, statt sie zu wiederholen |
 | 6 | **`dap.nvim` ↔ `lsp.nvim`** | Wie vorgeschlagen: `integrations/mason/` nimmt Registrierungen entgegen, `dap.nvim` meldet sich pcall-geschützt an und bleibt standalone lauffähig |
 | 7 | **Umfang von Phase 1** | Wie vorgeschlagen: Pack erst in Phase 5. Hat sich gelohnt — der erste Pack-Entwurf hat blink.cmp in die Config installiert, weil lazys `import` ein *Verzeichnis* liest und die bedingten Imports nichts abgeschirmt haben. In Phase 1 hätte dieser Fehler die Kern-Migration blockiert |
+
+---
+
+## 16. Eigene Completion-Quellen: engine-neutral + Frequenz-Ranking
+
+**Status: geplant, nicht umgesetzt.** Aufgenommen 2026-08-23 aus zwei
+Beobachtungen beim Blink-Test.
+
+### Der Befund
+
+Es gibt genau zwei handgeschriebene Completion-Quellen, beide **cmp-only**:
+
+| Quelle | Was sie liefert | Frequenz-Ranking? |
+|---|---|---|
+| `lsp.completion.personal_names` | die ~30 gepunkteten `*.nvim`-Plugin-Namen als je *ein* Kandidat | **ja** — persistenter Zähler in `stdpath("state")/personal_names_usage.json`, als nullgepolsterter `sortText`-Rang kodiert |
+| `lsp.languages.documentation.markdown_words` | das projektweite Wort-Wörterbuch für Markdown | **nein** — `table.sort` rein alphabetisch (`words_to_items`) |
+
+Beide hängen an `cmp.register_source` und warnen beim Fehlen von nvim-cmp.
+Unter blink ist das die Meldung, die den Punkt überhaupt ausgelöst hat:
+`[md_words] nvim-cmp not found – source will not appear in completions.`
+
+Das gewünschte Feature — „oft verwendete Vorschläge weiter oben“ — ist also
+**nicht neu zu erfinden**, sondern aus `personal_names` herauszulösen und auf
+`markdown_words` anzuwenden.
+
+### Was das Portieren einfach macht
+
+Geprüft am installierten blink.cmp v1.x, nicht angenommen:
+
+- **`sortText` wirkt in beiden Engines identisch.** blinks Default ist
+  `fuzzy.sorts = { "score", "sort_text" }` (`lua/blink/cmp/config/fuzzy.lua`),
+  cmps Default-Kette enthält `compare.sort_text`. Die Ranking-Mechanik ist
+  damit **engine-neutral** und braucht keine zweite Implementierung — nur
+  Registrierung und Accept-Hook unterscheiden sich.
+- **blinks Accept-Hook ist sauberer als cmps.** Eine blink-Source darf
+  `execute(ctx, item, callback, default)` implementieren, also am eigenen Item;
+  cmp braucht das globale `cmp.event:on("confirm_done")` mit Filterung auf den
+  Source-Namen. Beide erfüllen denselben Zweck: Zähler erhöhen, Items
+  invalidieren.
+- **Der Item-Aufbau ist derselbe** (`label`/`kind`/`filterText`/`insertText`/
+  `sortText`) — blink nimmt LSP-`CompletionItem`s genau wie cmp.
+
+### Vorgeschlagener Zuschnitt
+
+1. **`lsp.completion.usage`** (neu) — der persistente Zähler aus
+   `personal_names` herausgezogen: `load()`, `bump(label)`, `rank(labels)`.
+   Eine Datei, zwei Nutzer. Kein lib.nvim-Kandidat: das ist Completion-Semantik,
+   keine allgemeine Neovim-Hilfe.
+2. **Jede Quelle exportiert `items()`** — eine reine Liste von
+   CompletionItems, ohne zu wissen, welche Engine fragt.
+3. **Zwei dünne Registrare** — `lsp.completion.register.cmp` und `….blink`,
+   ausgewählt über `lsp.config.pack.completion()`. Das ist das „Opt-in“, nach
+   dem die Frage lautete: die `languages/`-Quelle entscheidet **nicht** selbst,
+   sie meldet sich beim Registrar an, und der weiß, welche Engine läuft.
+4. **`markdown_words` bekommt das Ranking** über (1) — der eigentliche Wunsch.
+
+### Bewusst offen
+
+- **Ob der Wörterbuch-Zähler dieselbe Datei nutzt wie `personal_names`.**
+  Getrennte Namensräume wären sauberer (ein Markdown-Wort und ein Plugin-Name
+  können gleich heißen), eine Datei wäre weniger I/O. Tendenz: eine Datei, zwei
+  Top-Level-Schlüssel.
+- **Ob `personal_names` unter blink überhaupt gebraucht wird.** blinks
+  Fuzzy-Matcher trennt an `.` anders als cmps Default-Keyword-Pattern —
+  möglicherweise löst blink das Ursprungsproblem („do“ findet nie
+  „documentation.nvim“) schon von allein. **Vor dem Portieren messen**, sonst
+  wird eine Quelle nachgebaut, die unter der neuen Engine überflüssig ist.
 
 ---
 
