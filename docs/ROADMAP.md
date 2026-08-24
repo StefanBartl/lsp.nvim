@@ -11,10 +11,9 @@
 > Stand 2026-08-23: **alle fünf Migrationsphasen (§13) sind durch**, ebenso die
 > Einzelpunkte danach — Schritt 12, B8, B12, B14, B16–B19, die Doku-Seiten aus
 > §12, die Spec-Suite (124 Fälle) und Count-Support auf den Bewegungstasten.
-> Offen sind nur noch zwei Entscheidungen, die dem Autor gehören: §15.1
-> (Trouble als Default-Senke) und §15.2 (cmp gegen blink). `NEW-20` ist
-> erledigt — das Gate ist am 2026-08-24 entsprechend präzisiert worden
-> (`WKDBooks`-Commit `10b03c4`).
+> Offen ist nur noch eine Entscheidung, die dem Autor gehört: §15.1 (Trouble
+> als Default-Senke — entschieden, noch nicht umgesetzt). `NEW-20` und §15.2
+> (Completion-Engine, jetzt `blink`) sind erledigt.
 
 # `lsp.nvim` — Konzept (Dachplugin)
 
@@ -1190,13 +1189,13 @@ Für `docs/ROADMAP.md` des neuen Plugins — nicht alles sofort umsetzen:
   `]w`/`[w`-Tasten (`trouble_diag_next/prev`). Umsetzung: `diagnostics.ui =
   "auto"` (Trouble, wenn geladen, sonst nativ) — offen für einen späteren
   Schritt, bewusst nicht mit dieser Änderung mitgezogen.
-- **Completion-Engine**: Default bleibt `nvim-cmp` (war es vorher auch).
-  Beide Adapter existieren seit Phase 5 und sind seit 2026-08-23 über
+- **Completion-Engine: `blink` ist seit 2026-08-24 der Plugin-Default**
+  (`lua/lsp/config/pack.lua`), nach echtem Live-Test beider Engines. Beide
+  Adapter existieren seit Phase 5 und sind seit 2026-08-23 über
   `vim.g.lsp_nvim.pack.completion = "cmp"|"blink"` echt umschaltbar — zuvor war
   blink nur ein auskommentierter Block in `plugins/lsp.lua`, nie tatsächlich
-  erreichbar. Die Config setzt es probeweise auf `"blink"` (`init.lua`, direkt
-  vor `require("lazy").setup`), um blink.cmp einmal live zu testen; der
-  Plugin-Default bleibt `"cmp"` unangetastet.
+  erreichbar. Die Config testete es zunächst probeweise per Override; der
+  Override ist wieder entfernt, seit blink der tatsächliche Default ist.
 
   Der erste echte Testlauf hat sofort einen Bug gefunden: `lsp.integrations.cmp`
   warnte unbedingt „nvim-cmp not found!“, auch wenn blink bewusst gewählt war

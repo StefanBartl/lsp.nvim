@@ -11,7 +11,7 @@
 ---       pack = {
 ---         core = true,          -- conform, lazydev, workspace-diagnostics
 ---         ui = true,            -- trouble, lspsaga, lensline, inc-rename
----         completion = "cmp",   -- "cmp" | "blink" | false
+---         completion = "blink", -- "cmp" | "blink" | false (default: blink)
 ---         disable = { "lspsaga.nvim" },
 ---       },
 ---     }
@@ -57,7 +57,10 @@ end
 function M.completion()
   local choice = M.opts().completion
   if choice == nil then
-    return "cmp"
+    -- blink since 2026-08-24: chosen after testing both live, cmp was the
+    -- default only because it was the incumbent when the choice first became
+    -- real (2026-08-23).
+    return "blink"
   end
   if choice == "cmp" or choice == "blink" then
     return choice

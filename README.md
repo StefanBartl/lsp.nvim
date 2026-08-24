@@ -98,7 +98,7 @@ vim.g.lsp_nvim = {
   pack = {
     core = true,          -- conform, lazydev, workspace-diagnostics
     ui = true,            -- trouble, lspsaga, lensline, inc-rename
-    completion = "cmp",   -- "cmp" | "blink" | false
+    completion = "blink", -- "cmp" | "blink" | false (default: blink)
     disable = { "lspsaga.nvim" },
   },
 }

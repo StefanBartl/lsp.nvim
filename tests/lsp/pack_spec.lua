@@ -27,8 +27,8 @@ describe("lsp.config.pack", function()
   end)
 
   describe("defaults", function()
-    it("installs nvim-cmp when nothing is configured", function()
-      assert.are.equal("cmp", with(nil).completion())
+    it("installs blink.cmp when nothing is configured", function()
+      assert.are.equal("blink", with(nil).completion())
     end)
 
     it("has both groups on", function()
@@ -46,7 +46,7 @@ describe("lsp.config.pack", function()
       package.loaded["lsp.config.pack"] = nil
       local pack = require("lsp.config.pack")
       assert.are.same({}, pack.opts())
-      assert.are.equal("cmp", pack.completion())
+      assert.are.equal("blink", pack.completion())
     end)
   end)
 
