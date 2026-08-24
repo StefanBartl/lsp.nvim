@@ -111,3 +111,18 @@ host through `setup({ labels = fn })` — it is the config's data, not the
 plugin's.
 
 - **Module:** `completion/personal_names/`
+
+## Right-click context menu
+
+`lsp.integrations.menu` builds entries straight from
+`require("lsp").status().keymaps` — the resolved keymap catalogue, with the
+active `keymaps.preset` and any `keymaps.map` overrides already applied —
+in the shape [nvzone/menu](https://github.com/nvzone/menu) expects, grouped
+into fly-outs (Navigation, Rename, Formatter, Diagnostics, Trouble, Picker)
+derived from each entry's catalogue name. Entries whose `requires` names an
+uninstalled plugin are skipped. No `menu` dependency here; a host composes
+the entries into its own menu.
+
+- **Module:** `integrations/menu.lua` (`M.items`, `M.submenu`)
+- **Config:** `opts.menu.enable` (default `true`)
+- **Docs:** [docs/BINDINGS.md](BINDINGS.md#right-click-context-menu)

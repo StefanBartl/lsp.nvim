@@ -108,6 +108,32 @@ which-key group labels:
 
 <!-- END GENERATED KEYMAPS -->
 
+## Right-click context menu
+
+`lsp.integrations.menu` builds entries straight from
+`require("lsp").status().keymaps` — the resolved catalogue above, with the
+active `keymaps.preset` and any `keymaps.map` overrides/disables already
+applied — the same anti-drift reasoning `config/KEYMAPS.lua` itself exists
+for. Grouped into fly-outs (Navigation, Rename, Formatter, Diagnostics,
+Trouble, Picker) derived from each entry's catalogue name, in the shape
+[nvzone/menu](https://github.com/nvzone/menu) expects. `rename_leader` and
+`goto_type_definition_gr` are skipped as pure alternate-key duplicates of an
+already-included action; any entry whose `requires` names a plugin that
+isn't installed (Trouble, fzf-lua) is skipped too — a menu entry is
+something you're actively looking at, so one that would just error on
+click is worse than one that doesn't appear.
+
+lsp.nvim has no dependency on `menu` and never opens a context menu itself
+— a host (typically your own `<RightMouse>` dispatcher) composes the
+entries into its own menu:
+
+```lua
+local items = require("lsp.integrations.menu").items()  -- one entry per group, each a fly-out
+local sub = require("lsp.integrations.menu").submenu()  -- { name = "  LSP", items = {…} } | nil
+```
+
+`opts.menu.enable = false` opts out entirely.
+
 ## User Commands
 
 One command, `:Lsp <subcommand>`, built with

@@ -199,6 +199,8 @@ require("lsp").setup({
   },
   usrcmds = { enable = true },   -- register the `:Lsp` verb
   which_key = { enable = true }, -- label bound prefixes as which-key groups
+  menu = { enable = true },      -- <RightMouse> context menu mirroring the
+                                  -- keymap catalogue (nvzone/menu, soft dependency)
 })
 ```
 

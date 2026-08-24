@@ -144,6 +144,15 @@ local DEFAULTS = {
   which_key = {
     enable = true,
   },
+
+  -- Right-click context menu (nvzone/menu, soft dependency; entries from
+  -- lsp.integrations.menu, mirroring the resolved keymap catalogue --
+  -- see keymaps.preset/keymaps.map). Off automatically when nvzone/menu
+  -- isn't installed -- this only gates whether M.items()/M.submenu()
+  -- return entries at all.
+  menu = {
+    enable = true,
+  },
 }
 
 return DEFAULTS

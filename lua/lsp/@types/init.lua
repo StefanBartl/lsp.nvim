@@ -40,6 +40,9 @@ require("lsp.@types.vim_lsp")
 ---@class LspNvim.WhichKeyOpts
 ---@field enable boolean # Label the bound key prefixes as which-key groups.
 
+---@class LspNvim.MenuOpts
+---@field enable boolean # Provide nvzone/menu entries via `lsp.integrations.menu`. No nvzone/menu dependency itself; this only gates whether `M.items()`/`M.submenu()` return entries.
+
 ---@class LspNvim.FormatterOpts
 ---@field on_save boolean # Format on write at startup; the runtime toggle owns it afterwards.
 ---@field timeout_ms integer # Upper bound for one format request.
@@ -89,6 +92,7 @@ require("lsp.@types.vim_lsp")
 ---@field keymaps LspNvim.KeymapsOpts
 ---@field usrcmds LspNvim.UsrcmdsOpts
 ---@field which_key LspNvim.WhichKeyOpts
+---@field menu LspNvim.MenuOpts
 
 -- #####################################################################
 -- config/KEYMAPS.lua, bindings/keymaps.lua
