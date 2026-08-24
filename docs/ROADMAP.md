@@ -11,8 +11,10 @@
 > Stand 2026-08-23: **alle fünf Migrationsphasen (§13) sind durch**, ebenso die
 > Einzelpunkte danach — Schritt 12, B8, B12, B14, B16–B19, die Doku-Seiten aus
 > §12, die Spec-Suite (124 Fälle) und Count-Support auf den Bewegungstasten.
-> Offen sind nur noch drei Entscheidungen, die dem Autor gehören: `NEW-20`,
-> §15.1 (Trouble als Default-Senke) und §15.2 (cmp gegen blink).
+> Offen sind nur noch zwei Entscheidungen, die dem Autor gehören: §15.1
+> (Trouble als Default-Senke) und §15.2 (cmp gegen blink). `NEW-20` ist
+> erledigt — das Gate ist am 2026-08-24 entsprechend präzisiert worden
+> (`WKDBooks`-Commit `10b03c4`).
 
 # `lsp.nvim` — Konzept (Dachplugin)
 
@@ -51,10 +53,12 @@ Modulwurzel `wkddap`) und den anderen extrahierten `*.nvim`-Plugins
 > Doku-Seiten aus §12, eine Spec-Suite mit 124 Fällen und Count-Support auf den
 > Bewegungstasten (`NEW-25`).
 >
-> Es bleiben **drei Entscheidungen, die dir gehören** — nicht mir: `NEW-20`
-> (gen_map `--check` gegen eine bewusst nicht committete Map, gehört im Gate
-> aufgelöst), §15.1 (Trouble als Default-Senke für `]d`/`[d`) und §15.2 (cmp
-> gegen blink — jetzt echt umschaltbar über `vim.g.lsp_nvim.pack.completion`).
+> Es bleiben **zwei Entscheidungen, die dir gehören** — nicht mir: §15.1
+> (Trouble als Default-Senke für `]d`/`[d`) und §15.2 (cmp gegen blink — jetzt
+> echt umschaltbar über `vim.g.lsp_nvim.pack.completion`). `NEW-20`
+> (gen_map `--check` gegen eine bewusst nicht committete Map) ist erledigt:
+> das Gate ist am 2026-08-24 präzisiert worden, statt es pro Repo still
+> aufzulösen.
 > Alles andere unter §15 „Offen“ hat sich durch das Gebaute erledigt.
 >
 > Die Migration hat sechs Bugs gefunden, die vorher **live in der Config**
@@ -1144,11 +1148,13 @@ Für `docs/ROADMAP.md` des neuen Plugins — nicht alles sofort umsetzen:
   `docs/map/` gitignored. Gehört im Gate entschieden, nicht pro Repo still in
   eine Richtung aufgelöst.
 
-  **Vorschlag fürs Gate** (noch nicht übernommen, nur hier vermerkt): `NEW-20`
-  umformulieren zu „`gen_map.lua` gemäß REUSE.md übernehmen; `--check` in CI
-  nur, wenn die Map bewusst committet wird (Ausnahme: `documentation.nvim`
-  selbst). Sonst genügt ein ungeprüfter `gen_map.lua`-Lauf als Crash-Smoke-Test,
-  falls überhaupt gewollt.“
+  **Übernommen ins Gate am 2026-08-24** (`WKDBooks`-Commit `10b03c4`):
+  `NEW-20` verlangt jetzt „`gen_map.lua` gemäß REUSE.md übernehmen; `docs/map/`
+  wird nicht committet außer bei `documentation.nvim` und `docmap-desktop`
+  (Dogfooding); `--check` in CI nur dort, wo die Map committet wird“. Auch
+  festgehalten: `--check` lief zu dem Zeitpunkt in **keinem** der fünf
+  bestehenden Repos, auch nicht in `documentation.nvim`, wo es funktioniert
+  hätte.
 - **Das Gate nennt zwei veraltete Pfade**: `e:\repos\` in `NEW-01`,
   `C:\Users\bartl\…` in `NEW-35`.
 
@@ -1202,18 +1208,10 @@ Für `docs/ROADMAP.md` des neuen Plugins — nicht alles sofort umsetzen:
   ursprünglichen Config) weiterhin gefangen. Behoben in `lsp.nvim` (Commit
   `ba4ecb8`).
 
-  Fehlt für einen fairen Blink-Test noch: die `personal_names`-cmp-Quelle
-  (`lsp.completion.personal_names`) hat kein blink-Gegenstück. Wer auf `blink`
-  wechselt, verliert die atomare Vervollständigung der eigenen
-  Plugin-Namensliste kommentarlos — kein Fehler, aber eine Lücke, die auffallen
-  wird, wenn man danach sucht.
-3. **`NEW-20`**: `scripts/gen_map.lua` **plus** `--check` in CI, gegen eine Map,
-   die seit `dap.nvim`/`cascade.nvim` bewusst nicht mehr committet wird. Beides
-   zusammen geht nicht, und das ist keine Frage dieses Repos — sie gehört im
-   Gate entschieden, sonst löst sie jedes Repo still anders auf. In `lsp.nvim`
-   läuft `gen_map.lua` derzeit ohne `--check`.
-
-### Erledigt durch das Gebaute (2026-08-23)
+  Die genannte Lücke — `personal_names` hatte kein blink-Gegenstück — ist mit
+  §16 geschlossen (siehe dort): beide Quellen laufen seit 2026-08-24 über
+  `lsp.completion.register` unter beiden Engines.
+### Erledigt durch das Gebaute (2026-08-23 / 2026-08-24)
 
 Die folgenden Punkte standen bis eben unter „Offen“ und sind es nicht mehr —
 nicht weil sie entschieden wurden, sondern weil der Code die Frage beantwortet:
@@ -1225,6 +1223,7 @@ nicht weil sie entschieden wurden, sondern weil der Code die Frage beantwortet:
 | 5 | **`lspdoctor` vs. `:checkhealth`** | Können nicht divergieren: beide lesen `require("lsp").status()`, es gibt keine zweite Stelle, an der sich das Plugin selbst beschreibt. `:checkhealth` verweist für die Buffer-Ebene auf `:LspDoctor`, statt sie zu wiederholen |
 | 6 | **`dap.nvim` ↔ `lsp.nvim`** | Wie vorgeschlagen: `integrations/mason/` nimmt Registrierungen entgegen, `dap.nvim` meldet sich pcall-geschützt an und bleibt standalone lauffähig |
 | 7 | **Umfang von Phase 1** | Wie vorgeschlagen: Pack erst in Phase 5. Hat sich gelohnt — der erste Pack-Entwurf hat blink.cmp in die Config installiert, weil lazys `import` ein *Verzeichnis* liest und die bedingten Imports nichts abgeschirmt haben. In Phase 1 hätte dieser Fehler die Kern-Migration blockiert |
+| 3 (NEW-20) | **gen_map `--check` gegen eine nicht committete Map** | Keine Repo-Entscheidung, wie zuerst vermutet, sondern eine Lücke im Gate selbst — bestätigt anhand aller fünf bestehenden Repos (siehe oben) und am 2026-08-24 dort behoben |
 
 ---
 
