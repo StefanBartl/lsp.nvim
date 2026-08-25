@@ -1,67 +1,67 @@
-# Strategie & Architektur (Kurzüberblick)
+# Strategy & architecture (short overview)
 
-Man entwickelt eine erweiterbare Pipeline, die bestehende LSP-Diagnostik weiterverarbeitet und server-/themen-spezifische Aktionen anbietet. Kernideen:
+The idea is an extensible pipeline that post-processes existing LSP diagnostics and offers server- and topic-specific actions. Core ideas:
 
-* Ein zentrales "publishDiagnostics"-Wrapper-Modul (bestehendes `lsp_common`) bleibt Quelle der Ereignisse und ruft registrierte Server-Handler auf.
-* Pro-Server-Module (z. B. `lua_ls`, `uv_doc`) registrieren sich beim Wrapper und filtern nur die für sie relevanten Diagnostics.
-* Ein kleines "catch"-Modul kapselt Extraktionslogik (Range → Symbol, Nachricht → heuristische Extraktion); kann später mit treesitter ersetzt/ergänzt werden.
-* Ein "action"-Modul pro Thema (z. B. `uv_doc`) entscheidet, welche Aktion anzubieten ist: `:help`, externe Doku öffnen, Vorschlag zum Fix, Code-Action, Tests etc.
-* Erweiterbarkeit: Registrierungstabelle + Policy-Plugins (z. B. mdn_lookup, go_pkg_lookup) erlauben spätere Plugins ohne Änderung des Core.
-
----
-
-# Ablauf / Datenfluss
-
-1. LSP sendet `publishDiagnostics`.
-2. `lsp_common.wrapper` ruft original handler (unverändert) und danach registrierte Callbacks.
-3. Server-Callback (z. B. `lua_ls`) filtert auf server-name + severity.
-4. Für jede Diagnostic:
-
-   * `catch.extract_symbol()` ermittelt symbol (range / heuristics).
-   * Thema-Detector (z. B. `uv_doc.is_uv_related()`) entscheidet, ob Aktion sinnvoll ist.
-   * Falls ja: Erzeuge annotierte Notify-Nachricht + buffer-lokales Mapping (einmal pro symbol).
-   * Mapping führt zu Aktion: open help, open URL, popup mit snippet, v.s.
-5. Caching sorgt dafür, dass pro Buffer/Symbol nur einmal gemappt/notify ausgeführt wird.
+* A central "publishDiagnostics" wrapper module (the existing `lsp_common`) stays the source of the events and calls registered server handlers.
+* Per-server modules (e.g. `lua_ls`, `uv_doc`) register with the wrapper and filter only the diagnostics relevant to them.
+* A small "catch" module encapsulates the extraction logic (range → symbol, message → heuristic extraction); it can later be replaced/complemented by treesitter.
+* An "action" module per topic (e.g. `uv_doc`) decides which action to offer: `:help`, opening external documentation, a fix suggestion, a code action, tests, etc.
+* Extensibility: a registration table + policy plugins (e.g. mdn_lookup, go_pkg_lookup) allow later plugins without changing the core.
 
 ---
 
-# Heuristiken zum Erkennen von libuv-Fehlern (Beispiele)
+# Flow / data flow
 
-* Nachrichtstext-Keywords: `libuv`, `uv_`, `uv.` , `uv_loop`, `uv_handle`, `UV_E*` (errno names).
-* Symbol-Name: extrahiertes Symbol beginnt mit `uv_` oder beinhaltet `uv.` oder `uv:`.
-* Diagnostic Source: some servers annotate `source` (z. B. `lua_ls`, `sumneko_lua`) → prüfen.
-* Kontext: wenn filetype == "lua" und server == "lua_ls" erhöhte Präferenz.
+1. The LSP sends `publishDiagnostics`.
+2. `lsp_common.wrapper` calls the original handler (unchanged) and afterwards the registered callbacks.
+3. The server callback (e.g. `lua_ls`) filters on server name + severity.
+4. For every diagnostic:
 
----
-
-# Datenquellen für Hilfs-Aktionen
-
-* libuv API-Dokumentation (online) — feste URL-Mapping: symbol → `http(s)://libuv.org/docs.html` (oder konkrete URL pattern).
-* Lokale Hilfetexte: falls symbol in `:help` existiert (für vim/neovim-spezifische APIs).
-* MDN für JS/Node: MDN-API-URLs per symbol lookup.
-* Go: pkg.go.dev pattern `https://pkg.go.dev/<module>#<symbol>`.
+   * `catch.extract_symbol()` determines the symbol (range / heuristics).
+   * The topic detector (e.g. `uv_doc.is_uv_related()`) decides whether an action makes sense.
+   * If so: produce an annotated notify message + a buffer-local mapping (once per symbol).
+   * The mapping leads to an action: open help, open URL, popup with a snippet, and so on.
+5. Caching makes sure that mapping/notify happens only once per buffer/symbol.
 
 ---
 
-# Sicherheits- & UX-Überlegungen
+# Heuristics for detecting libuv errors (examples)
 
-* Keine Änderungen an originaler LSP-Handler-Logik (non-breaking).
-* Aktionen niemals automatisch invasive (kein automatisches Editieren); nur suggestive: notify + mapping.
-* Mappings buffer-local & dedupliziert.
-* Cross-platform Öffnen externer URLs sicher abfangen (Linux/macOS `xdg-open`/`open`, Windows `start`).
+* Message-text keywords: `libuv`, `uv_`, `uv.`, `uv_loop`, `uv_handle`, `UV_E*` (errno names).
+* Symbol name: the extracted symbol starts with `uv_` or contains `uv.` or `uv:`.
+* Diagnostic source: some servers annotate `source` (e.g. `lua_ls`, `sumneko_lua`) → check it.
+* Context: if filetype == "lua" and server == "lua_ls", raise the preference.
 
 ---
 
-# Proof-of-Concept: `lsp.tools.uv_doc` (PoC-Modul)
+# Data sources for helper actions
 
-Die folgende Modul-Implementierung ist ein PoC, das sich in die vorgesehene Architektur integriert. Es:
+* libuv API documentation (online) — a fixed URL mapping: symbol → `http(s)://libuv.org/docs.html` (or a concrete URL pattern).
+* Local help texts: if the symbol exists in `:help` (for vim/neovim-specific APIs).
+* MDN for JS/Node: MDN API URLs via symbol lookup.
+* Go: the pkg.go.dev pattern `https://pkg.go.dev/<module>#<symbol>`.
 
-* erkennt libuv-bezogene Diagnostics in Lua-Dateien,
-* extrahiert das Symbol,
-* bietet eine buffer-lokale Mapping an, die die passende libuv-Doku im Browser öffnet,
-* annotiert die Diagnostic-Nachricht (optional).
+---
 
-Die Kommentare sind auf Englisch (Projektkonvention). EmmyLua-Annotationen sind enthalten.
+# Security & UX considerations
+
+* No changes to the original LSP handler logic (non-breaking).
+* Actions are never automatically invasive (no automatic editing); only suggestive: notify + mapping.
+* Mappings are buffer-local and deduplicated.
+* Opening external URLs cross-platform is intercepted safely (Linux/macOS `xdg-open`/`open`, Windows `start`).
+
+---
+
+# Proof of concept: `lsp.tools.uv_doc` (PoC module)
+
+The module implementation below is a PoC that integrates into the intended architecture. It:
+
+* detects libuv-related diagnostics in Lua files,
+* extracts the symbol,
+* offers a buffer-local mapping that opens the matching libuv documentation in the browser,
+* annotates the diagnostic message (optional).
+
+The comments are in English (project convention). EmmyLua annotations are included.
 
 ```lua
 ---@module 'lsp.tools.uv_doc'
@@ -299,69 +299,69 @@ return M
 
 ---
 
-# Integration / Beispielkonfiguration
+# Integration / example configuration
 
-* Dateien ablegen unter `lua/lsp/tools/uv_doc.lua`.
-* In der Haupt-Init/Plugin-Datei aufrufen:
+* Place the files under `lua/lsp/tools/uv_doc.lua`.
+* Call it from the main init/plugin file:
 
 ```lua
 -- in init.lua or plugin config
 require("lsp.tools.uv_doc").setup({
   help_mapping = "<leader>uv",
-  doc_url_template = "https://libuv.org/API.html#%s", -- anpassen falls gewünschtes Ziel
+  doc_url_template = "https://libuv.org/API.html#%s", -- adapt if a different target is wanted
 })
 ```
 
-* Sicherstellen, dass `myplugin.lsp_common` (oder analoger wrapper) geladen ist, damit die Callback-Registrierung funktioniert.
+* Make sure that `myplugin.lsp_common` (or an analogous wrapper) is loaded, so that the callback registration works.
 
 ---
 
-# Erweiterungsideen & Roadmap (konkrete Schritte)
+# Extension ideas & roadmap (concrete steps)
 
-1. Robustere Symbol-Extraktion:
+1. More robust symbol extraction:
 
-   * Fallback auf Treesitter: bei komplexen Expressions das Node-Text extrahieren.
-   * Wenn Range mehrzeilig ist → read multiple lines, normalize.
+   * Fall back to treesitter: extract the node text for complex expressions.
+   * If the range spans several lines → read multiple lines, normalise.
 
-2. Dokumentsource-Adapter:
+2. Doc-source adapters:
 
-   * Implementiere ein kleines Adapter-Interface: `adapter:lookup(symbol) -> { type = "url"|"help", target = "..." }`
-   * Adapter-Beispiele: `uv_adapter`, `mdn_adapter`, `pkg_go_adapter`, `pkg_godoc_adapter`.
-   * Priorisierung: local help > internal docs > external docs.
+   * Implement a small adapter interface: `adapter:lookup(symbol) -> { type = "url"|"help", target = "..." }`
+   * Adapter examples: `uv_adapter`, `mdn_adapter`, `pkg_go_adapter`, `pkg_godoc_adapter`.
+   * Prioritisation: local help > internal docs > external docs.
 
-3. UI-Verbesserungen:
+3. UI improvements:
 
-   * statt nur notify: ein kleines floating window mit Kurzinfo + Buttons (Open doc / Copy link / Search web).
-   * optional: quickfix-Eintrag oder Telescope-Picker mit relevanten Links.
+   * Instead of only notify: a small floating window with a short summary + buttons (open doc / copy link / search the web).
+   * Optional: a quickfix entry or a Telescope picker with the relevant links.
 
 4. Testing:
 
-   * Unit Tests für `extract_symbol`-Heuristiken (Stubs für buffer lines).
-   * Integrationstest: Simuliere `publishDiagnostics` mit uv-Messages und prüfe Mapping/Notify/Caching.
+   * Unit tests for the `extract_symbol` heuristics (stubs for buffer lines).
+   * Integration test: simulate `publishDiagnostics` with uv messages and check mapping/notify/caching.
 
-5. Weitere Sprachen:
+5. Further languages:
 
-   * JS/TS: MDN-Adapter (symbol -> MDN search URL).
-   * Node.js Errors: Node API docs oder `nodejs.org/api/<module>.html`.
-   * Go: `pkg.go.dev` Adapter.
-
----
-
-# Testplan (kurz)
-
-* Unit: feed verschiedene `diag`-Fixtures (range present/absent, different messages) an `extract_symbol`; assert expected output.
-* Integration: trigger `publishDiagnostics` für eine Buffer mit lua_ls client; prüfen:
-
-  * mapping erstellt (api.nvim_buf_get_keymap)
-  * notify aufgerufen (stuben `vim.notify`).
-  * Aufruf `open_doc` öffnet jobstart mit korrekter URL (mock `vim.fn.jobstart`).
-* Cross-platform: prüfen `open_doc` auf Linux/Mac/Win.
+   * JS/TS: an MDN adapter (symbol -> MDN search URL).
+   * Node.js errors: the Node API docs or `nodejs.org/api/<module>.html`.
+   * Go: a `pkg.go.dev` adapter.
 
 ---
 
-# Abschluss (Pragmatische Hinweise)
+# Test plan (short)
 
-* Dieses PoC fügt keine invasive Änderung am Codeflow hinzu und ist rückwärtskompatibel zur bestehenden Architektur (original handler bleibt unangetastet).
-* Nächste Implementationsschritte: Treesitter-Fallback einpflegen, Adapter-Interface für mehrere Doc-Quellen, kleine UI-Komponente (Floating window) für bessere UX.
+* Unit: feed various `diag` fixtures (range present/absent, different messages) into `extract_symbol`; assert the expected output.
+* Integration: trigger `publishDiagnostics` for a buffer with a lua_ls client; check that:
+
+  * the mapping was created (api.nvim_buf_get_keymap)
+  * notify was called (stub `vim.notify`).
+  * calling `open_doc` starts a jobstart with the correct URL (mock `vim.fn.jobstart`).
+* Cross-platform: check `open_doc` on Linux/Mac/Win.
+
+---
+
+# Conclusion (pragmatic notes)
+
+* This PoC adds no invasive change to the code flow and is backwards compatible with the existing architecture (the original handler stays untouched).
+* Next implementation steps: add the treesitter fallback, an adapter interface for several doc sources, a small UI component (floating window) for better UX.
 
 ---

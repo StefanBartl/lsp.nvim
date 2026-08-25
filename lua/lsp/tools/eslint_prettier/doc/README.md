@@ -1,20 +1,20 @@
-# lsp.tools.eslint_prettier — README / Quickstart
+# lsp.tools.eslint_prettier — README / quickstart
 
-## Ziel
-Dieses Modul ermöglicht es, `eslint_d` und `prettier` (via Mason) in Neovim einfach zu verwenden.
-Man erhält Usercommands zum manuellen Ausführen und einen optionalen Autostart beim Speichern.
+## Goal
+This module makes it easy to use `eslint_d` and `prettier` (via Mason) in Neovim.
+You get user commands for running them manually, plus an optional autostart on save.
 
-## Voraussetzungen
-- Neovim (0.8+ empfohlen)
-- Mason (für Binärinstallation)
+## Prerequisites
+- Neovim (0.8+ recommended)
+- Mason (for installing the binaries)
   - `:MasonInstall eslint_d prettier`
-- Projekt muss eine ESLint- und/oder Prettier-Konfigurationsdatei im Projekt-Root haben:
-  - `.eslintrc`, `.eslintrc.json`, `.eslintrc.js`, `package.json` mit `eslintConfig`, usw.
-  - `.prettierrc`, `prettier.config.js`, `package.json` mit `prettier`, usw.
+- The project must have an ESLint and/or Prettier configuration file in the project root:
+  - `.eslintrc`, `.eslintrc.json`, `.eslintrc.js`, `package.json` with `eslintConfig`, etc.
+  - `.prettierrc`, `prettier.config.js`, `package.json` with `prettier`, etc.
 
-## Beispiel: minimale Projekt-Konfiguration
+## Example: minimal project configuration
 
-### package.json (Beispielauszug)
+### package.json (excerpt)
 ```json
 {
   "name": "example",
@@ -33,7 +33,7 @@ Man erhält Usercommands zum manuellen Ausführen und einen optionalen Autostart
 }
 ````
 
-### .eslintrc.json (Alternative)
+### .eslintrc.json (alternative)
 
 ```json
 {
@@ -44,7 +44,7 @@ Man erhält Usercommands zum manuellen Ausführen und einen optionalen Autostart
 }
 ```
 
-### .prettierrc (Alternative)
+### .prettierrc (alternative)
 
 ```json
 {
@@ -54,7 +54,7 @@ Man erhält Usercommands zum manuellen Ausführen und einen optionalen Autostart
 }
 ```
 
-## Neovim: Einbindung (init.lua)
+## Neovim: wiring it in (init.lua)
 
 ```lua
 -- Ensure plugin files are located under 'lua/lsp/tools/eslint_prettier'.
@@ -71,32 +71,31 @@ require("lsp.tools.eslint_prettier").setup({
 })
 ```
 
-## Nutzung
+## Usage
 
-* Manuell:
+* Manually:
 
-  * `:EslintFix` — führt `eslint_d --fix` für aktuelle Datei aus (falls ESLint config vorhanden)
-  * `:PrettierFormat` — führt `prettier --write` für aktuelle Datei aus (falls Prettier config vorhanden)
-  * `:LintAndFormat` — führt beide nacheinander aus (ESLint → Prettier)
-* Automatisch beim Speichern:
-  * Standardmäßig aktiv (sofern `enable_on_setup = true`)
-  * `:ToggleLintFormatOnSave` — toggelt global das Autorun-Verhalten
+  * `:EslintFix` — runs `eslint_d --fix` on the current file (if an ESLint config is present)
+  * `:PrettierFormat` — runs `prettier --write` on the current file (if a Prettier config is present)
+  * `:LintAndFormat` — runs both in sequence (ESLint → Prettier)
+* Automatically on save:
+  * Active by default (as long as `enable_on_setup = true`)
+  * `:ToggleLintFormatOnSave` — toggles the autorun behaviour globally
 
-## Hinweise & Troubleshooting
+## Notes & troubleshooting
 
-* Wenn Tools nicht gefunden werden:
+* If the tools are not found:
 
-  * Prüfen, ob Mason die Tools installiert hat: `:Mason` UI oder `:MasonInstall eslint_d prettier`.
-  * Standard Mason-Bin-Ordner ist `stdpath('data') .. '/mason/bin'`. Das Plugin sucht dort automatisch nach den Binaries (auch auf Windows mit `.cmd`-Suffix).
-  * Falls Mason an einem anderen Ort liegt, über `setup{ binaries = {...} }` explizit Pfade angeben.
+  * Check whether Mason installed them: the `:Mason` UI or `:MasonInstall eslint_d prettier`.
+  * The default Mason bin folder is `stdpath('data') .. '/mason/bin'`. The plugin looks for the binaries there automatically (including the `.cmd` suffix on Windows).
+  * If Mason lives elsewhere, give explicit paths via `setup{ binaries = {...} }`.
 * Performance:
 
-  * Die meisten Aufrufe laufen asynchron; bei sehr großen Dateien kann es sinnvoll sein, Autorun zu deaktivieren und manuell zu formatieren.
-* Weiterentwicklung:
+  * Most calls run asynchronously; for very large files it can make sense to disable autorun and format manually.
+* Further development:
 
-  * Wer Diagnostics aus ESLint in Neovim sehen möchte, sollte `null-ls` oder eine native LSP-Integration verwenden.
+  * If you want to see ESLint diagnostics in Neovim, use `null-ls` or a native LSP integration.
 
-## Lizenz / Sonstiges
+## Licence / miscellaneous
 
-* Das Modul ist als Neovim-Lua-Helper gedacht; man kann die Implementation an projekt- oder teamweite Bedürfnisse anpassen.
-
+* The module is meant as a Neovim Lua helper; the implementation can be adapted to project- or team-wide needs.

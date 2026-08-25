@@ -1,71 +1,77 @@
-# lsp_signature – Entwickler-README
+# lsp_signature – developer README
 
 ## Table of content
 
-  - [Übersicht](#bersicht)
-  - [Funktionsweise](#funktionsweise)
-  - [Parameter-Highlighting](#parameter-highlighting)
-    - [Logik](#logik)
-    - [Beispiel Highlight-Gruppen](#beispiel-highlight-gruppen)
-  - [Einbindung ins Projekt](#einbindung-ins-projekt)
-  - [Signatur-Formatierung](#signatur-formatierung)
-  - [Erweiterungen für andere Sprachen / Bibliotheken](#erweiterungen-fr-andere-sprachen-bibliotheken)
-    - [Proof-of-Concept: zusätzliche Signaturen](#proof-of-concept-zustzliche-signaturen)
-    - [Anwendung auf andere Sprachen / Bibliotheken](#anwendung-auf-andere-sprachen-bibliotheken)
-  - [Tipps für Entwickler](#tipps-fr-entwickler)
-  - [Erweiterungsmöglichkeiten](#erweiterungsmglichkeiten)
-  - [After-FT Erweiterung](#after-ft-erweiterung)
-    - [Projektstruktur](#projektstruktur)
-    - [Beispiel `after/plugin/lsp_signature.lua`](#beispiel-afterpluginlsp_signaturelua)
-    - [Hinweise](#hinweise)
+  - [Overview](#overview)
+  - [How it works](#how-it-works)
+  - [Parameter highlighting](#parameter-highlighting)
+    - [Logic](#logic)
+    - [Example highlight groups](#example-highlight-groups)
+  - [Wiring it into the project](#wiring-it-into-the-project)
+  - [Signature formatting](#signature-formatting)
+  - [Extensions for other languages / libraries](#extensions-for-other-languages--libraries)
+    - [Proof of concept: additional signatures](#proof-of-concept-additional-signatures)
+    - [Applying it to other languages / libraries](#applying-it-to-other-languages--libraries)
+  - [Tips for developers](#tips-for-developers)
+  - [Possible extensions](#possible-extensions)
+  - [After-FT extension](#after-ft-extension)
+    - [Project structure](#project-structure)
+    - [Example `after/plugin/lsp_signature.lua`](#example-afterpluginlsp_signaturelua)
+    - [Notes](#notes)
     - [Demo](#demo)
 
 ---
 
-## Übersicht
+## Overview
 
-`lsp_signature` ist ein Neovim-Modul, das ein **komfortables Floating-Popup für Funktionssignaturen und Hover-Informationen** bereitstellt. Es bietet:
+`lsp_signature` is a Neovim module that provides a **convenient floating popup for
+function signatures and hover information**. It offers:
 
-* Ein **Toggle für Insert- und Normalmodus** (`<C-b>`), um Signaturen und Hover-Infos anzuzeigen.
-* **Persistente Floating-Popups**, die sichtbar bleiben, bis `<C-b>` erneut gedrückt wird.
-* **Parameter-Highlighting**, das alle Parameter farblich unterscheidet und den **aktiven Parameter** besonders markiert.
-* **Fallback auf Hover**, falls keine Signaturen vom LSP bereitgestellt werden.
-* Erweiterbarkeit für **nicht-LSP-Signaturen**, z. B. eigene Typinformationen, Bibliotheksfunktionen oder Sprachen ohne vollständige LSP-Unterstützung.
-
----
-
-## Funktionsweise
-
-1. **Keymap/Toggle**:
-   * `<C-b>` öffnet das Floating-Popup.
-   * Popup bleibt offen, Insertmodus wird beibehalten.
-   * `<C-b>` erneut schließt das Popup.
-   * `<Esc>` innerhalb des Popups schließt das Fenster sofort.
-
-2. **LSP-Integration**:
-   * Verwendet `textDocument/signatureHelp` bevorzugt.
-   * Falls Signaturen nicht verfügbar sind, wird `textDocument/hover` abgefragt.
-   * Berücksichtigt moderne Neovim-APIs (`client.server_capabilities`) für LSP-Feature-Erkennung.
-
-1. **Floating-Popup**:
-   * Fokusierbares Fenster, kann für Scrollen oder Kopieren verwendet werden.
-   * Maximale Breite: 60% der Bildschirmbreite.
-   * Automatisches Positionieren über oder unter dem Cursor, abhängig vom verfügbaren Platz.
-   * Rahmendesign: `rounded`.
+* A **toggle for insert and normal mode** (`<C-b>`) to show signatures and hover info.
+* **Persistent floating popups** that stay visible until `<C-b>` is pressed again.
+* **Parameter highlighting** that colours all parameters differently and marks the
+  **active parameter** specially.
+* **A fallback to hover** if the LSP provides no signatures.
+* Extensibility for **non-LSP signatures**, e.g. your own type information, library
+  functions, or languages without full LSP support.
 
 ---
 
-## Parameter-Highlighting
+## How it works
 
-### Logik
+1. **Keymap/toggle**:
+   * `<C-b>` opens the floating popup.
+   * The popup stays open, insert mode is preserved.
+   * `<C-b>` again closes the popup.
+   * `<Esc>` inside the popup closes the window immediately.
 
-* Alle Parameter einer Signatur werden erkannt (`signatureHelp.signatures[].parameters`).
-* **Aktiver Parameter**: eigene Highlight-Gruppe `LspSignatureActiveParam`.
-* **Andere Parameter**: zyklisch durch Highlight-Gruppen `LspSignatureParam1..N`.
-* Temporäre Highlights werden über `vim.hl.range()` erstellt, verschwinden beim Schließen des Popups.
-* Für komplexe Signaturen (mehrere Zeilen) kann die Logik erweitert werden, um Zeilen korrekt zu berücksichtigen.
+2. **LSP integration**:
+   * Uses `textDocument/signatureHelp` by preference.
+   * If signatures are not available, `textDocument/hover` is queried.
+   * Takes modern Neovim APIs (`client.server_capabilities`) into account for LSP
+     feature detection.
 
-### Beispiel Highlight-Gruppen
+1. **Floating popup**:
+   * A focusable window, usable for scrolling or copying.
+   * Maximum width: 60% of the screen width.
+   * Automatic positioning above or below the cursor, depending on the available space.
+   * Border style: `rounded`.
+
+---
+
+## Parameter highlighting
+
+### Logic
+
+* All parameters of a signature are detected (`signatureHelp.signatures[].parameters`).
+* **Active parameter**: its own highlight group `LspSignatureActiveParam`.
+* **Other parameters**: cycled through the highlight groups `LspSignatureParam1..N`.
+* Temporary highlights are created via `vim.hl.range()` and disappear when the popup
+  is closed.
+* For complex signatures (several lines) the logic can be extended to handle lines
+  correctly.
+
+### Example highlight groups
 
 ```vim
 highlight LspSignatureParam1 guifg=#ff8800 gui=bold
@@ -77,47 +83,49 @@ highlight LspSignatureActiveParam guifg=#ffffff guibg=#005f87 gui=bold
 
 -
 
-## Einbindung ins Projekt
+## Wiring it into the project
 
 ```lua
 require("mappings.lsp_signature").setup()
 ```
 
-* `<C-b>` wird für **Insert- und Normalmodus** gebunden.
-* Optional kann man die Highlight-Gruppen in der eigenen Colorscheme-Datei anpassen.
+* `<C-b>` is bound for **insert and normal mode**.
+* Optionally, the highlight groups can be adjusted in your own colorscheme file.
 
 ---
 
-## Signatur-Formatierung
+## Signature formatting
 
-* LSP-Signaturen werden via `format_signature_help.lua` in **String-Arrays** zerlegt.
-* Dokumentation (`sig.documentation`) wird an die Signatur angehängt.
-* Label-Parsing für Parameter:
-  * Entweder **0-basierte Spalten** `[start, end]` vom LSP.
-  * Oder **String-Matching** für LSPs, die keine Positionsangaben liefern.
+* LSP signatures are broken down into **string arrays** via `format_signature_help.lua`.
+* The documentation (`sig.documentation`) is appended to the signature.
+* Label parsing for parameters:
+  * Either **0-based columns** `[start, end]` from the LSP.
+  * Or **string matching** for LSPs that provide no positions.
 
 ---
 
-## Erweiterungen für andere Sprachen / Bibliotheken
+## Extensions for other languages / libraries
 
-Nicht alle Sprachen oder Bibliotheken liefern über LSP vollständige Signaturen (z. B. Rust, C, Go, Node.js/libuv). Hier kann man **eigene Signaturen und Typinformationen definieren**, die dann wie normale Signaturen im Popup angezeigt werden.
+Not every language or library delivers full signatures over LSP (e.g. Rust, C, Go,
+Node.js/libuv). Here you can **define your own signatures and type information**,
+which are then shown in the popup like normal signatures.
 
-### Proof-of-Concept: zusätzliche Signaturen
+### Proof of concept: additional signatures
 
 ```lua
 local custom_signatures = {
   ["uv_loop_new"] = {
     label = "uv_loop_new() -> uv_loop_t*",
     parameters = {},
-    documentation = "Erstellt einen neuen libuv Event-Loop."
+    documentation = "Creates a new libuv event loop."
   },
   ["uv_timer_init"] = {
     label = "uv_timer_init(loop: uv_loop_t*, handle: uv_timer_t*)",
     parameters = {
-      {label = {13, 23}},  -- Start/End-Position innerhalb des Labels
+      {label = {13, 23}},  -- start/end position within the label
       {label = {32, 44}}
     },
-    documentation = "Initialisiert einen Timer in libuv."
+    documentation = "Initialises a timer in libuv."
   },
   ["my_rust_func"] = {
     label = "my_rust_func(a: i32, b: String) -> Result<()>",
@@ -125,11 +133,11 @@ local custom_signatures = {
       {label = {14, 18}},  -- "a: i32"
       {label = {20, 28}}   -- "b: String"
     },
-    documentation = "Beispiel-Funktion für Rust mit zwei Parametern."
+    documentation = "Example function for Rust with two parameters."
   }
 }
 
--- Lookup innerhalb des Handlers vor LSP-Aufruf
+-- Lookup inside the handler before the LSP call
 local name = vim.fn.expand("<cword>")
 local sig = custom_signatures[name]
 if sig then
@@ -138,7 +146,7 @@ if sig then
   local lines, hl = format_signature_help(sig)
   local buf, win = open_floating_preview(lines)
 
-  -- Highlighting für benutzerdefinierte Signatur
+  -- Highlighting for the custom signature
   if hl and buf and api.nvim_buf_is_valid(buf) then
     local ns = api.nvim_create_namespace("LspSignatureCustom")
     vim.hl.range(buf, ns, "LspSignatureActiveParam",
@@ -149,50 +157,55 @@ if sig then
 end
 ```
 
-### Anwendung auf andere Sprachen / Bibliotheken
+### Applying it to other languages / libraries
 
-* **Rust**: Funktionen aus Crates, die kein LSP liefern.
-* **C**: Standardbibliotheken, eigene Header.
-* **Go**: interne Tools oder Bibliotheken ohne gopls-Unterstützung.
+* **Rust**: functions from crates that ship no LSP.
+* **C**: standard libraries, your own headers.
+* **Go**: internal tools or libraries without gopls support.
 * **TypeScript/Node.js**: libuv, fs, net, etc.
 
-Mit dieser Struktur kann man **beliebige Signaturen und Typinformationen** in das Popup einspeisen, sodass `<C-b>` universell funktioniert.
+With this structure you can feed **arbitrary signatures and type information** into
+the popup, so that `<C-b>` works universally.
 
 ---
 
-## Tipps für Entwickler
+## Tips for developers
 
-1. **Highlight-Gruppen anpassen**: Für konsistente Farben im eigenen Colorscheme.
-2. **Namespace wiederverwenden**: `api.nvim_create_namespace` nur einmal pro Session erzeugen.
-3. **Popup-Optionen anpassen**: Größe, Position, Rahmenstil.
-4. **Weitere Signaturen einbinden**: Lookup-Tabellen oder automatische Parsers (z. B. aus Docstrings oder Header-Files).
-5. **Insertmodus**: Popup ist focusable, man kann scrollen oder kopieren, Insertmodus bleibt erhalten.
+1. **Adjust the highlight groups**: for consistent colours in your own colorscheme.
+2. **Reuse the namespace**: create `api.nvim_create_namespace` only once per session.
+3. **Adjust the popup options**: size, position, border style.
+4. **Wire in further signatures**: lookup tables or automatic parsers (e.g. from
+   docstrings or header files).
+5. **Insert mode**: the popup is focusable, you can scroll or copy, and insert mode
+   is preserved.
 
 -
 
-## Erweiterungsmöglichkeiten
+## Possible extensions
 
-* Mehrzeilige Parameter-Highlighting über `vim.hl.range` oder Extmarks.
-* Dynamisches Highlighting basierend auf Parametertypen (z. B. int = grün, string = blau).
-* Inline-Tipps, z. B. `@deprecated`, `experimental`.
-* Integration weiterer Sprachen ohne LSP-Unterstützung.
-
----
-
-Damit hast du ein **vollständig erweiterbares, modernes LSP-Signaturmodul**, das sowohl LSP-Daten als auch benutzerdefinierte Signaturen unterstützt, mit Toggle, persistenten Popups und farbigem Parameter-Highlighting.
+* Multi-line parameter highlighting via `vim.hl.range` or extmarks.
+* Dynamic highlighting based on parameter types (e.g. int = green, string = blue).
+* Inline hints, e.g. `@deprecated`, `experimental`.
+* Integration of further languages without LSP support.
 
 ---
 
-## After-FT Erweiterung
-
-* LSP-Signaturen aus Rust, Go, TypeScript
-* Libuv-Funktionen als benutzerdefinierte Signaturen
-* Farbliches Highlighting für alle Parameter, aktiver Parameter hervorgehoben
-* Persistentes Popup mit Scroll-/Copy-Funktion
+That gives you a **fully extensible, modern LSP signature module** that supports both
+LSP data and user-defined signatures, with a toggle, persistent popups and coloured
+parameter highlighting.
 
 ---
 
-### Projektstruktur
+## After-FT extension
+
+* LSP signatures from Rust, Go, TypeScript
+* libuv functions as user-defined signatures
+* Coloured highlighting for all parameters, the active parameter emphasised
+* A persistent popup with scroll/copy support
+
+---
+
+### Project structure
 
 ```sh
 nvim-lsp-signature-demo/
@@ -207,19 +220,19 @@ nvim-lsp-signature-demo/
 │        └─ split_lines.lua
 ├─ after/
 │  └─ plugin/
-│     └─ lsp_signature.lua   -- Setup Keymap und Toggle
+│     └─ lsp_signature.lua   -- keymap and toggle setup
 └─ README.md
 ```
 
 ---
 
-### Beispiel `after/plugin/lsp_signature.lua`
+### Example `after/plugin/lsp_signature.lua`
 
 ```lua
 local lsp_sig = require("lsp.tools.lsp_signature")
 lsp_sig.setup()
 
--- Optional: zusätzliche Signaturen für Rust, Go, TypeScript, libuv
+-- Optional: additional signatures for Rust, Go, TypeScript, libuv
 _G.custom_signatures = {
   -- Rust
   ["my_rust_func"] = {
@@ -228,43 +241,43 @@ _G.custom_signatures = {
       {label = {14, 18}},
       {label = {20, 28}}
     },
-    documentation = "Beispiel-Funktion für Rust."
+    documentation = "Example function for Rust."
   },
   -- Go
   ["fmt_Println"] = {
     label = "Println(a ...interface{}) (n int, err error)",
     parameters = {{label={9, 20}}},
-    documentation = "Go fmt.Println Funktion."
+    documentation = "The Go fmt.Println function."
   },
   -- TypeScript / Node.js
   ["uv_loop_new"] = {
     label = "uv_loop_new() -> uv_loop_t*",
     parameters = {},
-    documentation = "Erstellt einen neuen libuv Event-Loop."
+    documentation = "Creates a new libuv event loop."
   }
 }
 
 -- Hook in request_and_show.lua:
--- Vor LSP-Aufruf prüfen: if _G.custom_signatures[vim.fn.expand("<cword>")] then ...
+-- Check before the LSP call: if _G.custom_signatures[vim.fn.expand("<cword>")] then ...
 ```
 
 ---
 
-### Hinweise
+### Notes
 
-1. **Toggle** `<C-b>` in Insert- und Normalmodus.
-2. **Persistent Popup**: bleibt offen, Insertmodus bleibt erhalten.
-3. **Parameter-Highlighting**: unterschiedliche Farben + aktiver Parameter.
-4. **Fallback auf Hover**, falls LSP keine Signaturen liefert.
-5. **Benutzerdefinierte Signaturen**: beliebige Sprache/Bibliothek integrierbar.
+1. **Toggle** `<C-b>` in insert and normal mode.
+2. **Persistent popup**: stays open, insert mode is preserved.
+3. **Parameter highlighting**: different colours + the active parameter.
+4. **Fallback to hover** if the LSP delivers no signatures.
+5. **User-defined signatures**: any language/library can be integrated.
 
 ---
 
 ### Demo
 
-* Rust: `my_rust_func` → `<C-b>` zeigt Signatur + Parameter-Highlighting.
-* Go: `fmt_Println` → `<C-b>` zeigt Signatur.
-* Node.js/libuv: `uv_loop_new` → `<C-b>` zeigt Signatur.
-* LSP unterstützt zusätzliche Funktionen, z. B. TypeScript, Lua, Python.
+* Rust: `my_rust_func` → `<C-b>` shows the signature + parameter highlighting.
+* Go: `fmt_Println` → `<C-b>` shows the signature.
+* Node.js/libuv: `uv_loop_new` → `<C-b>` shows the signature.
+* The LSP supports further functions, e.g. TypeScript, Lua, Python.
 
 ---

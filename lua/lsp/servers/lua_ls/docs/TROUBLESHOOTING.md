@@ -1,9 +1,9 @@
-# LSP `lua_ls`-Troubleshooting
+# LSP `lua_ls` troubleshooting
 
-## Falls Typen nicht gefunden werden weiterhin besteht, stellee sicher dass
+## If types still are not found, make sure that
 
-- Alle `@types/*.lua` Dateien mit `return {}` enden
-- Der @types Ordner in `lua/lsp/@types/` liegt
-- `find_type_dirs.lua` diesen Ordner findet
+- every `@types/*.lua` file ends with `return {}`
+- the @types folder lives in `lua/lsp/@types/`
+- `find_type_dirs.lua` finds that folder
 
 ---

@@ -1,340 +1,338 @@
 # Roadmap — `lsp.nvim`
 
-> **Dies ist das Original.** Bis 2026-08-23 war es die Spiegelung eines
-> Konzeptpapiers in der nvim-Config; das wurde dort zusammen mit den Roadmaps
-> der anderen ausgelagerten Plugins gelöscht, nachdem die Migration durch war
-> (Config-Commit `32d7a760`). Ein ausgelagertes Plugin trägt seine Roadmap
-> selbst — sonst pflegt man sie an einem Ort und liest sie an einem anderen.
-> Die ursprünglichen relativen Links in die Config sind zu reinem Text
-> reduziert, weil sie von hier aus ins Leere zeigen.
+> **This is the original.** Until 2026-08-23 it mirrored a concept paper in the
+> nvim config; that copy was deleted there together with the roadmaps of the
+> other extracted plugins once the migration was through (config commit
+> `32d7a760`). An extracted plugin carries its own roadmap — otherwise you
+> maintain it in one place and read it in another. The original relative links
+> into the config are reduced to plain text, because from here they point
+> nowhere.
 >
-> Stand 2026-08-23: **alle fünf Migrationsphasen (§13) sind durch**, ebenso die
-> Einzelpunkte danach — Schritt 12, B8, B12, B14, B16–B19, die Doku-Seiten aus
-> §12, die Spec-Suite (124 Fälle) und Count-Support auf den Bewegungstasten.
-> Alle drei Autor-Entscheidungen aus §15 sind erledigt: `NEW-20`, §15.1
-> (Trouble als `]d`/`[d`-Senke, seit 2026-08-24 gebaut) und §15.2
-> (Completion-Engine, jetzt `blink`). Kein offener Punkt mehr aus §15.
+> Status 2026-08-23: **all five migration phases (§13) are through**, and so are
+> the individual items after them — step 12, B8, B12, B14, B16–B19, the doc
+> pages from §12, the spec suite (124 cases) and count support on the motion
+> keys. All three author decisions from §15 are done: `NEW-20`, §15.1 (Trouble
+> as the `]d`/`[d` sink, built since 2026-08-24) and §15.2 (completion engine,
+> now `blink`). Nothing under §15 is left open.
 
-# `lsp.nvim` — Konzept (Dachplugin)
+# `lsp.nvim` — concept (umbrella plugin)
 
-Auslagerung von `nvim/lua/lsp/**` **und des gesamten LSP-Ökosystems der Config**
-in ein eigenständiges Plugin, analog zu `dap.nvim` (`C:\repos\dap.nvim`,
-Modulwurzel `wkddap`) und den anderen extrahierten `*.nvim`-Plugins
-(`filetree.nvim`, `sessions.nvim`, `pickers.nvim`, ...).
+Extraction of `nvim/lua/lsp/**` **and of the config's entire LSP ecosystem**
+into a standalone plugin, analogous to `dap.nvim` (`C:\repos\dap.nvim`, module
+root `wkddap`) and the other extracted `*.nvim` plugins (`filetree.nvim`,
+`sessions.nvim`, `pickers.nvim`, ...).
 
-> **Stand 2026-08-23.** Alle Repos liegen inzwischen unter `C:\repos\` — die
-> `E:\repos\…`-Pfade in diesem Dokument sind entsprechend nachgezogen.
+> **Status 2026-08-23.** All repos now live under `C:\repos\` — the
+> `E:\repos\…` paths in this document have been updated accordingly.
 >
-> `C:\repos\lsp.nvim` (GitHub: `StefanBartl/lsp.nvim`) ist auf Branch `main`.
-> **Phasen 0, 1 und 2 sind abgeschlossen.**
+> `C:\repos\lsp.nvim` (GitHub: `StefanBartl/lsp.nvim`) is on branch `main`.
+> **Phases 0, 1 and 2 are complete.**
 >
-> - Phase 0: B1, B2, B4, B6 erledigt (siehe die Befund-Tabelle).
-> - Phase 1: `gates/NEW_PROJECT.md` durchgegangen, Protokoll in
->   `docs/CHECKLISTS/NEW_PROJECT.md`; Gerüst, Tooling, CI, README, vimdoc,
->   Smoke-Test.
-> - Phase 2: der Kern ist umgezogen — 164 Dateien, `core/`, `servers/`,
+> - Phase 0: B1, B2, B4, B6 done (see the findings table).
+> - Phase 1: `gates/NEW_PROJECT.md` walked through, record in
+>   `docs/CHECKLISTS/NEW_PROJECT.md`; scaffold, tooling, CI, README, vimdoc,
+>   smoke test.
+> - Phase 2: the core has moved — 164 files, `core/`, `servers/`,
 >   `languages/`, `formatter/`, `diagnostics/`, `lspdoctor/`, `tools/`,
->   `usercmds/`, `completion/`, `integrations/mason/`. Die Config lädt das
->   Plugin; `lua/lsp/**` heißt dort jetzt `lua/lsp_legacy/**` und liegt auf
->   keinem require-Pfad mehr.
+>   `usercmds/`, `completion/`, `integrations/mason/`. The config loads the
+>   plugin; `lua/lsp/**` is called `lua/lsp_legacy/**` there now and sits on no
+>   require path any more.
 >
-> Aus Phase 6 ist der Umzug von `debug_adapters/**` nach `dap.nvim` ebenfalls
-> erledigt, **Phase 3 ist durch** (alle 42 LSP-Tasten kommen aus dem Katalog,
-> `docs/BINDINGS.md` wird daraus generiert, CI prüft mit `--check`) und
-> **Phase 4 zum größten Teil** (12 Adapter unter `integrations/`, der Kern
-> kennt kein Fremdplugin mehr) und **Phase 5** — `import = "lsp.pack"`
-> installiert und konfiguriert das Ökosystem, `plugins/trouble.lua` und der
-> LSP-Teil von `plugins/lsp.lua` sind weg.
+> From phase 6, the move of `debug_adapters/**` into `dap.nvim` is done as well,
+> **phase 3 is through** (all 42 LSP keys come from the catalogue,
+> `docs/BINDINGS.md` is generated from it, CI checks with `--check`) and
+> **phase 4 for the most part** (12 adapters under `integrations/`, the core
+> knows no third-party plugin any more) and **phase 5** — `import = "lsp.pack"`
+> installs and configures the ecosystem, `plugins/trouble.lua` and the LSP part
+> of `plugins/lsp.lua` are gone.
 >
-> **Alle fünf Phasen sind damit durch**, und die Einzelpunkte inzwischen auch:
-> Schritt 12 (die ~30 `:Lsp*` sind zu 15 Routen mit Legacy-Aliasen gefaltet),
-> B8, B12, B14, B16–B19, `lua/lsp_legacy` gelöscht (163 Dateien), die sechs
-> Doku-Seiten aus §12, eine Spec-Suite mit 124 Fällen und Count-Support auf den
-> Bewegungstasten (`NEW-25`).
+> **All five phases are therefore through**, and by now the individual items
+> too: step 12 (the ~30 `:Lsp*` are folded into 15 routes with legacy aliases),
+> B8, B12, B14, B16–B19, `lua/lsp_legacy` deleted (163 files), the six doc pages
+> from §12, a spec suite with 124 cases and count support on the motion keys
+> (`NEW-25`).
 >
-§15 ist damit vollständig abgearbeitet. `NEW-20` (gen_map `--check` gegen
-> eine bewusst nicht committete Map) ist im Gate präzisiert; §15.2
-> (Completion-Engine) läuft seit 2026-08-24 auf `blink` als Default; §15.1
-> (Trouble als `]d`/`[d`-Senke) ist implementiert — Details unten unter
-> „Entschieden (2026-08-23, zweiter Durchgang)“.
-> Alles andere unter §15 „Offen“ hat sich durch das Gebaute erledigt.
+§15 is thereby fully worked off. `NEW-20` (gen_map `--check` against a
+> deliberately uncommitted map) is made precise in the gate; §15.2 (completion
+> engine) has been running on `blink` as the default since 2026-08-24; §15.1
+> (Trouble as the `]d`/`[d` sink) is implemented — details below under
+> "Decided (2026-08-23, second pass)".
+> Everything else under §15 "Open" has been settled by what was built.
 >
-> Die Migration hat sechs Bugs gefunden, die vorher **live in der Config**
-> liefen: die Copilot/cmp-Brücke wurde nie aufgerufen, `config_exists()` meldete
-> immer „keine Config“, ein `format()`-Aufruf ohne Argument hätte beim ersten
-> Server ohne Modul das ganze Setup abgebrochen, eine Warnung wurde verworfen,
-> ein macOS-Guard war immer falsch, und ein Global leckte. Keiner davon wäre
-> beim Lesen aufgefallen — sie kamen aus Specs, aus luacheck und aus dem Zwang,
-> beim Umzug jede Zeile einmal anzufassen.
+> The migration found six bugs that had been running **live in the config**
+> beforehand: the Copilot/cmp bridge was never called, `config_exists()` always
+> reported "no config", a `format()` call without an argument would have aborted
+> the whole setup at the first server without a module, a warning was discarded,
+> a macOS guard was always false, and a global leaked. None of them would have
+> been noticed by reading — they came out of specs, out of luacheck, and out of
+> being forced to touch every line once during the move.
 
-Die Grundsatzentscheidung ist in nvim.nvim.md (Abschnitt
-„`lsp.nvim` vs. `options.nvim`“, 2026-07-17) getroffen: `lua/lsp/` ist
-strukturell dasselbe wie `dap.nvim` — ein **stateful Subsystem** (Registry,
-Capabilities, Attach-Handler, Formatter-Toggle, Workspace-Diagnostics-Toggle),
-keine deklarativen Settings. Gehört daher **nicht** in `options.nvim`.
+The basic decision is recorded in nvim.nvim.md (section
+"`lsp.nvim` vs. `options.nvim`", 2026-07-17): `lua/lsp/` is structurally the
+same thing as `dap.nvim` — a **stateful subsystem** (registry, capabilities,
+attach handler, formatter toggle, workspace-diagnostics toggle), not
+declarative settings. It therefore does **not** belong in `options.nvim`.
 
-**Neu gegenüber der ersten Konzeptfassung (2026-07-26):** `lsp.nvim` wird nicht
-nur ein Umzug von `lua/lsp/**`, sondern ein **Dachplugin**, unter dem *alles*
-LSP-Bezogene zusammenläuft — inklusive der Fremdplugins (`trouble.nvim`,
-`conform.nvim`, `lazydev.nvim`, `nvim-cmp`/`blink.cmp`, `mason.nvim`,
-`lspsaga.nvim`, `inc-rename.nvim`, `lensline.nvim`,
-`workspace-diagnostics.nvim`) und *aller* LSP-/Diagnostics-Keymaps, die heute
-über `lua/bindings/mappings/**` und `lua/config/**` verstreut sind
-(z. B. `<leader>wq`, `<leader>x*`, `<leader>rn`).
+**New compared to the first concept version (2026-07-26):** `lsp.nvim` is not
+merely a move of `lua/lsp/**`, but an **umbrella plugin** under which
+*everything* LSP-related comes together — including the third-party plugins
+(`trouble.nvim`, `conform.nvim`, `lazydev.nvim`, `nvim-cmp`/`blink.cmp`,
+`mason.nvim`, `lspsaga.nvim`, `inc-rename.nvim`, `lensline.nvim`,
+`workspace-diagnostics.nvim`) and *all* LSP/diagnostics keymaps that are today
+scattered across `lua/bindings/mappings/**` and `lua/config/**`
+(e.g. `<leader>wq`, `<leader>x*`, `<leader>rn`).
 
 ---
 
 ## Table of Content
 
-- [1. Ist-Zustand](#1-ist-zustand)
-- [2. Befunde aus der Analyse (Bugs & Altlasten)](#2-befunde-aus-der-analyse-bugs--altlasten)
-- [3. Zielbild: Dachplugin in drei Schichten](#3-zielbild-dachplugin-in-drei-schichten)
-- [4. Scope-Abgrenzung](#4-scope-abgrenzung)
-- [5. Architektur / Verzeichnisbaum](#5-architektur--verzeichnisbaum)
-- [6. Das Pack-System (LazySpec-Export)](#6-das-pack-system-lazyspec-export)
-- [7. Integrations-Adapter im Detail](#7-integrations-adapter-im-detail)
-- [8. Bindings: Keymaps, Usercmds, Autocmds](#8-bindings-keymaps-usercmds-autocmds)
-- [9. Öffentliche API & Defaults](#9-öffentliche-api--defaults)
-- [10. lib.nvim-Integration](#10-libnvim-integration)
+- [1. Current state](#1-current-state)
+- [2. Findings from the analysis (bugs & legacy)](#2-findings-from-the-analysis-bugs--legacy)
+- [3. Target picture: umbrella plugin in three layers](#3-target-picture-umbrella-plugin-in-three-layers)
+- [4. Scope boundaries](#4-scope-boundaries)
+- [5. Architecture / directory tree](#5-architecture--directory-tree)
+- [6. The pack system (LazySpec export)](#6-the-pack-system-lazyspec-export)
+- [7. Integration adapters in detail](#7-integration-adapters-in-detail)
+- [8. Bindings: keymaps, usercmds, autocmds](#8-bindings-keymaps-usercmds-autocmds)
+- [9. Public API & defaults](#9-public-api--defaults)
+- [10. lib.nvim integration](#10-libnvim-integration)
 - [11. checkhealth & LspDoctor](#11-checkhealth--lspdoctor)
-- [12. Dokumentationspflichten](#12-dokumentationspflichten)
-- [13. Migrationsplan](#13-migrationsplan)
-- [14. Roadmap: neue Features](#14-roadmap-neue-features)
-- [15. Offene Fragen / Entscheidungen](#15-offene-fragen--entscheidungen)
+- [12. Documentation duties](#12-documentation-duties)
+- [13. Migration plan](#13-migration-plan)
+- [14. Roadmap: new features](#14-roadmap-new-features)
+- [15. Open questions / decisions](#15-open-questions--decisions)
 
 ---
 
-## 1. Ist-Zustand
+## 1. Current state
 
-### 1.1 `lua/lsp/**` — 130 Dateien, 11.645 LOC
+### 1.1 `lua/lsp/**` — 130 files, 11,645 LOC
 
-| Bereich | Pfad | LOC | Verantwortung |
+| Area | Path | LOC | Responsibility |
 |---|---|---:|---|
-| Core | `core/{registry,attach,capabilities,handlers,filter,diagnostics,treesitter,util}.lua` | 668 | Server-Registry (`ACTIVE`-Liste), `on_attach`/`on_init`, Capabilities-Merge (cmp/blink/NvChad), publishDiagnostics-Dedup, Treesitter-Wiring |
-| Core (Sonderfälle) | `core/workspace_diagnostics.lua`, `core/root_scope.lua`, `core/root_scope_picker.lua` | (in 668) | Laufzeit-Toggle für `workspace-diagnostics.nvim` (Startup-Freeze-Fix), Multi-Root-Handling |
-| Formatter | `formatter/{init,conform}.lua` | 408 | Conform-first, LSP-Fallback, View-preserving Format-on-Save mit Toggle |
-| Diagnostics | `diagnostics/**` | 415 | Commands (`:Diag*`), Keymaps (`<leader>wq`, `]d`/`[d`, `]q`/`[q`), Quickfix/Loclist, Navigation |
-| Server-Configs | `servers/**` (bashls, lua_ls, gopls, marksman, csharp, clangd, zig, webdev/*, mobiledev/*) | 3012 | Pro-Server-Setup; `lua_ls` mit eigenem Library-Resolver/Reload/Rootresolver, `marksman` mit eigenen Handlern |
-| Sprachen | `languages/**` (app, documentation, scripting, systems, webdev) | 1477 | Filetype-spezifische QoL (Astro-Autocmds/Keymaps/Usercmds, Markdown-Words, ...) |
-| Debug-Doctor | `lspdoctor/**` | 948 | `:LspDoctor {health,debug,quick,deep,all}` — **nicht** an `:checkhealth` angebunden |
-| Tools | `tools/{eslint_prettier,lsp_signature,ts_type_lookup,deprecated_help}/**` | 2909 | Eigenständige Zusatz-Werkzeuge, jeweils mit eigenem `setup()`/`attach()` |
-| Usercmds | `usercmds/**` | 1170 | `:LspFormat*`, `:LspStart/Stop/RestartHere`, `:LspRecover`, `:LspWorkspaceDiagnostics*`, `:LspMobileDiagnostics`, Command-Completion |
-| Debug Adapters | `debug_adapters/**` | 183 | **Fehlplatziert** — DAP ist ein eigenes Protokoll, gehört zu `dap.nvim` |
-| Types | `@types/**` + verteilte `@types`-Unterordner | 202 | Bereits gut nach Leitfaden strukturiert |
+| Core | `core/{registry,attach,capabilities,handlers,filter,diagnostics,treesitter,util}.lua` | 668 | Server registry (`ACTIVE` list), `on_attach`/`on_init`, capabilities merge (cmp/blink/NvChad), publishDiagnostics dedup, treesitter wiring |
+| Core (special cases) | `core/workspace_diagnostics.lua`, `core/root_scope.lua`, `core/root_scope_picker.lua` | (within 668) | Runtime toggle for `workspace-diagnostics.nvim` (startup-freeze fix), multi-root handling |
+| Formatter | `formatter/{init,conform}.lua` | 408 | Conform-first, LSP fallback, view-preserving format-on-save with toggle |
+| Diagnostics | `diagnostics/**` | 415 | Commands (`:Diag*`), keymaps (`<leader>wq`, `]d`/`[d`, `]q`/`[q`), quickfix/loclist, navigation |
+| Server configs | `servers/**` (bashls, lua_ls, gopls, marksman, csharp, clangd, zig, webdev/*, mobiledev/*) | 3012 | Per-server setup; `lua_ls` with its own library resolver/reload/root resolver, `marksman` with its own handlers |
+| Languages | `languages/**` (app, documentation, scripting, systems, webdev) | 1477 | Filetype-specific QoL (Astro autocmds/keymaps/usercmds, markdown words, ...) |
+| Debug doctor | `lspdoctor/**` | 948 | `:LspDoctor {health,debug,quick,deep,all}` — **not** wired into `:checkhealth` |
+| Tools | `tools/{eslint_prettier,lsp_signature,ts_type_lookup,deprecated_help}/**` | 2909 | Standalone extra tools, each with its own `setup()`/`attach()` |
+| Usercmds | `usercmds/**` | 1170 | `:LspFormat*`, `:LspStart/Stop/RestartHere`, `:LspRecover`, `:LspWorkspaceDiagnostics*`, `:LspMobileDiagnostics`, command completion |
+| Debug adapters | `debug_adapters/**` | 183 | **Misplaced** — DAP is its own protocol, belongs to `dap.nvim` |
+| Types | `@types/**` + distributed `@types` subfolders | 202 | Already well structured per the guideline |
 
-Einstiegspunkt `lsp/init.lua` verdrahtet alles synchron in `M.setup(cfg)`,
-inkl. Host-Spezifika (`machine.is("workstation")`,
+The entry point `lsp/init.lua` wires everything synchronously in `M.setup(cfg)`,
+including host specifics (`machine.is("workstation")`,
 `require("config.mason.ensure_install")`, `nvchad.config.lspconfig`).
-Aufruf erfolgt in init.lua:162: `require("lsp").setup({ ensure_installing = false })`.
+It is called in init.lua:162: `require("lsp").setup({ ensure_installing = false })`.
 
-### 1.2 LSP-nahe Fremdplugins in `lua/plugins/**`
+### 1.2 LSP-adjacent third-party plugins in `lua/plugins/**`
 
-Das ist der Teil, der im alten Konzept fehlte. Alle folgenden Plugins gehören
-fachlich unter das Dach `lsp.nvim`:
+This is the part the old concept was missing. All of the following plugins
+belong, topically, under the `lsp.nvim` umbrella:
 
-| Plugin | Spec-Ort | Rolle | Kopplung an `lua/lsp/**` |
+| Plugin | Spec location | Role | Coupling to `lua/lsp/**` |
 |---|---|---|---|
-| `folke/trouble.nvim` | `plugins/trouble.lua` (+ `config/trouble/numbering.lua`) | Diagnostics-/Quickfix-/Loclist-/LSP-Listen-UI, `lazy = false` | keine direkte, aber **Keymap-Konflikt** bei `]q`/`[q` (s. §2) |
-| `stevearc/conform.nvim` | `plugins/lsp.lua` | Formatter-Engine | `lsp/formatter/{init,conform}.lua` baut darauf auf — **zwei Setups parallel** |
-| `folke/lazydev.nvim` | `plugins/lsp.lua` | lua_ls-Library für `require` | `lsp/core/attach.lua:62` lädt es per `pcall` bei ft=lua |
-| `hrsh7th/nvim-cmp` | `plugins/lsp.lua`, `config/copilot/cmp.lua` | Completion-Engine | `lsp/core/capabilities.lua:36` liest `cmp_nvim_lsp` |
-| `saghen/blink.cmp` | `plugins/lsp.lua` (**auskommentiert**) | Alternative Completion-Engine | `lsp/core/capabilities.lua:53` unterstützt es bereits |
-| `williamboman/mason.nvim` | `plugins/*` + `config/mason/ensure_install/**` | Paketverwaltung LSP/DAP/Linter/Formatter | `lsp/init.lua:199` ruft `config.mason.ensure_install` |
-| `artemave/workspace-diagnostics.nvim` | `plugins/lsp.lua` | Workspace-weite Diagnostics | `lsp/core/workspace_diagnostics.lua` + `usercmds` |
-| `nvimdev/lspsaga.nvim` | `plugins/lsp.lua` | Breadcrumb/LSP-UI (fast alles deaktiviert) | keine |
-| `smjonas/inc-rename.nvim` | `plugins/lsp.lua` + `config/inc_rename/init.lua` | Inkrementelles Rename + Auto-Save | eigener Keymap `<leader>rn`, redundant zu `grn` |
-| `oribarilan/lensline.nvim` | `plugins/lsp.lua` | Codelens-artige Inline-Infos | keine |
-| `nvim-treesitter` | `plugins/treesitter.lua` | Syntax | `lsp/core/treesitter.lua` verdrahtet mit LSP |
-| `mrbjarksen/neo-tree-diagnostics.nvim` | `plugins/neotree.lua` | Diagnostics-Quelle im Filetree | Grenzfall → bleibt bei `filetree.nvim` |
-| `kevinhwang91/nvim-bqf` | `plugins/*` | Bessere Quickfix-UI | Grenzfall, Quickfix ist Diagnostics-Senke |
-| `folke/todo-comments.nvim` | `config/todo_comments/**` | TODO-Liste → Trouble/Quickfix | Grenzfall, kein LSP |
+| `folke/trouble.nvim` | `plugins/trouble.lua` (+ `config/trouble/numbering.lua`) | Diagnostics/quickfix/loclist/LSP list UI, `lazy = false` | none directly, but a **keymap conflict** on `]q`/`[q` (see §2) |
+| `stevearc/conform.nvim` | `plugins/lsp.lua` | Formatter engine | `lsp/formatter/{init,conform}.lua` builds on it — **two setups in parallel** |
+| `folke/lazydev.nvim` | `plugins/lsp.lua` | lua_ls library for `require` | `lsp/core/attach.lua:62` loads it via `pcall` for ft=lua |
+| `hrsh7th/nvim-cmp` | `plugins/lsp.lua`, `config/copilot/cmp.lua` | Completion engine | `lsp/core/capabilities.lua:36` reads `cmp_nvim_lsp` |
+| `saghen/blink.cmp` | `plugins/lsp.lua` (**commented out**) | Alternative completion engine | `lsp/core/capabilities.lua:53` already supports it |
+| `williamboman/mason.nvim` | `plugins/*` + `config/mason/ensure_install/**` | Package management for LSP/DAP/linters/formatters | `lsp/init.lua:199` calls `config.mason.ensure_install` |
+| `artemave/workspace-diagnostics.nvim` | `plugins/lsp.lua` | Workspace-wide diagnostics | `lsp/core/workspace_diagnostics.lua` + `usercmds` |
+| `nvimdev/lspsaga.nvim` | `plugins/lsp.lua` | Breadcrumb/LSP UI (almost everything disabled) | none |
+| `smjonas/inc-rename.nvim` | `plugins/lsp.lua` + `config/inc_rename/init.lua` | Incremental rename + auto-save | its own keymap `<leader>rn`, redundant with `grn` |
+| `oribarilan/lensline.nvim` | `plugins/lsp.lua` | Codelens-like inline info | none |
+| `nvim-treesitter` | `plugins/treesitter.lua` | Syntax | `lsp/core/treesitter.lua` wires it to LSP |
+| `mrbjarksen/neo-tree-diagnostics.nvim` | `plugins/neotree.lua` | Diagnostics source in the filetree | borderline → stays with `filetree.nvim` |
+| `kevinhwang91/nvim-bqf` | `plugins/*` | Better quickfix UI | borderline, quickfix is a diagnostics sink |
+| `folke/todo-comments.nvim` | `config/todo_comments/**` | TODO list → Trouble/quickfix | borderline, not LSP |
 
-### 1.3 Verstreute LSP-Keymaps (Ist-Zustand)
+### 1.3 Scattered LSP keymaps (current state)
 
-Heute an **fünf** verschiedenen Orten. Vollständige Inventur:
+Today in **five** different places. Full inventory:
 
-| Keymap | Aktion | Quelle |
+| Keymap | Action | Source |
 |---|---|---|
 | `grn` | Rename | `bindings/mappings/lsp.lua:21` |
-| `grt` | Type Definition | `bindings/mappings/lsp.lua:35` |
-| `lsr` / `lsi` / `lss` | References / Implementations / Doc-Symbols | `bindings/mappings/lsp.lua:27-29` |
-| `lsd` / `lsD` / `lst` / `lsa` | Definition / Declaration / Type-Def / Code-Action | `bindings/mappings/lsp.lua:30-33` |
-| `<M-s>` (insert) | Signature Help | `bindings/mappings/lsp.lua:37` |
-| `<leader>gtt` | Lua-Table-Root — **ruft `mylsp.nav.lua_root` auf, Modul existiert nicht** | `bindings/mappings/lsp.lua:8` |
-| `<leader>lsp` | Root-Scope-Picker | `bindings/mappings/lsp.lua:12` |
-| `<leader>lb` | Marksman-Hints-Toggle | `bindings/mappings/lsp.lua:16` |
-| `<leader>tft` / `<leader>ft` / `<leader>fl` | Format-on-Save-Toggle / Format once / LSP-Format | `bindings/mappings/lsp.lua:42-71` |
-| `<leader>tq` | Diagnostics → Quickfix | `bindings/mappings/lsp.lua:78` |
-| `<leader>wq` | Diagnostics → Quickfix (workspace) | `lsp/diagnostics/keymaps.lua:15` |
-| `<leader>lq` | Diagnostics → Loclist (buffer) | `lsp/diagnostics/keymaps.lua:19` |
-| `]d` / `[d` | Nächste/vorige Diagnostic (Buffer) | `lsp/diagnostics/keymaps.lua:24-30` |
-| `]q` / `[q` | Nächster/voriger Quickfix-Eintrag | `lsp/diagnostics/keymaps.lua:33-39` |
-| `<leader>xt` / `xx` / `xw` / `xd` | Trouble Diagnostics (toggle/all/workspace/buffer) | `bindings/mappings/trouble.lua:11-29` |
-| `<leader>xlr` / `xld` / `xlt` / `xli` / `xls` | Trouble LSP-Views | `bindings/mappings/trouble.lua:32-46` |
-| `<leader>xl` / `<leader>xq` | Trouble Loclist / Quickfix | `bindings/mappings/trouble.lua:49-50` |
-| `]q` / `[q` / `]l` / `[l` | **Überschreiben** die Diagnostics-Variante | `bindings/mappings/trouble.lua:53-56` |
-| `]w` / `[w` | Nächste/vorige Workspace-Diagnostic (Trouble) | `bindings/mappings/trouble.lua:101-102` |
-| `<leader>rn` | Incremental Rename | `config/inc_rename/init.lua:173` |
-| `<leader>dos` / `<leader>wos` | FzfLua Document-/Workspace-Symbols | `bindings/mappings/fzf.lua:13-14` |
-| `<leader>do` / `<leader>wo` | FzfLua Document-/Workspace-Diagnostics | `bindings/mappings/fzf.lua:16-17` |
-| `<leader>fq` | FzfLua Quickfix | `bindings/mappings/fzf.lua:19` |
+| `grt` | Type definition | `bindings/mappings/lsp.lua:35` |
+| `lsr` / `lsi` / `lss` | References / implementations / doc symbols | `bindings/mappings/lsp.lua:27-29` |
+| `lsd` / `lsD` / `lst` / `lsa` | Definition / declaration / type def / code action | `bindings/mappings/lsp.lua:30-33` |
+| `<M-s>` (insert) | Signature help | `bindings/mappings/lsp.lua:37` |
+| `<leader>gtt` | Lua table root — **calls `mylsp.nav.lua_root`, the module does not exist** | `bindings/mappings/lsp.lua:8` |
+| `<leader>lsp` | Root-scope picker | `bindings/mappings/lsp.lua:12` |
+| `<leader>lb` | Marksman hints toggle | `bindings/mappings/lsp.lua:16` |
+| `<leader>tft` / `<leader>ft` / `<leader>fl` | Format-on-save toggle / format once / LSP format | `bindings/mappings/lsp.lua:42-71` |
+| `<leader>tq` | Diagnostics → quickfix | `bindings/mappings/lsp.lua:78` |
+| `<leader>wq` | Diagnostics → quickfix (workspace) | `lsp/diagnostics/keymaps.lua:15` |
+| `<leader>lq` | Diagnostics → loclist (buffer) | `lsp/diagnostics/keymaps.lua:19` |
+| `]d` / `[d` | Next/previous diagnostic (buffer) | `lsp/diagnostics/keymaps.lua:24-30` |
+| `]q` / `[q` | Next/previous quickfix entry | `lsp/diagnostics/keymaps.lua:33-39` |
+| `<leader>xt` / `xx` / `xw` / `xd` | Trouble diagnostics (toggle/all/workspace/buffer) | `bindings/mappings/trouble.lua:11-29` |
+| `<leader>xlr` / `xld` / `xlt` / `xli` / `xls` | Trouble LSP views | `bindings/mappings/trouble.lua:32-46` |
+| `<leader>xl` / `<leader>xq` | Trouble loclist / quickfix | `bindings/mappings/trouble.lua:49-50` |
+| `]q` / `[q` / `]l` / `[l` | **Override** the diagnostics variant | `bindings/mappings/trouble.lua:53-56` |
+| `]w` / `[w` | Next/previous workspace diagnostic (Trouble) | `bindings/mappings/trouble.lua:101-102` |
+| `<leader>rn` | Incremental rename | `config/inc_rename/init.lua:173` |
+| `<leader>dos` / `<leader>wos` | FzfLua document/workspace symbols | `bindings/mappings/fzf.lua:13-14` |
+| `<leader>do` / `<leader>wo` | FzfLua document/workspace diagnostics | `bindings/mappings/fzf.lua:16-17` |
+| `<leader>fq` | FzfLua quickfix | `bindings/mappings/fzf.lua:19` |
 
-### 1.4 Verstreute `lua/config/**`-Module mit LSP-Bezug
+### 1.4 Scattered `lua/config/**` modules with LSP relevance
 
 `config/mason/**`, `config/inc_rename/**`, `config/trouble/**`,
-`config/copilot/cmp.lua` — alle vier gehören unter das Dach.
+`config/copilot/cmp.lua` — all four belong under the umbrella.
 
 ---
 
-## 2. Befunde aus der Analyse (Bugs & Altlasten)
+## 2. Findings from the analysis (bugs & legacy)
 
-Beim Durchgehen der Module gefunden — **vor** oder **während** der Migration zu
-beheben, nicht 1:1 mitschleppen:
+Found while walking through the modules — to be fixed **before** or **during**
+the migration, not carried along 1:1:
 
-| # | Befund | Ort | Bewertung |
+| # | Finding | Location | Assessment |
 |---|---|---|---|
-| B1 | **Unaufgelöste Git-Merge-Konflikt-Marker** (`<<<<<<< HEAD` / `=======` / `>>>>>>>`) im Sourcecode | `lsp/core/capabilities.lua:61-71, 106-113` | 🔴 **Kritisch — ✅ ERLEDIGT (2026-07-26).** Datei war syntaktisch kaputt → `pcall(require, "lsp.core.capabilities")` schlug fehl → `lsp/init.lua:53` fiel still auf `make_client_capabilities()` zurück; **Completion-Capabilities von cmp/blink/NvChad wurden gar nicht angewandt.** Aufgelöst zugunsten der `8b6135fd`-Seite (String-Level `"error"`/`"warn"`), weil `lsp/init.lua:44` genau darauf vergleicht — mit `vim.log.levels.ERROR` (Zahl) wäre jeder Fehler still zur Warnung degradiert. Zusätzlich die doppelte `local warnings = {}`-Deklaration entfernt. |
-| B2 | Keymap auf nicht existierendes Modul `mylsp.nav.lua_root` | `bindings/mappings/lsp.lua:8` | ✅ **ERLEDIGT (2026-08-23).** `mylsp` existiert nirgends — nicht in `lua/`, nicht in einem installierten Plugin — die Taste warf bei jedem Druck. Keymap entfernt, mit Kommentar an ihrer Stelle. Das Feature selbst („zum umschließenden Lua-Table-/Funktions-Root springen") ist zu schade zum Wegwerfen und steht jetzt in §14, statt als kaputte Taste am Leben gehalten zu werden. |
-| B3 | `]q`/`[q` **doppelt** gebunden (diagnostics + trouble); trouble gewinnt durch spätere Registrierung in `bindings/mappings/init.lua` | `lsp/diagnostics/keymaps.lua:33` vs. `bindings/mappings/trouble.lua:53` | ✅ **ERLEDIGT (2026-08-23)** — mit korrigierter Diagnose. Es war **kein Verhaltenskonflikt**: `quickfix.next_qf()` ist `pcall(vim.cmd, "cnext")`, Troubles Variante `<cmd>cnext<cr>`. Einziger Unterschied: das geschluckte E553 am Listenende. Zwei Besitzer, ein Verhalten. Jetzt ein Katalogeintrag, die `pcall`-Variante behalten. |
-| B4 | `require("lsp.lspdoctor").setup()` wird **zweimal hintereinander** mit widersprüchlichen `formatter_priority` aufgerufen | `lsp/init.lua:223-235` | ✅ **ERLEDIGT (2026-08-23)** — mit korrigierter Diagnose: „erster ist toter Code" stimmte **nicht**. `lspdoctor.setup()` merged Key für Key in ein persistentes `Opts` (`lspdoctor/init.lua:115`), also wirkten *alle* Keys aus beiden Aufrufen; überschrieben wurde nur `formatter_priority`. `list_limit`, `semantic_tokens_timeout` und `scratch_filetype` waren nie verloren. Zu einem Aufruf zusammengezogen, der exakt den bisherigen Effektivzustand trägt — sichtbar am Aufrufort statt aus der Merge-Semantik erschlossen. Nebenbefund: `null-ls` in der Prioritätsliste ist wirkungslos, es ist nirgends installiert (conform formatiert); bewusst stehen gelassen, weil das eine Entscheidung ist und kein Aufräumen. |
-| B5 | Conform wird **zweimal** konfiguriert: `plugins/lsp.lua:126` (`format_on_save = {…}`) und `lsp/formatter/conform.lua` + `lsp/formatter/init.lua` (`format_on_save = false`, eigener Autocmd) | beide | ✅ **War bereits erledigt** (Stand 2026-08-23 geprüft). `plugins/lsp.lua:153-157` trägt heute einen expliziten Kommentar, dass dort **kein** `config`-Block steht und `lsp.formatter.conform.setup()` der einzige autoritative `conform.setup()`-Aufruf ist. Der Eintrag hier war veraltet — der Fix kam irgendwann zwischen Analyse und Migration. Format-on-Save läuft über den eigenen Autocmd, nie über conforms Option. |
-| B6 | `formatter/init.lua` dokumentiert sich als „Linux/macOS only; no Windows-specific branches“ — Workstation läuft auf Windows | `lsp/formatter/init.lua:3` | ✅ **ERLEDIGT (2026-08-23).** Veralteter Kommentar, keine reale Einschränkung. `formatter/init.lua` braucht selbst nichts Plattformabhängiges (Autocmds + View-Erhaltung); die Stellen, die es tun, liegen in `formatter/conform.lua` und verzweigen dort korrekt auf Windows (PATH-Separator `;`, `.cmd`-Suffix, Mason-Bin-Pfad — `conform.lua:20,40`). Kopfkommentar entsprechend richtiggestellt. |
-| B7 | `ACTIVE`-Serverliste hart im Sourcecode, Server an/aus = Code-Edit | `lsp/core/registry.lua:10-33` | ✅ **ERLEDIGT (2026-08-23).** Liste nach `config/DEFAULTS.lua` als `servers`, `registry.setup_all(shared, servers)` bekommt sie übergeben. Leere oder kaputte Liste fällt auf die Defaults zurück statt „gar kein Sprachserver" zu ergeben — das sieht aus wie eine kaputte Installation und darf nie das Ergebnis eines Tippfehlers sein. |
-| B8 | Drei eigene Root-Resolver (`core/root_scope.lua`, `servers/lua_ls/rootresolver.lua`, `servers/marksman/rootresolver.lua`) trotz `lib.nvim.fs` | siehe §10 | ✅ **ERLEDIGT (2026-08-23)** — mit korrigiertem Befund. Es waren **zwei**, nicht drei: `core/root_scope.lua` ist ein Zustandshalter für den Scope-Modus, kein Resolver. Und die zwei sind keine Duplikate **voneinander** — nur ihres Wrappers: Buffer-Nummer oder Dateiname → Verzeichnis, Fallback auf cwd, der optionale Callback aus dem `vim.lsp`-root_dir-Vertrag. Genau das kann `lib.nvim.fs.polymorphic_rootresolver`, war aber für einen Resolver mit eigener Suchlogik nicht nutzbar — deshalb wurde kopiert statt benutzt. Es hat jetzt einen `resolve`-Hook (StefanBartl/lib.nvim@6970428), marksman ist damit **der** geteilte Resolver mit Markdown-Markern (45→27 Zeilen), lua_ls behält seinen Algorithmus (strikte Projektgrenze, Scope-Switch, Config-Verzeichnis-Sonderfall) und reicht ihn als Hook herein (122→97). Nebenbei behoben: `strict_root_from` gab bei nil ein `root_dir = nil` zurück, was einen Server am Start hindern kann — der geteilte Wrapper fällt auf das Startverzeichnis zurück. |
-| B9 | `<leader>rn` (inc-rename) und `grn` (`vim.lsp.buf.rename`) machen dasselbe, unterschiedlich | `config/inc_rename` vs. `bindings/mappings/lsp.lua` | ✅ **ERLEDIGT (2026-08-23).** Abweichung vom Vorschlag: **beide** Tasten bleiben, statt auf eine zu reduzieren — das Muskelgedächtnis für beide ist real, das Problem war nicht die Anzahl der Tasten, sondern dass sie Verschiedenes taten. Sie zeigen jetzt auf **eine** Aktion, `rename.provider` (`auto\|inc_rename\|native`) entscheidet das Backend. inc-rename läuft über `feedkeys` statt über ein `expr`-Mapping, weil ein `expr`-Mapping zur Drückzeit nicht entscheiden kann, keines zu sein. |
-| B10 | `lsr`/`lsi`/`lss`/`lsd`/`lsD`/`lst`/`lsa` sind **prefixlose** 3-Zeichen-Maps im Normal-Mode | `bindings/mappings/lsp.lua:27-33` | Blockieren `ls…`-Sequenzen und verzögern `l`-Bewegungen nicht, aber kollidieren mit Neovim-0.11-Defaults (`grr`, `gri`, `grn`, `gO`). Bei der Preset-Definition neu bewerten |
-| B11 | `blink.cmp` vollständig auskommentiert, `nvim-cmp` aktiv — Capabilities-Modul unterstützt beide | `plugins/lsp.lua:96-118` | ✅ **ERLEDIGT (2026-08-23)** — aber als `vim.g.lsp_nvim.pack.completion`, **nicht** als `opts.completion.engine` wie vorgeschlagen. Der Grund ist die Timing-Trennung aus §6.2: ob ein Plugin *installiert* wird, muss feststehen, bevor `setup(opts)` existiert. `lsp.integrations.blink` konnte blinks Capabilities schon immer mergen — was fehlte, war eine Möglichkeit, es zu **installieren**. Die beiden Engines schließen sich per `enabled` gegenseitig aus. |
-| B12 | `lspdoctor/health.lua` schrieb in ein nacktes `Opts`, also in eine **globale** Variable | `lsp/lspdoctor/health.lua:10` | ✅ **ERLEDIGT (2026-08-23).** Der Befund war zu breit formuliert: `inspect.lua` (quick/deep) liest seine Optionen sehr wohl — nur `health.lua` nicht. Welche dort *hingehören*, folgt aus der Arbeitsteilung: `show_capabilities`/`show_workspace`/`show_conflicts` sind laut `doc/help.txt` Deep-Sektionen und werden von `inspect.lua` bedient; sie in `health` zu wiederholen hieße, denselben Report zweimal zu implementieren. `health` bedient jetzt die drei, die zu ihm passen: `list_limit` (kappt das Detail, nicht die Summary), `show_tools` (löst die Executable jedes erwarteten Servers auf — der häufigste Grund für „konfiguriert, läuft nicht“, und niemand hat ihn geprüft) und `semantic_tokens_timeout` (Probe für Clients, die die Capability annoncieren und dann nicht antworten). **`show_tools` und `semantic_tokens_timeout` wurden vorher nirgends im Plugin gelesen** — typisiert, dokumentiert, defaultet, unbenutzt. |
-| B13 | `not X == "Darwin"` statt `X ~= "Darwin"` — parst als `(not X) == "Darwin"` und ist immer falsch | `lsp/servers/mobiledev/sourcekit.lua:12` | ✅ **ERLEDIGT (2026-08-23).** Der macOS-Guard hat nie gegriffen; die Funktion fiel auf jeder Plattform durch zur Executable-Prüfung. |
-| B14 | `handlers`-Tabelle wird befüllt und nirgends übergeben — der Grund für die Notiz „FIX: Filtering funktioniert nicht" daneben | `lsp/servers/webdev/htmx/init.lua:35` | ✅ **ERLEDIGT (2026-08-23)** — entfernt, nicht verdrahtet. `handlers` bildet LSP-*Methoden* auf Response-Handler ab; der stderr-Strom eines Servers läuft da nie durch. Neovim liest ihn selbst und bietet dafür keinen Client-Config-Hook, Filtern hieße also `cmd` in einen filternden Prozess zu wickeln. Ich hatte den Versuch zunächst „als Protokoll" stehen lassen — falsche Entscheidung: toter Code, der nicht funktionieren kann, liest sich wie Code, der es tut, und der Nächste muss sich erst wieder herleiten, warum die naheliegende Reparatur keine ist. `filter_stderr` ist mitgegangen, weil es nach dem Entfernen niemand mehr las. Der JSON-Filter selbst bleibt in `htmx/filter_logs.lua`. |
-| B15 | Der Kern war nie gelintet — die Config hat kein Lint-Gate | 23 Funde in 15 Dateien | ✅ **ERLEDIGT (2026-08-23)** beim ersten CI-Lauf im Plugin. Neben B12–B14: zwei leere `else`-Zweige, tote `= nil`-Initialisierungen, ungenutzte Callback-Argumente, eine `_err, _config = _err, _config`-Selbstzuweisung (Workaround für einen *anderen* Linter). Das Gate allein hat vier echte Defekte gefunden — Argument dafür, dass die Extraktion sich schon deshalb lohnt. |
-| B16 | `config_exists()` prüfte `lsp.config.get`, das es nicht gibt — `vim.lsp.config` ist eine Tabelle mit `__index`-Resolver, kein Modul mit Getter | `lsp/lspdoctor/health.lua` | ✅ **ERLEDIGT (2026-08-23).** Der Guard schlug deshalb *immer* zu: `:LspDoctor health` meldete „Config: ❌ No“ für **jeden** Server, auch für laufende. Gefunden, weil ich den Check ausgeführt statt gelesen habe — im Code sieht die Zeile plausibel aus. Beide Zugriffe laufen jetzt über einen `config_for()`-Helper. |
-| B17 | `config.setup()` leerte `_warnings` **nach** dem Eintragen der „expected a table“-Warnung | `lsp/config/init.lua` | ✅ **ERLEDIGT (2026-08-23).** Genau die eine Warnung, die der Aufrufer am dringendsten braucht — er hat keine Tabelle übergeben — wurde unmittelbar wieder verworfen. Gefunden vom ersten Spec, den ich für diese Datei geschrieben habe. |
-| B18 | `("… '%s' …"):format()` ohne Argument, verschachtelt in einem zweiten `format()` | `lsp/core/registry.lua:66` | ✅ **ERLEDIGT (2026-08-23).** Der Ausdruck **wirft**, und auf diesem Pfad ist nichts `pcall`-gekapselt: **ein einziger konfigurierter Server ohne Modul hätte das komplette Server-Setup abgebrochen** und `setup()` mitgerissen. Nie aufgefallen, weil zufällig jeder Name in `servers` auflöste — einen Server eintragen, bevor sein Modul existiert, hätte gereicht. |
-| B19 | `lib.nvim.autocmd.group` merkte sich Augroup-IDs und prüfte sie nie wieder | `lib.nvim` | ✅ **ERLEDIGT (2026-08-23).** Wer die Gruppe hinter dem Cache löscht — `nvim_del_augroup_by_name`, die einzige Möglichkeit für ein Plugin, seine Autocommands abzugeben — hinterließ eine tote ID darin, und **jedes** weitere `create()` gegen diese Gruppe scheiterte mit „Invalid 'group'", bis Neovim neu startet. Aufgefallen, weil genau dieses Plugin zuerst `clear()` und dann `group()` ruft. Oben behoben statt hier umgangen (LUA-02), mit Spec. |
+| B1 | **Unresolved git merge-conflict markers** (`<<<<<<< HEAD` / `=======` / `>>>>>>>`) in the source code | `lsp/core/capabilities.lua:61-71, 106-113` | 🔴 **Critical — ✅ DONE (2026-07-26).** The file was syntactically broken → `pcall(require, "lsp.core.capabilities")` failed → `lsp/init.lua:53` silently fell back to `make_client_capabilities()`; **completion capabilities from cmp/blink/NvChad were not applied at all.** Resolved in favour of the `8b6135fd` side (string levels `"error"`/`"warn"`), because `lsp/init.lua:44` compares against exactly those — with `vim.log.levels.ERROR` (a number) every error would silently have been downgraded to a warning. The duplicate `local warnings = {}` declaration was removed as well. |
+| B2 | Keymap on the non-existent module `mylsp.nav.lua_root` | `bindings/mappings/lsp.lua:8` | ✅ **DONE (2026-08-23).** `mylsp` exists nowhere — not in `lua/`, not in an installed plugin — so the key threw on every press. Keymap removed, with a comment in its place. The feature itself ("jump to the enclosing Lua table/function root") is too good to throw away and now lives in §14, instead of being kept alive as a broken key. |
+| B3 | `]q`/`[q` bound **twice** (diagnostics + trouble); trouble wins through later registration in `bindings/mappings/init.lua` | `lsp/diagnostics/keymaps.lua:33` vs. `bindings/mappings/trouble.lua:53` | ✅ **DONE (2026-08-23)** — with a corrected diagnosis. It was **not a behavioural conflict**: `quickfix.next_qf()` is `pcall(vim.cmd, "cnext")`, Trouble's variant is `<cmd>cnext<cr>`. The only difference: the swallowed E553 at the end of the list. Two owners, one behaviour. Now one catalogue entry, keeping the `pcall` variant. |
+| B4 | `require("lsp.lspdoctor").setup()` is called **twice in a row** with contradictory `formatter_priority` | `lsp/init.lua:223-235` | ✅ **DONE (2026-08-23)** — with a corrected diagnosis: "the first one is dead code" was **not** true. `lspdoctor.setup()` merges key by key into a persistent `Opts` (`lspdoctor/init.lua:115`), so *all* keys from both calls took effect; only `formatter_priority` was overwritten. `list_limit`, `semantic_tokens_timeout` and `scratch_filetype` were never lost. Collapsed into one call that carries exactly the previous effective state — visible at the call site instead of inferred from merge semantics. Side finding: `null-ls` in the priority list has no effect, it is installed nowhere (conform does the formatting); left in place deliberately, because that is a decision and not a cleanup. |
+| B5 | Conform is configured **twice**: `plugins/lsp.lua:126` (`format_on_save = {…}`) and `lsp/formatter/conform.lua` + `lsp/formatter/init.lua` (`format_on_save = false`, its own autocmd) | both | ✅ **Was already done** (verified 2026-08-23). `plugins/lsp.lua:153-157` today carries an explicit comment that there is **no** `config` block there and that `lsp.formatter.conform.setup()` is the single authoritative `conform.setup()` call. The entry here was stale — the fix landed somewhere between analysis and migration. Format-on-save runs through the plugin's own autocmd, never through conform's option. |
+| B6 | `formatter/init.lua` documents itself as "Linux/macOS only; no Windows-specific branches" — the workstation runs on Windows | `lsp/formatter/init.lua:3` | ✅ **DONE (2026-08-23).** A stale comment, not a real limitation. `formatter/init.lua` itself needs nothing platform-dependent (autocmds + view preservation); the places that do live in `formatter/conform.lua` and branch correctly on Windows there (PATH separator `;`, `.cmd` suffix, Mason bin path — `conform.lua:20,40`). Header comment corrected accordingly. |
+| B7 | The `ACTIVE` server list is hardcoded in the source, turning a server on or off means editing code | `lsp/core/registry.lua:10-33` | ✅ **DONE (2026-08-23).** List moved to `config/DEFAULTS.lua` as `servers`; `registry.setup_all(shared, servers)` receives it. An empty or broken list falls back to the defaults instead of yielding "no language server at all" — that looks like a broken installation and must never be the result of a typo. |
+| B8 | Three homegrown root resolvers (`core/root_scope.lua`, `servers/lua_ls/rootresolver.lua`, `servers/marksman/rootresolver.lua`) despite `lib.nvim.fs` | see §10 | ✅ **DONE (2026-08-23)** — with a corrected finding. There were **two**, not three: `core/root_scope.lua` holds the state of the scope mode, it is not a resolver. And the two are not duplicates **of each other** — only of their wrapper: buffer number or file name → directory, fallback to cwd, the optional callback from the `vim.lsp` root_dir contract. That is exactly what `lib.nvim.fs.polymorphic_rootresolver` can do, but it was unusable for a resolver with its own search logic — so it was copied instead of used. It now has a `resolve` hook (StefanBartl/lib.nvim@6970428), marksman is thereby **the** shared resolver with markdown markers (45→27 lines), lua_ls keeps its algorithm (strict project boundary, scope switch, config-directory special case) and passes it in as a hook (122→97). Fixed along the way: `strict_root_from` returned `root_dir = nil` on nil, which can keep a server from starting — the shared wrapper falls back to the start directory. |
+| B9 | `<leader>rn` (inc-rename) and `grn` (`vim.lsp.buf.rename`) do the same thing, differently | `config/inc_rename` vs. `bindings/mappings/lsp.lua` | ✅ **DONE (2026-08-23).** Deviating from the proposal: **both** keys stay instead of being reduced to one — the muscle memory for both is real, and the problem was never the number of keys but that they did different things. They now point at **one** action, and `rename.provider` (`auto\|inc_rename\|native`) decides the backend. inc-rename runs via `feedkeys` instead of an `expr` mapping, because an `expr` mapping cannot decide at press time not to be one. |
+| B10 | `lsr`/`lsi`/`lss`/`lsd`/`lsD`/`lst`/`lsa` are **prefix-less** 3-character maps in normal mode | `bindings/mappings/lsp.lua:27-33` | They block `ls…` sequences and do not delay `l` motions, but they collide with the Neovim 0.11 defaults (`grr`, `gri`, `grn`, `gO`). Re-evaluate when defining the presets |
+| B11 | `blink.cmp` fully commented out, `nvim-cmp` active — the capabilities module supports both | `plugins/lsp.lua:96-118` | ✅ **DONE (2026-08-23)** — but as `vim.g.lsp_nvim.pack.completion`, **not** as `opts.completion.engine` as proposed. The reason is the timing split from §6.2: whether a plugin gets *installed* must be settled before `setup(opts)` exists. `lsp.integrations.blink` could always merge blink's capabilities — what was missing was a way to **install** it. The two engines exclude each other via `enabled`. |
+| B12 | `lspdoctor/health.lua` wrote into a bare `Opts`, i.e. into a **global** variable | `lsp/lspdoctor/health.lua:10` | ✅ **DONE (2026-08-23).** The finding was phrased too broadly: `inspect.lua` (quick/deep) does read its options — only `health.lua` did not. Which options *belong* there follows from the division of labour: `show_capabilities`/`show_workspace`/`show_conflicts` are deep sections per `doc/help.txt` and are served by `inspect.lua`; repeating them in `health` would mean implementing the same report twice. `health` now serves the three that fit it: `list_limit` (caps the detail, not the summary), `show_tools` (resolves the executable of every expected server — the most common reason for "configured, not running", and nobody was checking it) and `semantic_tokens_timeout` (a probe for clients that announce the capability and then do not answer). **`show_tools` and `semantic_tokens_timeout` were previously read nowhere in the plugin** — typed, documented, defaulted, unused. |
+| B13 | `not X == "Darwin"` instead of `X ~= "Darwin"` — parses as `(not X) == "Darwin"` and is always false | `lsp/servers/mobiledev/sourcekit.lua:12` | ✅ **DONE (2026-08-23).** The macOS guard never took hold; the function fell through to the executable check on every platform. |
+| B14 | The `handlers` table is filled and passed nowhere — the reason for the note "FIX: filtering does not work" next to it | `lsp/servers/webdev/htmx/init.lua:35` | ✅ **DONE (2026-08-23)** — removed, not wired up. `handlers` maps LSP *methods* to response handlers; a server's stderr stream never runs through there. Neovim reads it itself and offers no client-config hook for it, so filtering would mean wrapping `cmd` in a filtering process. I first left the attempt in place "as a record" — the wrong call: dead code that cannot work reads like code that does, and the next person has to re-derive why the obvious repair is not one. `filter_stderr` went with it, because after the removal nobody read it any more. The JSON filter itself stays in `htmx/filter_logs.lua`. |
+| B15 | The core was never linted — the config has no lint gate | 23 findings in 15 files | ✅ **DONE (2026-08-23)** on the first CI run inside the plugin. Besides B12–B14: two empty `else` branches, dead `= nil` initialisations, unused callback arguments, an `_err, _config = _err, _config` self-assignment (a workaround for a *different* linter). The gate alone found four real defects — an argument that the extraction pays for itself on that ground alone. |
+| B16 | `config_exists()` checked `lsp.config.get`, which does not exist — `vim.lsp.config` is a table with an `__index` resolver, not a module with a getter | `lsp/lspdoctor/health.lua` | ✅ **DONE (2026-08-23).** The guard therefore *always* triggered: `:LspDoctor health` reported "Config: ❌ No" for **every** server, running ones included. Found because I ran the check instead of reading it — in code the line looks plausible. Both accesses now go through a `config_for()` helper. |
+| B17 | `config.setup()` cleared `_warnings` **after** recording the "expected a table" warning | `lsp/config/init.lua` | ✅ **DONE (2026-08-23).** Exactly the one warning the caller needs most urgently — they passed no table — was discarded again immediately. Found by the first spec I wrote for this file. |
+| B18 | `("… '%s' …"):format()` without an argument, nested inside a second `format()` | `lsp/core/registry.lua:66` | ✅ **DONE (2026-08-23).** The expression **throws**, and nothing on that path is wrapped in `pcall`: **a single configured server without a module would have aborted the entire server setup** and taken `setup()` down with it. Never noticed because every name in `servers` happened to resolve — entering a server before its module exists would have been enough. |
+| B19 | `lib.nvim.autocmd.group` memorised augroup IDs and never checked them again | `lib.nvim` | ✅ **DONE (2026-08-23).** Whoever deletes the group behind the cache — `nvim_del_augroup_by_name`, the only way for a plugin to give up its autocommands — left a dead ID in it, and **every** further `create()` against that group failed with "Invalid 'group'" until Neovim restarts. Noticed because this very plugin calls `clear()` first and `group()` second. Fixed upstream instead of worked around here (LUA-02), with a spec. |
 
 ---
 
-## 3. Zielbild: Dachplugin in drei Schichten
+## 3. Target picture: umbrella plugin in three layers
 
-**Grundsatzentscheidung (2026-07-26): harte Abhängigkeiten sind erwünscht, nicht
-zu vermeiden.** Ein LSP-Dachplugin, das `trouble.nvim`, `conform.nvim`,
-`mason.nvim` & Co. nur „falls vorhanden“ anfasst, müsste deren Funktionalität
-im Zweifel selbst nachbauen — das bringt nichts und wäre 10.000 Zeilen
-schlechterer Code. `lsp.nvim` hängt ohnehin hart von `lib.nvim` ab; das
-Ökosystem kommt genauso dazu. Der Dachplugin-Anspruch ist explizit: **wer
-`lsp.nvim` installiert, bekommt das komplette LSP-Setup inklusive der
-Fremdplugins.**
+**Basic decision (2026-07-26): hard dependencies are wanted, not to be
+avoided.** An LSP umbrella plugin that touches `trouble.nvim`, `conform.nvim`,
+`mason.nvim` & co. only "if present" would, in case of doubt, have to rebuild
+their functionality itself — that buys nothing and would be 10,000 lines of
+worse code. `lsp.nvim` depends hard on `lib.nvim` anyway; the ecosystem joins on
+the same terms. The umbrella claim is explicit: **whoever installs `lsp.nvim`
+gets the complete LSP setup including the third-party plugins.**
 
-Die Dreiteilung bleibt trotzdem — nicht als Abhängigkeits-Abstufung, sondern als
-**Zuständigkeits-Trennung**, damit die Codebasis navigierbar und einzeln testbar
-bleibt:
+The three-way split remains nonetheless — not as a dependency gradation, but as
+a **separation of responsibilities**, so that the codebase stays navigable and
+individually testable:
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│ Schicht 3 — PACK   lua/lsp/pack/**                               │
-│   LazySpec-Export: WAS installiert wird, in welcher Version, mit │
-│   welchen Presets. `{ “StefanBartl/lsp.nvim”, import=”lsp.pack”} │
-│   Enthält KEINE Logik, nur Specs + opts.                         │
+│ Layer 3 — PACK   lua/lsp/pack/**                                 │
+│   LazySpec export: WHAT gets installed, in which version, with   │
+│   which presets. `{ “StefanBartl/lsp.nvim”, import=”lsp.pack”}   │
+│   Contains NO logic, only specs + opts.                          │
 ├──────────────────────────────────────────────────────────────────┤
-│ Schicht 2 — INTEGRATIONS   lua/lsp/integrations/**               │
-│   WIE die Fremdplugins verdrahtet werden: Config, Keymaps,       │
-│   Handler-Bridges, Capabilities. Ein Modul pro Plugin.           │
+│ Layer 2 — INTEGRATIONS   lua/lsp/integrations/**                 │
+│   HOW the third-party plugins are wired: config, keymaps,        │
+│   handler bridges, capabilities. One module per plugin.          │
 ├──────────────────────────────────────────────────────────────────┤
-│ Schicht 1 — CORE   lua/lsp/{core,servers,languages,formatter,…}  │
-│   Eigencode auf `vim.lsp.*`: Registry, Attach, Server-Configs,   │
-│   Formatter-Kern, Diagnostics-Kern, LspDoctor, Tools.            │
+│ Layer 1 — CORE   lua/lsp/{core,servers,languages,formatter,…}    │
+│   Own code on `vim.lsp.*`: registry, attach, server configs,     │
+│   formatter core, diagnostics core, LspDoctor, tools.            │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-**Regeln:**
+**Rules:**
 
-- Schicht 1 kennt Schicht 2 nicht (`core/attach.lua` ruft nie direkt
-  `require(“lazydev”)` — das macht der Adapter). Nicht wegen Optionalität,
-  sondern damit der Kern für sich testbar bleibt und Fremdplugin-Wechsel
-  (cmp → blink) genau eine Datei berühren.
-- Schicht 2 kennt Schicht 1 und darf voraussetzen, dass „ihr“ Plugin da ist.
-- Schicht 3 kennt beide, wird aber von keiner geladen.
+- Layer 1 does not know layer 2 (`core/attach.lua` never calls
+  `require(“lazydev”)` directly — the adapter does that). Not because of
+  optionality, but so the core stays testable on its own and a third-party
+  plugin swap (cmp → blink) touches exactly one file.
+- Layer 2 knows layer 1 and may assume that "its" plugin is there.
+- Layer 3 knows both, but is loaded by neither.
 
-**`pcall` bleibt trotzdem überall** — aber mit anderer Begründung als vorher:
-nicht „das Plugin ist optional“, sondern **Blast-Radius-Begrenzung**. Wenn
-`lensline.nvim` nach einem Update kaputt ist, darf das nicht die Server-Registry
-mitreißen. Ein fehlgeschlagener Adapter meldet sich in `:checkhealth lsp` als
-`error` (nicht als beiläufiges `info` wie bei einem optionalen Feature) und der
-Rest läuft weiter.
+**`pcall` stays everywhere nonetheless** — but with a different rationale than
+before: not "the plugin is optional", but **blast-radius containment**. If
+`lensline.nvim` is broken after an update, that must not take the server
+registry down with it. A failed adapter reports itself in `:checkhealth lsp` as
+an `error` (not as an incidental `info` the way an optional feature would) and
+the rest keeps running.
 
-**Deklarierte harte Dependencies** (im Spec von `lsp.nvim`):
+**Declared hard dependencies** (in the `lsp.nvim` spec):
 `lib.nvim`, `conform.nvim`, `trouble.nvim`, `mason.nvim`, `lazydev.nvim`,
-`workspace-diagnostics.nvim` + die gewählte Completion-Engine.
-**Weich** bleiben nur solche, die echte *Alternativen* sind oder reine
-Zusatz-UI: `lspsaga`, `lensline`, `inc-rename`, `noice`, `which-key`, der
-Picker (fzf-lua/telescope/snacks/`pickers.nvim`) und `nvchad`.
+`workspace-diagnostics.nvim` + the chosen completion engine.
+**Soft** are only those that are genuine *alternatives* or pure extra UI:
+`lspsaga`, `lensline`, `inc-rename`, `noice`, `which-key`, the picker
+(fzf-lua/telescope/snacks/`pickers.nvim`) and `nvchad`.
 
 ---
 
-## 4. Scope-Abgrenzung
+## 4. Scope boundaries
 
-### Geht mit nach `lsp.nvim`
+### Moves along into `lsp.nvim`
 
-- Alles aus `lua/lsp/**` **außer** `debug_adapters/**`
-- `lua/bindings/mappings/lsp.lua` (vollständig)
-- `lua/bindings/mappings/trouble.lua` (vollständig — Trouble ist reine
-  Diagnostics-/LSP-UI)
+- Everything from `lua/lsp/**` **except** `debug_adapters/**`
+- `lua/bindings/mappings/lsp.lua` (in full)
+- `lua/bindings/mappings/trouble.lua` (in full — Trouble is pure
+  diagnostics/LSP UI)
 - `lua/config/inc_rename/**`
 - `lua/config/trouble/**`
-- `lua/config/mason/**` (als optionale `integrations/mason` + Pack-Spec)
-- `lua/config/copilot/cmp.lua` (Completion-Menü-Interaktion → `integrations/cmp`)
-- Die LSP-bezogenen Zeilen aus `lua/bindings/mappings/fzf.lua`
-  (`<leader>dos`, `<leader>wos`, `<leader>do`, `<leader>wo`) — als
-  `integrations/picker` mit Backend-Wahl (fzf-lua / telescope / snacks /
-  `pickers.nvim`), damit nicht fzf-lua hart verdrahtet ist
-- Die Plugin-Specs aus `lua/plugins/lsp.lua` und `lua/plugins/trouble.lua`
+- `lua/config/mason/**` (as an optional `integrations/mason` + pack spec)
+- `lua/config/copilot/cmp.lua` (completion-menu interaction → `integrations/cmp`)
+- The LSP-related lines from `lua/bindings/mappings/fzf.lua`
+  (`<leader>dos`, `<leader>wos`, `<leader>do`, `<leader>wo`) — as
+  `integrations/picker` with a backend choice (fzf-lua / telescope / snacks /
+  `pickers.nvim`), so that fzf-lua is not hardwired
+- The plugin specs from `lua/plugins/lsp.lua` and `lua/plugins/trouble.lua`
   → `lua/lsp/pack/**`
 
-### Geht NICHT mit, sondern zu `dap.nvim` — ✅ erledigt 2026-08-23
+### Does NOT move along, but goes to `dap.nvim` — ✅ done 2026-08-23
 
-`lua/lsp/debug_adapters/**` (bash, node, go, dotnet, webdev/browser). DAP ist
-fachlich unabhängig vom LSP — die einzige Gemeinsamkeit ist „Mason installiert
-beides“. `lsp/debug_adapters/init.lua` ist ohnehin nur eine Sammlung
-auskommentierter `require`s, also faktisch inaktiv. **„Reines Verschieben ohne Funktionsverlust" ging allerdings nicht** — die
-Annahme war falsch. `dap.nvim` hat eine eigene Architektur (`registry` +
-`languages/<lang>.lua` mit `setup()`/`load()`, Binary-Auflösung über
-`config.get_adapter_path`), in die die alten Module nicht hineinpassten: sie
-registrierten alles beim Laden des Moduls. Ergebnis:
+`lua/lsp/debug_adapters/**` (bash, node, go, dotnet, webdev/browser). DAP is
+topically independent of LSP — the only thing in common is "Mason installs
+both". `lsp/debug_adapters/init.lua` is only a collection of commented-out
+`require`s anyway, so effectively inactive. **"A pure move without loss of
+functionality" was not possible, though** — that assumption was wrong.
+`dap.nvim` has its own architecture (`registry` + `languages/<lang>.lua` with
+`setup()`/`load()`, binary resolution via `config.get_adapter_path`) that the
+old modules did not fit into: they registered everything at module load time.
+Result:
 
-- **Portiert** als `wkddap.languages.{bash,csharp,browser}` — die drei Ziele,
-  die `dap.nvim` noch nicht hatte. Dabei zwei echte Fehler behoben: der
-  netcoredbg-Pfad war auf **eine Maschine** hart verdrahtet
-  (`C:/tools/DebugAdapterProtocol/netcoredbg/netcoredbg.exe`), und
-  `set noshellslash` lief als globaler Seiteneffekt schon beim bloßen
-  `require`.
-- **Verworfen** statt portiert: `go` und `node`. `wkddap.languages.go` und
-  `.javascript` decken sie mit mehr Konfigurationen und richtiger
-  Adapter-Auflösung ab — die alten Kopien wären Duplikate gewesen, keine
-  Migration.
-- Registry, `adapter_binaries` und `language_aliases` erweitert
-  (`sh|zsh|ksh` → `bash`, `cs|fsharp|dotnet` → `csharp`); `browser` bewusst
-  ohne Alias, weil es kein Filetype ist, sondern ein eigenständig wählbares
-  Ziel.
-- Nebenbefund: `dap.nvim`s CI war auf `main` **rot**, aus zwei voneinander
-  unabhängigen Gründen — `rust.lua` war nicht stylua-formatiert, und die
-  zig-„Launch (build first)"-Specs prüften noch gegen ein
-  `vim.system(...):wait()`-Stub, obwohl die Implementierung längst auf die
-  Callback-Form umgestellt war (damit der Build den Editor nicht mehr
-  einfriert). Beides behoben, Suite 12/12.
+- **Ported** as `wkddap.languages.{bash,csharp,browser}` — the three targets
+  `dap.nvim` did not have yet. Two real bugs were fixed along the way: the
+  netcoredbg path was hardwired to **one machine**
+  (`C:/tools/DebugAdapterProtocol/netcoredbg/netcoredbg.exe`), and
+  `set noshellslash` ran as a global side effect on the mere `require`.
+- **Discarded** instead of ported: `go` and `node`. `wkddap.languages.go` and
+  `.javascript` cover them with more configurations and proper adapter
+  resolution — the old copies would have been duplicates, not a migration.
+- Registry, `adapter_binaries` and `language_aliases` extended
+  (`sh|zsh|ksh` → `bash`, `cs|fsharp|dotnet` → `csharp`); `browser`
+  deliberately without an alias, because it is not a filetype but an
+  independently selectable target.
+- Side finding: `dap.nvim`'s CI was **red** on `main`, for two mutually
+  independent reasons — `rust.lua` was not stylua-formatted, and the zig
+  "launch (build first)" specs still checked against a
+  `vim.system(...):wait()` stub, even though the implementation had long since
+  moved to the callback form (so that the build no longer freezes the editor).
+  Both fixed, suite 12/12.
 
-**Mason (entschieden 2026-07-26): `ensure_install` zieht vollständig nach
-`lsp.nvim`.** Nicht nach `lib.nvim` — es ist kein generischer Baustein, sondern
-Paketverwaltung für Sprachwerkzeuge und damit fachlich genau das, was ein
-LSP-Dachplugin verantwortet. `mason.nvim` wird harte Dependency.
+**Mason (decided 2026-07-26): `ensure_install` moves into `lsp.nvim`
+completely.** Not into `lib.nvim` — it is not a generic building block but
+package management for language tooling, and therefore exactly what an LSP
+umbrella plugin is responsible for. `mason.nvim` becomes a hard dependency.
 
-Konkret zieht `config/mason/**` (Fassade + `defaults/{lsp,linter,formatter}.lua`,
-Session-Aggregation, Dedup über Kategorien, externe Dependency-Guards) nach
-`lua/lsp/integrations/mason/`. Zwei Folgerungen:
+Concretely, `config/mason/**` (facade + `defaults/{lsp,linter,formatter}.lua`,
+session aggregation, dedup across categories, external dependency guards) moves
+to `lua/lsp/integrations/mason/`. Two consequences:
 
-- `defaults/dap.lua` gehört inhaltlich zu `dap.nvim`. `lsp.nvim` bietet dafür
-  eine Registrierungs-API, damit `dap.nvim` keine eigene Mason-Fassade braucht
-  und beide sich nicht gegenseitig „Package is already installing“ produzieren:
+- `defaults/dap.lua` belongs, by content, to `dap.nvim`. `lsp.nvim` offers a
+  registration API for it, so that `dap.nvim` needs no Mason facade of its own
+  and the two do not produce "Package is already installing" for each other:
 
   ```lua
   require("lsp.integrations.mason").register("dap", {
@@ -342,80 +340,80 @@ Session-Aggregation, Dedup über Kategorien, externe Dependency-Guards) nach
   })
   ```
 
-  Damit bleibt die Dedup-Logik an **einer** Stelle. `dap.nvim` bekommt dadurch
-  eine weiche Abhängigkeit auf `lsp.nvim` (pcall-geschützt: fehlt es, macht
-  `dap.nvim` seine Installs wie bisher selbst).
-- Der heutige Aufruf `lsp/init.lua:198-220` (`cfg.ensure_installing`) wird zu
-  `opts.mason` (s. §9), inklusive der `overrides`-Tabelle.
+  That keeps the dedup logic in **one** place. `dap.nvim` thereby gains a soft
+  dependency on `lsp.nvim` (pcall-guarded: if it is missing, `dap.nvim` does
+  its installs itself as before).
+- Today's call `lsp/init.lua:198-220` (`cfg.ensure_installing`) becomes
+  `opts.mason` (see §9), including the `overrides` table.
 
-### Bleibt im Host (`nvim/`)
+### Stays in the host (`nvim/`)
 
-- `machine.is("workstation")`-Gating → als Opt an `setup()` übergeben, nie
-  intern referenzieren
-- NvChad-Kopplung (`nvchad.config.lspconfig.on_attach/on_init/capabilities`) →
-  optionaler Adapter `integrations/nvchad`, kein impliziter Fallback-Pfad
-- `neo-tree-diagnostics.nvim` → bleibt bei `filetree.nvim`/neotree-Config
-- `todo-comments.nvim`, `nvim-bqf` → bleiben im Host (kein LSP), aber
-  `nvim-bqf` wird in `docs/` als empfohlene Ergänzung erwähnt
+- The `machine.is("workstation")` gating → passed into `setup()` as an option,
+  never referenced internally
+- The NvChad coupling (`nvchad.config.lspconfig.on_attach/on_init/capabilities`)
+  → an optional adapter `integrations/nvchad`, not an implicit fallback path
+- `neo-tree-diagnostics.nvim` → stays with `filetree.nvim`/the neotree config
+- `todo-comments.nvim`, `nvim-bqf` → stay in the host (not LSP), but
+  `nvim-bqf` is mentioned in `docs/` as a recommended addition
 
 ---
 
-## 5. Architektur / Verzeichnisbaum
+## 5. Architecture / directory tree
 
-Modulwurzel bleibt `lsp` (nicht `wkdlsp` wie bei `dap.nvim`): Neovim belegt nur
-`vim.lsp`, `nvim-lspconfig` belegt `lspconfig` — der Top-Level-Name `lsp` ist
-frei. Vorteil: **alle bestehenden `require("lsp.…")`-Pfade in der Config
-bleiben gültig** (z. B. `autocmds/events/utils/filetype.lua:46-106`).
+The module root stays `lsp` (not `wkdlsp` as in `dap.nvim`): Neovim only
+occupies `vim.lsp`, `nvim-lspconfig` occupies `lspconfig` — the top-level name
+`lsp` is free. Advantage: **all existing `require("lsp.…")` paths in the config
+stay valid** (e.g. `autocmds/events/utils/filetype.lua:46-106`).
 
 ```
 lsp.nvim/
 ├── lua/lsp/
-│   ├── init.lua                    -- M.setup(opts): nur Orchestrierung
-│   ├── health.lua                  -- :checkhealth lsp  (Pflicht)
+│   ├── init.lua                    -- M.setup(opts): orchestration only
+│   ├── health.lua                  -- :checkhealth lsp  (mandatory)
 │   ├── @types/
 │   │   ├── init.lua                -- LspNvim.Config, LspNvim.Opts, …
 │   │   ├── servers.lua
 │   │   ├── formatter.lua
 │   │   ├── languages.lua
-│   │   ├── keymaps.lua             -- NEU: LspNvim.KeymapSpec / KeymapName
-│   │   └── integrations.lua        -- NEU
+│   │   ├── keymaps.lua             -- NEW: LspNvim.KeymapSpec / KeymapName
+│   │   └── integrations.lua        -- NEW
 │   ├── config/
-│   │   ├── init.lua                -- Merge user-opts über DEFAULTS, Validierung
-│   │   └── DEFAULTS.lua            -- EINE Quelle aller Defaults
-│   ├── core/                       -- Schicht 1
-│   │   ├── registry.lua            -- ACTIVE-Liste aus opts.servers statt hart codiert
-│   │   ├── attach.lua              -- ohne NvChad-Direktzugriff
-│   │   ├── capabilities.lua        -- Konflikt-Marker raus (B1), Engine per opts
+│   │   ├── init.lua                -- merge user opts over DEFAULTS, validation
+│   │   └── DEFAULTS.lua            -- ONE source for all defaults
+│   ├── core/                       -- layer 1
+│   │   ├── registry.lua            -- ACTIVE list from opts.servers instead of hardcoded
+│   │   ├── attach.lua              -- without direct NvChad access
+│   │   ├── capabilities.lua        -- conflict markers out (B1), engine via opts
 │   │   ├── handlers.lua
 │   │   ├── filter.lua
 │   │   ├── diagnostics.lua
 │   │   ├── treesitter.lua
 │   │   ├── workspace_diagnostics.lua
-│   │   ├── root_scope.lua          -- ggf. auf lib.nvim.fs reduzieren
+│   │   ├── root_scope.lua          -- reduce to lib.nvim.fs where possible
 │   │   └── util.lua
-│   ├── formatter/                  -- Schicht 1, Conform als Integration
-│   ├── diagnostics/                -- Schicht 1 (Kern), UI über Integrations
-│   ├── servers/                    -- 1:1 Umzug
-│   ├── languages/                  -- 1:1 Umzug
-│   ├── lspdoctor/                  -- + Brücke nach health.lua
+│   ├── formatter/                  -- layer 1, conform as an integration
+│   ├── diagnostics/                -- layer 1 (core), UI via integrations
+│   ├── servers/                    -- 1:1 move
+│   ├── languages/                  -- 1:1 move
+│   ├── lspdoctor/                  -- + bridge to health.lua
 │   ├── tools/
 │   │   ├── eslint_prettier/
 │   │   ├── lsp_signature/
 │   │   ├── ts_type_lookup/
 │   │   ├── deprecated_help/
-│   │   └── _test/                  -- NEU: Test-Entrypoint (Leitlinie §6)
-│   ├── integrations/               -- Schicht 2 — pcall = Blast-Radius, nicht Optionalität
-│   │   ├── init.lua                -- Registry + Reihenfolge + available()-Report
-│   │   ├── trouble.lua             -- [hart]
-│   │   ├── conform.lua             -- [hart]
-│   │   ├── lazydev.lua             -- [hart]
-│   │   ├── cmp.lua                 -- nvim-cmp + Copilot-Menü-Bridge  [hart, alternativ]
-│   │   ├── blink.lua               -- [hart, alternativ]
-│   │   ├── mason/                  -- [hart] ehem. config/mason/**
-│   │   │   ├── init.lua            -- Fassade + register(kind, pkgs) für dap.nvim
-│   │   │   ├── ensure_install.lua  -- Session-Aggregation, Dedup, Dependency-Guards
+│   │   └── _test/                  -- NEW: test entry point (guideline §6)
+│   ├── integrations/               -- layer 2 — pcall = blast radius, not optionality
+│   │   ├── init.lua                -- registry + ordering + available() report
+│   │   ├── trouble.lua             -- [hard]
+│   │   ├── conform.lua             -- [hard]
+│   │   ├── lazydev.lua             -- [hard]
+│   │   ├── cmp.lua                 -- nvim-cmp + Copilot menu bridge  [hard, alternative]
+│   │   ├── blink.lua               -- [hard, alternative]
+│   │   ├── mason/                  -- [hard] formerly config/mason/**
+│   │   │   ├── init.lua            -- facade + register(kind, pkgs) for dap.nvim
+│   │   │   ├── ensure_install.lua  -- session aggregation, dedup, dependency guards
 │   │   │   └── defaults/{lsp,linter,formatter}.lua
-│   │   ├── workspace_diagnostics.lua  -- [hart]
+│   │   ├── workspace_diagnostics.lua  -- [hard]
 │   │   ├── lspsaga.lua
 │   │   ├── inc_rename.lua
 │   │   ├── lensline.lua
@@ -423,21 +421,21 @@ lsp.nvim/
 │   │   ├── which_key.lua
 │   │   ├── noice.lua
 │   │   └── nvchad.lua
-│   ├── pack/                       -- Schicht 3 — reine LazySpecs
-│   │   ├── init.lua                -- importiert core/ui/completion je nach vim.g
+│   ├── pack/                       -- layer 3 — pure LazySpecs
+│   │   ├── init.lua                -- imports core/ui/completion depending on vim.g
 │   │   ├── core.lua                -- conform, mason, workspace-diagnostics
 │   │   ├── ui.lua                  -- trouble, lspsaga, lensline, inc-rename
 │   │   └── completion.lua          -- lazydev + (cmp | blink)
 │   └── bindings/
 │       ├── init.lua
-│       ├── keymaps.lua             -- ALLE LSP-/Diagnostics-Keymaps, user-überschreibbar
-│       ├── usercmds.lua            -- :Lsp-Composer + Legacy-Aliase
+│       ├── keymaps.lua             -- ALL LSP/diagnostics keymaps, user-overridable
+│       ├── usercmds.lua            -- :Lsp composer + legacy aliases
 │       ├── autocmds.lua
-│       └── which_key.lua           -- Gruppenlabels, soft dependency
-├── plugin/lsp_nvim.lua             -- nur falls ein Command vor setup() nötig ist
-├── doc/lsp.txt                     -- englisch, `:h lsp.nvim`
+│       └── which_key.lua           -- group labels, soft dependency
+├── plugin/lsp_nvim.lua             -- only if a command is needed before setup()
+├── doc/lsp.txt                     -- English, `:h lsp.nvim`
 ├── docs/
-│   ├── BINDINGS.md                 -- Pflicht: alle Keymaps/Usercmds/Autocmds
+│   ├── BINDINGS.md                 -- mandatory: all keymaps/usercmds/autocmds
 │   ├── ROADMAP.md
 │   ├── installation.md
 │   ├── configuration.md
@@ -445,147 +443,148 @@ lsp.nvim/
 │   ├── commands.md
 │   ├── architecture.md
 │   ├── health.md
-│   └── UMBRELLA.md                 -- NEU: wie das Pack-System funktioniert
+│   └── UMBRELLA.md                 -- NEW: how the pack system works
 ├── .luarc.json
 ├── stylua.toml
-└── README.md                       -- englisch, ASCII-Art + Badges + ToC (nur H2)
+└── README.md                       -- English, ASCII art + badges + ToC (H2 only)
 ```
 
-Die interne Struktur von Schicht 1 bleibt weitgehend 1:1 — sie ist bereits nach
-[Arch&Coding-Regeln.md](file:///C:/repos/WKDBooks/Development/wkdbook-Lua/Checklists/archiv/Arch&Coding-Regeln.md) organisiert
-(SRP pro Modul, `@types`-Unterordner, `pcall`-Disziplin). Die Extraktion ist
-überwiegend **Verschieben + Entkopplung von Host-Spezifika**, kein Rewrite.
-Neu gebaut werden im Wesentlichen `config/`, `integrations/`, `pack/`,
-`bindings/`, `health.lua`.
+The internal structure of layer 1 stays largely 1:1 — it is already organised
+along [Arch&Coding-Regeln.md](file:///C:/repos/WKDBooks/Development/wkdbook-Lua/Checklists/archiv/Arch&Coding-Regeln.md)
+(SRP per module, `@types` subfolders, `pcall` discipline). The extraction is
+mostly **moving + decoupling from host specifics**, not a rewrite. What gets
+newly built is essentially `config/`, `integrations/`, `pack/`, `bindings/`,
+`health.lua`.
 
 ---
 
-## 6. Das Pack-System (LazySpec-Export)
+## 6. The pack system (LazySpec export)
 
-Das ist der Mechanismus, der `lsp.nvim` zum Dachplugin macht.
+This is the mechanism that makes `lsp.nvim` an umbrella plugin.
 
-### 6.1 Funktionsweise
+### 6.1 How it works
 
-lazy.nvim kann Specs aus dem `lua/`-Verzeichnis eines Plugins importieren, wenn
-der Import am Spec des Plugins selbst hängt (dasselbe Verfahren nutzt LazyVim
-mit `{ "LazyVim/LazyVim", import = "lazyvim.plugins" }`). Damit reicht **ein
-Eintrag** in der User-Config:
+lazy.nvim can import specs from a plugin's `lua/` directory when the import
+hangs off the plugin's own spec (LazyVim uses the same technique with
+`{ "LazyVim/LazyVim", import = "lazyvim.plugins" }`). That way **one entry** in
+the user config is enough:
 
 ```lua
 -- lua/plugins/personal/init.lua
 {
   "StefanBartl/lsp.nvim",
-  import = "lsp.pack",                     -- ← installiert das ganze Ökosystem
+  import = "lsp.pack",                     -- ← installs the whole ecosystem
   dependencies = { "StefanBartl/lib.nvim" },
   event = { "BufReadPre", "BufNewFile" },
   opts = {
-    -- alles Weitere: siehe §9
+    -- everything else: see §9
   },
 }
 ```
 
-Ohne `import = "lsp.pack"` bekommt man nur Schicht 1+2 — `lsp.nvim` verdrahtet
-dann, was ohnehin installiert ist, und ignoriert den Rest.
+Without `import = "lsp.pack"` you get only layers 1+2 — `lsp.nvim` then wires up
+whatever is installed anyway and ignores the rest.
 
-### 6.2 Timing-Problem und Lösung
+### 6.2 Timing problem and solution
 
-`import` wird von lazy.nvim beim **Sammeln** der Specs ausgewertet — lange
-bevor `require("lsp").setup(opts)` läuft. Der Pack kann also nicht aus `opts`
-lesen. Zwei Kanäle, absichtlich getrennt:
+`import` is evaluated by lazy.nvim while **collecting** the specs — long before
+`require("lsp").setup(opts)` runs. The pack therefore cannot read from `opts`.
+Two channels, deliberately kept apart:
 
-| Kanal | Zeitpunkt | Steuert |
+| Channel | Point in time | Controls |
 |---|---|---|
-| `vim.g.lsp_nvim` (Tabelle, vor `require("lazy").setup()` gesetzt) | Spec-Sammelzeit | **Ob** ein Fremdplugin installiert wird, Versions-Pins, Engine-Wahl (`cmp` vs. `blink`) |
-| `opts` in der Plugin-Spec | Setup-Zeit | **Wie** alles konfiguriert wird: Server, Keymaps, Formatter, Tools |
+| `vim.g.lsp_nvim` (table, set before `require("lazy").setup()`) | spec collection time | **Whether** a third-party plugin gets installed, version pins, engine choice (`cmp` vs. `blink`) |
+| `opts` in the plugin spec | setup time | **How** everything is configured: servers, keymaps, formatter, tools |
 
 ```lua
--- vor require("lazy").setup(...)
+-- before require("lazy").setup(...)
 vim.g.lsp_nvim = {
   pack = {
     core       = true,             -- conform, mason, workspace-diagnostics
     ui         = true,             -- trouble, lspsaga, lensline, inc-rename
     completion = "cmp",            -- "cmp" | "blink" | false
-    -- Feingranular: einzelne Plugins abwählen
+    -- fine-grained: deselect individual plugins
     disable    = { "lspsaga.nvim" },
   },
 }
 ```
 
-`require("lsp").setup(opts)` liest `vim.g.lsp_nvim` als Basis und merged `opts`
-darüber, damit es zur Laufzeit trotzdem **eine** aufgelöste Config gibt
-(`require("lsp.config").get()`). Widersprüche (z. B. `pack.completion = false`,
-aber `opts.completion.engine = "blink"`) meldet `:checkhealth lsp` als Warnung.
+`require("lsp").setup(opts)` reads `vim.g.lsp_nvim` as the base and merges
+`opts` over it, so that at runtime there is still **one** resolved config
+(`require("lsp.config").get()`). Contradictions (e.g. `pack.completion = false`
+but `opts.completion.engine = "blink"`) are reported by `:checkhealth lsp` as a
+warning.
 
-### 6.3 Nutzung ohne Pack
+### 6.3 Use without the pack
 
-Der Pack ist der **empfohlene Weg** — er ist der Grund, warum das Plugin ein
-Dach ist. Wer die Specs trotzdem selbst verwalten will (z. B. weil er eine
-andere Trouble-Version pinnt), lässt `import` weg und behält eigene
-`plugins/*.lua`; Schicht 2 findet die Plugins per `require` und verdrahtet sie
-identisch. Fehlt dann eine **harte** Dependency (§3), meldet
-`:checkhealth lsp` das als `error` mit dem fehlenden Plugin-Namen — statt
-stillschweigend ein halbes Setup zu liefern.
+The pack is the **recommended path** — it is the reason the plugin is an
+umbrella. Whoever still wants to manage the specs themselves (e.g. because they
+pin a different Trouble version) leaves `import` out and keeps their own
+`plugins/*.lua`; layer 2 finds the plugins via `require` and wires them
+identically. If a **hard** dependency (§3) is then missing, `:checkhealth lsp`
+reports that as an `error` with the missing plugin's name — instead of silently
+delivering half a setup.
 
-Das ist gleichzeitig der Migrationsweg (§13): erst ohne Pack umziehen (die
-heutigen `plugins/lsp.lua` / `plugins/trouble.lua` bleiben stehen), dann die
-Specs in Phase 5 in den Pack verschieben.
+That is also the migration path (§13): first move without the pack (today's
+`plugins/lsp.lua` / `plugins/trouble.lua` stay in place), then transfer the
+specs into the pack in phase 5.
 
 ---
 
-## 7. Integrations-Adapter im Detail
+## 7. Integration adapters in detail
 
-Jeder Adapter hat dieselbe Signatur:
+Every adapter has the same signature:
 
 ```lua
 ---@class LspNvim.Integration
 ---@field name string
----@field available fun(): boolean          # ist das Fremdplugin da?
----@field setup fun(cfg: LspNvim.Config): boolean, string?   # verdrahten
----@field health fun(report: LspNvim.HealthReport): nil      # für :checkhealth
+---@field available fun(): boolean          # is the third-party plugin there?
+---@field setup fun(cfg: LspNvim.Config): boolean, string?   # wire it up
+---@field health fun(report: LspNvim.HealthReport): nil      # for :checkhealth
 ```
 
-`integrations/init.lua` hält die Registry und ruft sie in definierter Reihenfolge
-auf. Ein Adapter, dessen Plugin fehlt oder dessen `setup()` scheitert, reißt
-nichts mit (§3, Blast-Radius) — er meldet sich im Health-Report, nie per
-`notify()` (Regel: kein `notify()` in Low-Level-Code). Der Schweregrad richtet
-sich nach der Dependency-Härte aus §3: **harte** Dependency fehlt → `error`,
-**weiche** fehlt → `info`.
+`integrations/init.lua` holds the registry and calls the adapters in a defined
+order. An adapter whose plugin is missing or whose `setup()` fails takes nothing
+down with it (§3, blast radius) — it reports itself in the health report, never
+via `notify()` (rule: no `notify()` in low-level code). The severity follows the
+dependency hardness from §3: a **hard** dependency missing → `error`, a **soft**
+one missing → `info`.
 
-| Adapter | Was `lsp.nvim` übernimmt |
+| Adapter | What `lsp.nvim` takes over |
 |---|---|
-| `trouble` | Kompletter Setup-Block (Preview-Split rechts 30 %, Index-Formatter aus `config/trouble/numbering.lua`, Modi `diagnostics`/`qflist`/`loclist`) **plus alle `<leader>x*`-Keymaps**. Der Neovim-0.12-Patch für `TSHighlighter._on_win/_on_line` (`plugins/trouble.lua:86-114`) zieht mit um — mit Versions-Guard statt bedingungslos. Trouble wird zur **Standard-Senke** für Diagnostics: ist es da, gehen `]d`/`[d`/`]q`/`[q` durch Trouble, sonst durch die Kern-Loclist/Quickfix-Implementierung. Damit ist B3 strukturell gelöst |
-| `conform` | **Eine** Conform-Konfiguration (heute zwei, B5): `formatters_by_ft` aus `opts.formatter.by_ft`, `format_on_save` **immer** über den eigenen View-preserving Toggle in `lsp/formatter/init.lua`, nie über Conforms `format_on_save` |
-| `lazydev` | Library-Liste (heute `plugins/lsp.lua:34-44`) als Default in `DEFAULTS.lua`, ergänzbar per `opts.lua.lazydev.library`. Der `pcall(require, "lazydev")` aus `core/attach.lua:62` wandert hierher |
-| `cmp` | `cmp_nvim_lsp`-Capabilities, `lazydev`-Source (`group_index = 0`), Copilot-Menü-Bridge (`config/copilot/cmp.lua`) |
-| `blink` | `get_lsp_capabilities()`, `lazydev`-Provider (`score_offset = 100`), `signature.enabled`. Der auskommentierte Block aus `plugins/lsp.lua:96-118` wird hier zur echten, wählbaren Alternative |
-| `mason` | `ensure_install`-Fassade (heute `config/mason/ensure_install/**`), Paketlisten aus `opts.mason.ensure` mit `overrides` |
-| `workspace_diagnostics` | Populate-on-attach hinter dem Laufzeit-Toggle (`core/workspace_diagnostics.lua`) — bleibt unverändert, nur Adapter-Wrapper |
-| `lspsaga` | Der heutige Setup-Block (nur Breadcrumb aktiv), als Default-Preset |
-| `inc_rename` | `setup()` + `post_hook` (Auto-Save der berührten Buffer, `config/inc_rename/init.lua`). Löst B9: `opts.rename.provider = "auto"` nimmt inc-rename wenn da, sonst `vim.lsp.buf.rename` — **ein** Keymap für beides |
-| `lensline` | Profil `minimal`, `render = "focused"` |
-| `picker` | Abstraktion für Symbol-/Diagnostics-Picker: `fzf-lua` \| `telescope` \| `snacks` \| `pickers.nvim` \| `auto`. Ersetzt die vier hart auf FzfLua verdrahteten Keymaps aus `bindings/mappings/fzf.lua` und die Ad-hoc-Telescope-Anbindung in `tools/ts_type_lookup/ts_telescope_picker.lua` |
-| `which_key` | Gruppenlabels für alle Prefixe (`<leader>l`, `<leader>x`, `<leader>f`, …), v2- und v3-API, analog `dap.nvim/bindings/which_key/init.lua` |
-| `noice` | `ts_type_lookup/noice_integration.lua` + inc-rename-Cmdline-Preset |
-| `nvchad` | `on_attach`/`on_init`/`capabilities`-Bridge, **nur** wenn `opts.integrations.nvchad = true` |
+| `trouble` | The complete setup block (preview split on the right at 30 %, index formatter from `config/trouble/numbering.lua`, modes `diagnostics`/`qflist`/`loclist`) **plus all `<leader>x*` keymaps**. The Neovim 0.12 patch for `TSHighlighter._on_win/_on_line` (`plugins/trouble.lua:86-114`) moves along — with a version guard instead of unconditionally. Trouble becomes the **default sink** for diagnostics: if it is there, `]d`/`[d`/`]q`/`[q` go through Trouble, otherwise through the core loclist/quickfix implementation. That solves B3 structurally |
+| `conform` | **One** conform configuration (two today, B5): `formatters_by_ft` from `opts.formatter.by_ft`, `format_on_save` **always** through the plugin's own view-preserving toggle in `lsp/formatter/init.lua`, never through conform's `format_on_save` |
+| `lazydev` | Library list (today `plugins/lsp.lua:34-44`) as a default in `DEFAULTS.lua`, extendable via `opts.lua.lazydev.library`. The `pcall(require, "lazydev")` from `core/attach.lua:62` moves here |
+| `cmp` | `cmp_nvim_lsp` capabilities, `lazydev` source (`group_index = 0`), Copilot menu bridge (`config/copilot/cmp.lua`) |
+| `blink` | `get_lsp_capabilities()`, `lazydev` provider (`score_offset = 100`), `signature.enabled`. The commented-out block from `plugins/lsp.lua:96-118` becomes a real, selectable alternative here |
+| `mason` | `ensure_install` facade (today `config/mason/ensure_install/**`), package lists from `opts.mason.ensure` with `overrides` |
+| `workspace_diagnostics` | Populate-on-attach behind the runtime toggle (`core/workspace_diagnostics.lua`) — unchanged, just an adapter wrapper |
+| `lspsaga` | Today's setup block (only breadcrumb active), as a default preset |
+| `inc_rename` | `setup()` + `post_hook` (auto-save of the touched buffers, `config/inc_rename/init.lua`). Solves B9: `opts.rename.provider = "auto"` takes inc-rename when present, otherwise `vim.lsp.buf.rename` — **one** keymap for both |
+| `lensline` | Profile `minimal`, `render = "focused"` |
+| `picker` | Abstraction for symbol/diagnostics pickers: `fzf-lua` \| `telescope` \| `snacks` \| `pickers.nvim` \| `auto`. Replaces the four keymaps hardwired to FzfLua in `bindings/mappings/fzf.lua` and the ad-hoc telescope binding in `tools/ts_type_lookup/ts_telescope_picker.lua` |
+| `which_key` | Group labels for all prefixes (`<leader>l`, `<leader>x`, `<leader>f`, …), v2 and v3 API, analogous to `dap.nvim/bindings/which_key/init.lua` |
+| `noice` | `ts_type_lookup/noice_integration.lua` + inc-rename cmdline preset |
+| `nvchad` | `on_attach`/`on_init`/`capabilities` bridge, **only** if `opts.integrations.nvchad = true` |
 
 ---
 
-## 8. Bindings: Keymaps, Usercmds, Autocmds
+## 8. Bindings: keymaps, usercmds, autocmds
 
-### 8.1 Keymaps — ein Preset, vollständig überschreibbar
+### 8.1 Keymaps — one preset, fully overridable
 
-Alle Keymaps aus §1.3 kommen nach `lua/lsp/bindings/keymaps.lua`. Vorgabe aus
-[NEW_PROJECT.md](file:///C:/repos/WKDBooks/Development/wkdbook-Lua/Checklists/gates/NEW_PROJECT.md): *„alle Keymaps müssen vom User
-einfach modifizierbar / deaktiviert werden können“* und *„eine which-key
-Implementierung haben“*.
+All keymaps from §1.3 move into `lua/lsp/bindings/keymaps.lua`. Requirement from
+[NEW_PROJECT.md](file:///C:/repos/WKDBooks/Development/wkdbook-Lua/Checklists/gates/NEW_PROJECT.md): *"all keymaps must be easily
+modifiable / disableable by the user"* and *"have a which-key
+implementation"*.
 
 ```lua
 opts = {
   keymaps = {
-    enabled = true,              -- false = gar keine Keymaps
+    enabled = true,              -- false = no keymaps at all
     preset  = "default",         -- "default" | "minimal" | "none"
 
-    -- Einzeln: string = neues lhs, false = deaktiviert, nil = Default
+    -- individually: string = new lhs, false = disabled, nil = default
     goto_definition   = "lsd",
     goto_references   = "lsr",
     rename            = "grn",
@@ -602,39 +601,38 @@ opts = {
 }
 ```
 
-Umsetzung: eine **deklarative Tabelle** `KEYMAPS = { <name> = { lhs, mode, rhs,
-desc, requires? } }` in `config/DEFAULTS.lua`; `bindings/keymaps.lua` iteriert
-darüber, wendet die User-Overrides an und registriert über `lib.nvim.map`.
-`requires = "trouble"` sorgt dafür, dass ein Keymap nur gesetzt wird, wenn der
-Adapter verfügbar ist — inklusive automatischem Fallback auf die Kern-Variante.
-Nebeneffekt: `docs/BINDINGS.md` kann **aus dieser Tabelle generiert** werden
-(kein Doku-Drift), und `:checkhealth lsp` kann Kollisionen mit bestehenden
-Mappings melden.
+Implementation: a **declarative table** `KEYMAPS = { <name> = { lhs, mode, rhs,
+desc, requires? } }` in `config/DEFAULTS.lua`; `bindings/keymaps.lua` iterates
+over it, applies the user overrides and registers via `lib.nvim.map`.
+`requires = "trouble"` makes sure a keymap is only set when the adapter is
+available — including an automatic fallback to the core variant. Side effect:
+`docs/BINDINGS.md` can be **generated from that table** (no doc drift), and
+`:checkhealth lsp` can report collisions with existing mappings.
 
-**Entschieden (2026-07-26, B10): die `ls*`-Belegung bleibt.** `lsr`/`lsi`/`lss`/
-`lsd`/`lsD`/`lst`/`lsa` werden als Preset `default` übernommen. Sie sind kein
-Ersatz für die Neovim-0.11-Defaults, sondern liegen daneben: `grr`, `gri`,
-`grn`, `grt`, `gO` funktionieren weiterhin, weil Neovim sie buffer-lokal bei
-`LspAttach` setzt und die `ls*`-Maps global sind — kein Konflikt, nur zwei Wege
-zum selben Ziel.
+**Decided (2026-07-26, B10): the `ls*` assignment stays.** `lsr`/`lsi`/`lss`/
+`lsd`/`lsD`/`lst`/`lsa` are adopted as preset `default`. They are not a
+replacement for the Neovim 0.11 defaults but sit next to them: `grr`, `gri`,
+`grn`, `grt`, `gO` keep working, because Neovim sets them buffer-locally on
+`LspAttach` while the `ls*` maps are global — no conflict, just two paths to the
+same destination.
 
-Zwei Punkte, die trotzdem in `docs/BINDINGS.md` gehören:
+Two points that nevertheless belong in `docs/BINDINGS.md`:
 
-- `lsd`/`lsr`/… verzögern im Normal-Mode jede mit `l` beginnende Eingabe um
-  `timeoutlen`, weil Neovim auf die Fortsetzung der Sequenz wartet. Das ist der
-  Preis der prefixlosen Maps und heute schon so — nur bisher nirgends
-  dokumentiert.
-- `grn` ist doppelt belegt: einmal von Neovim (buffer-lokal, `LspAttach`) und
-  einmal global in `bindings/mappings/lsp.lua:21`. Die globale gewinnt nicht —
-  buffer-lokale Maps haben Vorrang. Beide zeigen auf `vim.lsp.buf.rename`, also
-  folgenlos; mit `rename.provider = "inc_rename"` (B9) würden sie aber
-  auseinanderlaufen. Der Adapter muss deshalb die **buffer-lokale** Map bei
-  `LspAttach` überschreiben, nicht nur die globale setzen.
+- `lsd`/`lsr`/… delay every normal-mode input beginning with `l` by
+  `timeoutlen`, because Neovim waits for the sequence to continue. That is the
+  price of the prefix-less maps and is already the case today — just documented
+  nowhere so far.
+- `grn` is bound twice: once by Neovim (buffer-local, `LspAttach`) and once
+  globally in `bindings/mappings/lsp.lua:21`. The global one does not win —
+  buffer-local maps take precedence. Both point at `vim.lsp.buf.rename`, so it
+  is inconsequential; with `rename.provider = "inc_rename"` (B9) they would
+  diverge, though. The adapter must therefore override the **buffer-local** map
+  on `LspAttach`, not merely set the global one.
 
-### 8.2 Usercmds — `:Lsp`-Composer
+### 8.2 Usercmds — the `:Lsp` composer
 
-Vorgabe: ein Composite-Usercommand `:Cmd [options?]` mit Autocompletion über
-`lib.nvim.usercmd.composer`.
+Requirement: one composite user command `:Cmd [options?]` with autocompletion
+via `lib.nvim.usercmd.composer`.
 
 ```
 :Lsp status                      :Lsp doctor [health|debug|quick|deep|all]
@@ -644,40 +642,40 @@ Vorgabe: ein Composite-Usercommand `:Cmd [options?]` mit Autocompletion über
 :Lsp log [open|level <lvl>]      :Lsp recover
 ```
 
-Die heutigen ~30 Einzelcommands (`:LspFormat*`, `:LspWorkspaceDiagnostics*`,
-`:LspStartHere`, `:DiagQF`, …) bleiben als **dünne Aliase** erhalten
-(`opts.usercmds.legacy_aliases = true`, Default `true`) — Muskelgedächtnis
-schlägt Reinheit, und die Aliase kosten nur je eine Zeile. `:LspDoctor` bleibt
-zusätzlich eigenständig (begründete Ausnahme analog `:Surround` in
-`replacer.nvim`): es ist ein Diagnosewerkzeug mit eigenem Renderer, kein
-LSP-Steuerbefehl.
+Today's ~30 individual commands (`:LspFormat*`, `:LspWorkspaceDiagnostics*`,
+`:LspStartHere`, `:DiagQF`, …) are kept as **thin aliases**
+(`opts.usercmds.legacy_aliases = true`, default `true`) — muscle memory beats
+purity, and the aliases cost one line each. `:LspDoctor` additionally stays
+standalone (a justified exception, analogous to `:Surround` in
+`replacer.nvim`): it is a diagnostic tool with its own renderer, not an LSP
+control command.
 
-Server-spezifische Commands (`:AstroDevStart`, `:MdFormat`, `:LuaLsReloadLibrary`,
-`:TypeDef*`, `:EslintFix`, …) bleiben wie sie sind — sie sind Filetype-gebunden
-und gehören nicht in einen globalen Composer.
+Server-specific commands (`:AstroDevStart`, `:MdFormat`, `:LuaLsReloadLibrary`,
+`:TypeDef*`, `:EslintFix`, …) stay as they are — they are filetype-bound and do
+not belong in a global composer.
 
 ### 8.3 Autocmds
 
-`bindings/autocmds.lua` bündelt: `LspAttach`-Wiring, Format-on-Save-Gruppe
-(`LspFormatOnSave`), Diagnostics-Refresh, Astro-Autocmds. Alle über
-`lib.nvim.autocmd` + `lib.nvim.augroup`, jede Gruppe löschbar/reloadbar
-(Zentrale-Prinzipien §4).
+`bindings/autocmds.lua` bundles: `LspAttach` wiring, the format-on-save group
+(`LspFormatOnSave`), diagnostics refresh, Astro autocmds. All via
+`lib.nvim.autocmd` + `lib.nvim.augroup`, every group deletable/reloadable
+(central principles §4).
 
 ---
 
-## 9. Öffentliche API & Defaults
+## 9. Public API & defaults
 
-`config/DEFAULTS.lua` ist die einzige Quelle; `config/init.lua` merged und
-validiert. Ziel laut Vorgabe: **maximale Nutzererfahrung bei minimaler
-Initial-Config** — `require("lsp").setup()` ohne Argumente muss ein
-vollständiges, sinnvolles Setup ergeben.
+`config/DEFAULTS.lua` is the single source; `config/init.lua` merges and
+validates. Goal per the requirement: **maximum user experience with minimal
+initial config** — `require("lsp").setup()` without arguments must yield a
+complete, sensible setup.
 
 ```lua
 require("lsp").setup({
-  ---@type string[]  ersetzt die hart codierte ACTIVE-Liste (B7)
+  ---@type string[]  replaces the hardcoded ACTIVE list (B7)
   servers = { "lua_ls", "gopls", "bashls", "marksman", "html", "ts_ls",
               "tailwindcss", "csharp" },
-  server_opts = { lua_ls = { … } },       -- pro-Server-Overrides
+  server_opts = { lua_ls = { … } },       -- per-server overrides
 
   diagnostics = {
     virtual_text = { spacing = 2, prefix = "●" },
@@ -688,7 +686,7 @@ require("lsp").setup({
   },
 
   formatter = {
-    on_save = false,                      -- View-preserving Toggle
+    on_save = false,                      -- view-preserving toggle
     timeout_ms = 1500,
     engine = "conform",                   -- "conform" | "lsp" | "auto"
     by_ft = { lua = { "stylua" }, … },
@@ -697,8 +695,8 @@ require("lsp").setup({
   completion = { engine = "auto" },       -- "cmp" | "blink" | "auto" | false
   rename     = { provider = "auto" },     -- "inc_rename" | "native" | "auto"
 
-  workspace_diagnostics = { enabled = false },   -- Host übergibt Machine-Rolle
-  inlay_hints           = { enabled = false, filetypes = {} },   -- NEU
+  workspace_diagnostics = { enabled = false },   -- the host passes the machine role
+  inlay_hints           = { enabled = false, filetypes = {} },   -- NEW
 
   tools = {
     eslint_prettier = { enabled = true, filetypes = { "javascript", … } },
@@ -711,18 +709,18 @@ require("lsp").setup({
     trouble = true, conform = true, lazydev = true, mason = false,
     lspsaga = true, inc_rename = true, lensline = true,
     picker = "auto", which_key = true, noice = true,
-    nvchad = false,                       -- Default AUS: Wiederverwendbarkeit
+    nvchad = false,                       -- default OFF: reusability
   },
 
   mason = { ensure_install = false, packages = { … }, overrides = { … } },
-  keymaps = { … },                        -- s. §8.1
+  keymaps = { … },                        -- see §8.1
   usercmds = { legacy_aliases = true },
   lspdoctor = { use_notify = false, list_limit = 8, … },
 })
 ```
 
-Jeder Key bekommt einen Typ in `@types/` (Vorgabe: „für ein gutes
-LSP-Erlebnis: jeder Key braucht einen Typ“), z. B.:
+Every key gets a type in `@types/` (requirement: "for a good LSP experience:
+every key needs a type"), e.g.:
 
 ```lua
 ---@alias LspNvim.CompletionEngine "cmp"|"blink"|"auto"|false
@@ -730,8 +728,8 @@ LSP-Erlebnis: jeder Key braucht einen Typ“), z. B.:
 ---@alias LspNvim.RenameProvider  "inc_rename"|"native"|"auto"
 ```
 
-Host-seitig sieht der Aufruf dann so aus (ersetzt `init.lua:156` **und** die
-Specs in `plugins/lsp.lua` / `plugins/trouble.lua`):
+On the host side the call then looks like this (replacing `init.lua:156` **and**
+the specs in `plugins/lsp.lua` / `plugins/trouble.lua`):
 
 ```lua
 {
@@ -749,632 +747,622 @@ Specs in `plugins/lsp.lua` / `plugins/trouble.lua`):
 
 ---
 
-## 10. lib.nvim-Integration
+## 10. lib.nvim integration
 
-Pflicht laut [Arch&Coding-Regeln.md §NVIM-Config spezifisch](file:///C:/repos/WKDBooks/Development/wkdbook-Lua/Checklists/archiv/Arch&Coding-Regeln.md)
-und [Checklist.md](file:///C:/repos/WKDBooks/Development/wkdbook-Lua/Checklists/archiv/Checklist.md). Verfügbare Module in
+Mandatory per [Arch&Coding-Regeln.md §NVIM config specific](file:///C:/repos/WKDBooks/Development/wkdbook-Lua/Checklists/archiv/Arch&Coding-Regeln.md)
+and [Checklist.md](file:///C:/repos/WKDBooks/Development/wkdbook-Lua/Checklists/archiv/Checklist.md). Available modules in
 `C:\repos\lib.nvim`: `autocmd, buf_win_tab, buffer, cache, core, cross,
 debounce, docmap, dotrepeat, fs, git, harvest, logger, lua_ls, map, neotree,
 net, normalize, notify, progress, require, safe_api, selection, store, system,
-terminal, token, treesitter, ui, usercmd, window` sowie `lib.lua.{lazy, memo,
-tables, strings, error, json, …}`.
+terminal, token, treesitter, ui, usercmd, window` as well as `lib.lua.{lazy,
+memo, tables, strings, error, json, …}`.
 
-| Aktuell in `lua/lsp/**` | Ersetzen durch | Anmerkung |
+| Currently in `lua/lsp/**` | Replace with | Note |
 |---|---|---|
-| `require("lib.nvim.notify").create(…)` | bereits verwendet ✅ | konsistent beibehalten |
-| `vim.keymap.set` (`diagnostics/keymaps.lua`) | `lib.nvim.map` | derzeit uneinheitlich |
-| eigene `nvim_create_user_command` (`usercmds/formatter.lua:5`) | `lib.nvim.usercmd` | teils schon (`usercmd.create` in `diagnostics/commands.lua`) |
-| ~30 Einzelcommands | `lib.nvim.usercmd.composer` | existiert (`lua/lib/nvim/usercmd/composer`) → `:Lsp`-Composer, s. §8.2 |
-| eigene `nvim_create_autocmd` (`formatter/init.lua`) | `lib.nvim.autocmd` / `lib.nvim.augroup` | teilweise schon |
-| `core/root_scope.lua`, `servers/lua_ls/rootresolver.lua`, `servers/marksman/rootresolver.lua` | `lib.nvim.fs.find_root` / `polymorphic_rootresolver` | **Dedup-Kandidat B8**: drei Re-Implementierungen desselben Problems |
-| Library-Profile-Caching (`servers/lua_ls`, `lspdoctor`) | `lib.nvim.cache` | prüfen ob `stdpath("cache")`-konform |
-| Format-on-Save-Timing, Diagnostics-Refresh | `lib.nvim.debounce` / `debounce.buffer` | derzeit kein Debouncing → Perf-Kandidat |
-| `get_installed_lsps()` (`usercmds/completion.lua`) fragt bei jedem Tab-Complete Mason neu ab | `lib.lua.memo` | klarer Kandidat |
-| Alle Tools werden in `init.lua` synchron geladen, unabhängig vom Filetype | `lib.lua.lazy` | `ts_type_lookup`, `deprecated_help` sind selten gebraucht |
-| `vim.ui.select` (`root_scope_picker`, LspDoctor-Modus) | `lib.nvim.selection` / `lib.nvim.ui` | vor Verwendung API prüfen — `hover_select` war im Repo nicht auffindbar |
-| Windows-Pfad im Formatter (B6) | `lib.nvim.cross` | Cross-Plattform-Regel |
-| `lspdoctor`-Renderer, Progress bei Mason-Installs | `lib.nvim.ui`, `lib.nvim.progress` | Vorgabe §10 NEW_Project |
-| Strukturierte Fehler / `safe_call` | `lib.lua.error`, `lib.nvim.safe_api` | ersetzt die vielen Ad-hoc-`pcall`-Ketten in `lsp/init.lua` |
-| Doku-Generierung `docs/BINDINGS.md` | `lib.nvim.docmap` | prüfen, ob es die Keymap-Tabelle rendern kann |
+| `require("lib.nvim.notify").create(…)` | already in use ✅ | keep it consistent |
+| `vim.keymap.set` (`diagnostics/keymaps.lua`) | `lib.nvim.map` | currently inconsistent |
+| homegrown `nvim_create_user_command` (`usercmds/formatter.lua:5`) | `lib.nvim.usercmd` | partly already (`usercmd.create` in `diagnostics/commands.lua`) |
+| ~30 individual commands | `lib.nvim.usercmd.composer` | exists (`lua/lib/nvim/usercmd/composer`) → `:Lsp` composer, see §8.2 |
+| homegrown `nvim_create_autocmd` (`formatter/init.lua`) | `lib.nvim.autocmd` / `lib.nvim.augroup` | partly already |
+| `core/root_scope.lua`, `servers/lua_ls/rootresolver.lua`, `servers/marksman/rootresolver.lua` | `lib.nvim.fs.find_root` / `polymorphic_rootresolver` | **dedup candidate B8**: three re-implementations of the same problem |
+| Library profile caching (`servers/lua_ls`, `lspdoctor`) | `lib.nvim.cache` | check whether it is `stdpath("cache")`-conformant |
+| Format-on-save timing, diagnostics refresh | `lib.nvim.debounce` / `debounce.buffer` | no debouncing today → performance candidate |
+| `get_installed_lsps()` (`usercmds/completion.lua`) queries Mason afresh on every tab-complete | `lib.lua.memo` | a clear candidate |
+| All tools are loaded synchronously in `init.lua`, regardless of filetype | `lib.lua.lazy` | `ts_type_lookup`, `deprecated_help` are rarely needed |
+| `vim.ui.select` (`root_scope_picker`, LspDoctor mode) | `lib.nvim.selection` / `lib.nvim.ui` | check the API before using it — `hover_select` was not findable in the repo |
+| Windows path in the formatter (B6) | `lib.nvim.cross` | cross-platform rule |
+| `lspdoctor` renderer, progress on Mason installs | `lib.nvim.ui`, `lib.nvim.progress` | requirement §10 NEW_Project |
+| Structured errors / `safe_call` | `lib.lua.error`, `lib.nvim.safe_api` | replaces the many ad-hoc `pcall` chains in `lsp/init.lua` |
+| Doc generation `docs/BINDINGS.md` | `lib.nvim.docmap` | check whether it can render the keymap table |
 
 ---
 
 ## 11. checkhealth & LspDoctor
 
-Pflicht laut Vorgabe: *„Jedes Plugin soll eine `:checkhealth` Funktionalität
-besitzen“*. Heute existiert nur `:LspDoctor health` — **kein**
-`:checkhealth`-Provider.
+Mandatory per the requirement: *"every plugin should have `:checkhealth`
+functionality"*. Today only `:LspDoctor health` exists — **no**
+`:checkhealth` provider.
 
-`lua/lsp/health.lua` wird eine **dünne zweite Schnittstelle auf denselben Kern**
-(`lspdoctor/health.lua`), kein Code-Duplikat. Berichtet über
+`lua/lsp/health.lua` becomes a **thin second interface onto the same core**
+(`lspdoctor/health.lua`), not a code duplicate. It reports via
 `vim.health.{start,ok,warn,error,info}`:
 
-1. **Umgebung**: Neovim-Version ≥ 0.11, `lib.nvim` vorhanden
-2. **Config**: aufgelöste Opts valide, Widersprüche `vim.g.lsp_nvim` ↔ `opts` (§6.2)
-3. **Server**: konfiguriert vs. tatsächlich attached vs. Executable im `$PATH`
-4. **Integrations**: pro Adapter `available()` + ob `setup()` erfolgreich war
-5. **Keymaps**: registrierte Maps, Kollisionen mit fremden Mappings
-6. **Formatter**: welcher Formatter würde für den aktuellen Buffer greifen,
-   Prioritätskonflikte (die `lspdoctor`-Option `formatter_priority` gegen das
-   tatsächliche Verhalten von `formatter/conform.lua` verifizieren)
-7. **Performance**: Workspace-Diagnostics-Zustand, Anzahl geladener Buffer
-8. Optional: Ergebnisse aus `docs/TESTS/**` bzw. `tools/_test`
+1. **Environment**: Neovim version ≥ 0.11, `lib.nvim` present
+2. **Config**: resolved opts valid, contradictions `vim.g.lsp_nvim` ↔ `opts` (§6.2)
+3. **Servers**: configured vs. actually attached vs. executable on `$PATH`
+4. **Integrations**: per adapter `available()` + whether `setup()` succeeded
+5. **Keymaps**: registered maps, collisions with foreign mappings
+6. **Formatter**: which formatter would take effect for the current buffer,
+   priority conflicts (verify the `lspdoctor` option `formatter_priority`
+   against the actual behaviour of `formatter/conform.lua`)
+7. **Performance**: workspace-diagnostics state, number of loaded buffers
+8. Optional: results from `docs/TESTS/**` resp. `tools/_test`
 
 ---
 
-## 12. Dokumentationspflichten
+## 12. Documentation duties
 
-Aus [NEW_PROJECT.md](file:///C:/repos/WKDBooks/Development/wkdbook-Lua/Checklists/gates/NEW_PROJECT.md):
+From [NEW_PROJECT.md](file:///C:/repos/WKDBooks/Development/wkdbook-Lua/Checklists/gates/NEW_PROJECT.md):
 
-- `README.md` — **englisch**, ASCII-Art + Badges am Anfang, Table of Content
-  (nur H2). Direkt nach der ASCII-Art ein `>`-Absatz mit Link auf das am besten
-  ergänzende Plugin → **`dap.nvim`** (Schwester-Subsystem, gleiche Architektur)
-  oder `lib.nvim` (harte Dependency). Vorschlag: `dap.nvim`.
-- `/doc/lsp.txt` — englisch, `:h lsp.nvim`-fähig, `doc/tags` generieren
-- `/docs/ROADMAP.md` — künftige Features (s. §14)
-- `/docs/BINDINGS.md` — **alle** Keymaps, Usercmds, Autocmds; generiert aus der
-  Keymap-Tabelle (§8.1)
-- `/docs/UMBRELLA.md` — das Pack-System erklärt (§6): was wird installiert, wie
-  wählt man ab, wie nutzt man `lsp.nvim` ohne Pack
-- Installations-Spec für mehrere Package-Manager, mit explizitem
-  `event`/`cmd`/`ft`; **kein** `dir = vim.env…`, **keine** Lizenzverweise
-- `.luarc.json` + `stylua.toml` im Projektroot
-- Abschließend alle Usercmds/Keymaps/Autocmds in
-  [NEW_PROJECT.md](file:///C:/repos/WKDBooks/Development/wkdbook-Lua/Checklists/gates/NEW_PROJECT.md) eintragen
+- `README.md` — **English**, ASCII art + badges at the top, table of content
+  (H2 only). Directly after the ASCII art a `>` paragraph linking to the plugin
+  that complements it best → **`dap.nvim`** (sister subsystem, same
+  architecture) or `lib.nvim` (hard dependency). Proposal: `dap.nvim`.
+- `/doc/lsp.txt` — English, `:h lsp.nvim`-capable, generate `doc/tags`
+- `/docs/ROADMAP.md` — future features (see §14)
+- `/docs/BINDINGS.md` — **all** keymaps, usercmds, autocmds; generated from the
+  keymap table (§8.1)
+- `/docs/UMBRELLA.md` — the pack system explained (§6): what gets installed, how
+  to deselect, how to use `lsp.nvim` without the pack
+- An installation spec for several package managers, with an explicit
+  `event`/`cmd`/`ft`; **no** `dir = vim.env…`, **no** licence references
+- `.luarc.json` + `stylua.toml` in the project root
+- Finally, enter all usercmds/keymaps/autocmds in
+  [NEW_PROJECT.md](file:///C:/repos/WKDBooks/Development/wkdbook-Lua/Checklists/gates/NEW_PROJECT.md)
 
 ---
 
-## 13. Migrationsplan
+## 13. Migration plan
 
-Bewusst in Phasen, damit die Config zwischen den Phasen immer lauffähig bleibt.
+Deliberately in phases, so that the config stays runnable between them.
 
-### Phase 0 — Vorarbeiten im Host (vor jedem Umzug)
+### Phase 0 — preparatory work in the host (before any move)
 
-1. ✅ **B1 gefixt** (2026-07-26): Merge-Konflikt-Marker aus
-   `lsp/core/capabilities.lua` aufgelöst, Modul lädt wieder, Warn-Level als
-   String. Verbleibende Verifikation im laufenden Neovim: dass mit geladenem
-   `cmp_nvim_lsp` keine Warnung mehr kommt und `caps.textDocument.completion`
-   aus cmp statt aus dem Fallback stammt.
-2. ✅ **B4 und B2 aufgeräumt** (2026-08-23): der doppelte `lspdoctor.setup`
-   zu einem Aufruf zusammengezogen (Effektivzustand unverändert, siehe die
-   korrigierte B4-Zeile), die tote Taste `<leader>gtt` entfernt.
-3. ✅ **B6 entschieden** (2026-08-23): veralteter Kommentar, keine reale
-   Einschränkung — die plattformabhängigen Stellen sitzen in
-   `formatter/conform.lua` und behandeln Windows bereits.
+1. ✅ **B1 fixed** (2026-07-26): merge-conflict markers resolved out of
+   `lsp/core/capabilities.lua`, the module loads again, warn level as a string.
+   Remaining verification in a running Neovim: that with `cmp_nvim_lsp` loaded
+   no warning appears any more and `caps.textDocument.completion` comes from cmp
+   rather than from the fallback.
+2. ✅ **B4 and B2 cleaned up** (2026-08-23): the duplicate `lspdoctor.setup`
+   collapsed into one call (effective state unchanged, see the corrected B4
+   row), the dead key `<leader>gtt` removed.
+3. ✅ **B6 decided** (2026-08-23): a stale comment, not a real limitation — the
+   platform-dependent places sit in `formatter/conform.lua` and already handle
+   Windows.
 
-Damit ist Phase 0 abgeschlossen — **einschließlich** der Laufzeit-Verifikation
-aus Punkt 1. Sie lief beim Umschalten in Phase 2 gegen die echte Config mit:
-`capabilities.get()` liefert **0 Warnungen**, `snippetSupport = true` und ein
-`resolveSupport` mit den fünf Feldern von `cmp_nvim_lsp`
+Phase 0 is thereby complete — **including** the runtime verification from point
+1. It ran alongside the switch into phase 2 against the real config:
+`capabilities.get()` yields **0 warnings**, `snippetSupport = true` and a
+`resolveSupport` with the five fields from `cmp_nvim_lsp`
 (`documentation`, `additionalTextEdits`, `insertTextFormat`, `insertTextMode`,
-`command`) statt der nackten Fallback-Struktur. Der B1-Fix wirkt also in einer
-geladenen Config, nicht nur auf dem Papier.
+`command`) instead of the bare fallback structure. The B1 fix therefore takes
+effect in a
+loaded config, not only on paper.
 
-Nebenbefund: die Annahme „headless hängt die volle Config zu lange" war falsch.
-`nvim --headless "+qa!"` lädt sie in **rund 1,0-1,2 s**. Der frühere Dreiminuten-
-Hänger kam von einem `vim.defer_fn`, das Neovim am Leben hielt, nicht von der
-Config. Verifikationen gegen die echte Config sind damit billig — das gilt für
-alle weiteren Phasen.
+Side finding: the assumption "headless takes too long to load the full config"
+was wrong. `nvim --headless "+qa!"` loads it in **roughly 1.0-1.2 s**. The
+earlier three-minute hang came from a `vim.defer_fn` that kept Neovim alive, not
+from the config. Verifications against the real config are therefore cheap —
+that holds for all further phases.
 
-### Phase 1 — Gerüst
+### Phase 1 — scaffold
 
-4. `C:\repos\lsp.nvim` aufbauen: `lua/lsp/{init,health}.lua`, `config/`,
+4. Build up `C:\repos\lsp.nvim`: `lua/lsp/{init,health}.lua`, `config/`,
    `bindings/`, `integrations/`, `@types/`, `doc/`, `docs/`, `.luarc.json`,
-   `stylua.toml`, README-Skelett — nach Vorlage von `dap.nvim`/`filetree.nvim`.
+   `stylua.toml`, README skeleton — modelled on `dap.nvim`/`filetree.nvim`.
 
-   *Erledigt 2026-08-23.* Branch `main` (aus `master` umbenannt, GitHub-Default
-   umgestellt, `origin/master` gelöscht), Repo-Description und Topics gesetzt.
-   Angelegt: `lua/lsp/{init,health}.lua`, `config/{init,DEFAULTS,KEYMAPS}.lua`,
-   `bindings/{init,keymaps,usrcmds,autocmds,which_key}.lua`, `@types/` je Ebene,
-   `.luarc.json`, `stylua.toml`, `.luacheckrc`, `.gitattributes`, `.gitignore`,
-   `scripts/gen_map.lua`, `.github/workflows/ci.yml`, `TESTS/smoke.lua`,
-   `README.md`, `doc/lsp.nvim.txt`, `docs/BINDINGS.md`,
+   *Done 2026-08-23.* Branch `main` (renamed from `master`, GitHub default
+   switched, `origin/master` deleted), repo description and topics set.
+   Created: `lua/lsp/{init,health}.lua`, `config/{init,DEFAULTS,KEYMAPS}.lua`,
+   `bindings/{init,keymaps,usrcmds,autocmds,which_key}.lua`, `@types/` per
+   level, `.luarc.json`, `stylua.toml`, `.luacheckrc`, `.gitattributes`,
+   `.gitignore`, `scripts/gen_map.lua`, `.github/workflows/ci.yml`,
+   `TESTS/smoke.lua`, `README.md`, `doc/lsp.nvim.txt`, `docs/BINDINGS.md`,
    `docs/CHECKLISTS/NEW_PROJECT.md`.
 
-   Drei Abweichungen, alle im Checklisten-Protokoll begründet: die vimdoc heißt
-   `lsp.nvim.txt` statt `lsp.txt` (Neovims Runtime belegt den Namen bereits),
-   der Keymap-Katalog liegt in `config/KEYMAPS.lua` statt in `DEFAULTS.lua`
-   (§8.1), und `NEW-20`s `--check`-CI-Job fehlt, weil `docs/map/` hier — wie in
-   `dap.nvim` und `cascade.nvim` — nicht eingecheckt wird.
+   Three deviations, all justified in the checklist record: the vimdoc is called
+   `lsp.nvim.txt` instead of `lsp.txt` (Neovim's runtime already occupies the
+   name), the keymap catalogue lives in `config/KEYMAPS.lua` instead of
+   `DEFAULTS.lua` (§8.1), and `NEW-20`'s `--check` CI job is missing, because
+   `docs/map/` is not checked in here — as in `dap.nvim` and `cascade.nvim`.
 
-### Phase 2 — Kern umziehen (Schicht 1) — ✅ erledigt 2026-08-23
+### Phase 2 — move the core (layer 1) — ✅ done 2026-08-23
 
-5. ✅ 164 Dateien kopiert, `debug_adapters/**` bewusst nicht.
-6. ✅ Host-Kopplungen aufgelöst — es waren weniger als gedacht:
-   - `machine.*` war in `core/attach.lua` **schon vorher** entfernt worden (der
-     Kommentar dort erklärt, warum die Maschinenrolle ein schlechter Proxy für
-     „großes Repo" war). Nichts zu tun.
-   - `config.mason.*` ist mitgezogen als `lsp/integrations/mason/` (E2), nicht
-     als Adapter auf ein Host-Modul.
-   - `nvchad.*` ist an drei Stellen `pcall`-geschützt und bleibt vorerst so;
-     der Adapter aus Phase 4 kann das später aufräumen.
-   - **Neu gefunden:** `lua/@types/lsp.lua` (nur vom LSP-Subsystem benutzt) ist
-     als `lsp/@types/vim_lsp.lua` mitgezogen, und
-     `completion/personal_names` greift nicht mehr auf `plugins.personal.list`
-     zu — die Liste ist Config-Daten, das Plugin bekommt sie über
-     `setup({ labels = fn })` gereicht.
-7. ✅ `ACTIVE` → `servers` (B7). B8 (Root-Resolver gegen `lib.nvim.fs`) ist
-   **nicht** erledigt und bleibt offen — reines Verschieben war hier die
-   richtige Größe, Dedup ist eine eigene Änderung.
+5. ✅ 164 files copied, `debug_adapters/**` deliberately not.
+6. ✅ Host couplings dissolved — there were fewer than expected:
+   - `machine.*` had **already** been removed from `core/attach.lua` earlier
+     (the comment there explains why the machine role was a poor proxy for "big
+     repo"). Nothing to do.
+   - `config.mason.*` moved along as `lsp/integrations/mason/` (E2), not as an
+     adapter onto a host module.
+   - `nvchad.*` is `pcall`-guarded in three places and stays that way for now;
+     the adapter from phase 4 can clean that up later.
+   - **Newly found:** `lua/@types/lsp.lua` (used only by the LSP subsystem)
+     moved along as `lsp/@types/vim_lsp.lua`, and `completion/personal_names`
+     no longer reaches into `plugins.personal.list` — the list is config data,
+     the plugin gets it handed in via `setup({ labels = fn })`.
+7. ✅ `ACTIVE` → `servers` (B7). B8 (root resolvers against `lib.nvim.fs`) is
+   **not** done and stays open — a pure move was the right size here, dedup is
+   a change of its own.
 8. ✅ `config/DEFAULTS.lua` + `config/init.lua`: `servers`, `diagnostics`,
-   `formatter`, `attach`, `mason`, `lspdoctor`, `tools`, `languages`. Jeder Key
-   wird von Code gelesen; `completion`/`rename`/`integrations` aus §9 fehlen
-   weiterhin bewusst.
-9. ✅ `health.lua` erweitert (Servers-Sektion: konfiguriert vs. aufgesetzt vs.
-   attached) und verweist für die Buffer-Diagnose auf `:LspDoctor`, statt sie
-   nachzubauen.
-10. ✅ Umgeschaltet — mit einer Abweichung vom Plan: `require("lsp").setup(...)`
-    bleibt in `startup.now("lsp", ...)` stehen und wandert **nicht** in einen
-    `opts`-Block. Der Schritt ist absichtlich synchron und geordnet
-    (Capabilities müssen global gesetzt sein, bevor der erste Client attached);
-    `opts` würde diese Ordnung dem Plugin-Manager überlassen. Die Spec ist
-    deshalb `lazy = false, priority = 900` ohne `opts`/`config`.
+   `formatter`, `attach`, `mason`, `lspdoctor`, `tools`, `languages`. Every key
+   is read by code; `completion`/`rename`/`integrations` from §9 are still
+   deliberately missing.
+9. ✅ `health.lua` extended (servers section: configured vs. set up vs.
+   attached) and points at `:LspDoctor` for the buffer diagnosis instead of
+   rebuilding it.
+10. ✅ Switched over — with one deviation from the plan:
+    `require("lsp").setup(...)` stays inside `startup.now("lsp", ...)` and does
+    **not** move into an `opts` block. The step is deliberately synchronous and
+    ordered (capabilities must be set globally before the first client
+    attaches); `opts` would leave that ordering to the plugin manager. The spec
+    is therefore `lazy = false, priority = 900` without `opts`/`config`.
 
-    Der alte Ordner ist `lua/lsp_legacy/**` — umbenannt, nicht gelöscht, weil
-    ein `lua/lsp/` in der Config das Plugin vollständig überschattet und das
-    Umbenennen die Voraussetzung dafür ist, dass sich der Umbau überhaupt
-    testen lässt. Er liegt auf keinem require-Pfad. Wegwerfen, sobald eine
-    echte Sitzung den Umbau bestätigt hat.
+    The old folder is `lua/lsp_legacy/**` — renamed, not deleted, because a
+    `lua/lsp/` in the config shadows the plugin completely and the rename is the
+    precondition for being able to test the rework at all. It sits on no require
+    path. Throw it away as soon as a real session has confirmed the rework.
 
-    Verifiziert (headless, gegen die echte Config): `require("lsp")` löst nach
-    `C:/repos/lsp.nvim/lua/lsp/init.lua` auf, alle 8 Server aufgesetzt, **0**
-    Setup-Warnungen, `:Lsp`/`:LspDoctor`/`:LspStatus`/`:DiagQF` registriert,
-    und die beiden Module, die die Config-eigenen Keymaps noch anfassen
-    (`lsp.core.root_scope_picker`, `lsp.servers.marksman.hints`), lösen aus dem
-    Plugin auf.
+    Verified (headless, against the real config): `require("lsp")` resolves to
+    `C:/repos/lsp.nvim/lua/lsp/init.lua`, all 8 servers set up, **0** setup
+    warnings, `:Lsp`/`:LspDoctor`/`:LspStatus`/`:DiagQF` registered, and the two
+    modules that still touch the config's own keymaps
+    (`lsp.core.root_scope_picker`, `lsp.servers.marksman.hints`) resolve out of
+    the plugin.
 
-    Zu `autocmds/events/utils/filetype.lua`: die Datei referenziert
-    `lsp.languages.*` heute gar nicht mehr — der Hinweis war veraltet.
+    On `autocmds/events/utils/filetype.lua`: the file no longer references
+    `lsp.languages.*` at all today — the note was stale.
 
-### Phase 3 — Bindings zentralisieren — ✅ erledigt 2026-08-23
+### Phase 3 — centralise the bindings — ✅ done 2026-08-23
 
-11. ✅ 42 Einträge in `config/KEYMAPS.lua`, aus fünf Quellen zusammengezogen
-    (die vier oben genannten plus das plugin-eigene
-    `diagnostics/keymaps.lua`, das dieselben `]q`/`[q` band — der Katalog
-    liegt in `config/`, nicht in `bindings/`, weil er Konfigurationsdaten ist
-    und `bindings/keymaps.lua` ihn nur ausführt). Presets sind Namenslisten
-    über **einer** Eintragstabelle, nicht drei Kopien davon. Das Verhalten
-    steckt in `bindings/actions.lua`: ein Eintrag *benennt* eine Aktion, er
-    implementiert keine.
-12. ✅ **Erledigt 2026-08-23.** `:Lsp` hat jetzt 15 Subcommands
+11. ✅ 42 entries in `config/KEYMAPS.lua`, pulled together from five sources
+    (the four named above plus the plugin's own `diagnostics/keymaps.lua`,
+    which bound the same `]q`/`[q` — the catalogue lives in `config/`, not in
+    `bindings/`, because it is configuration data and `bindings/keymaps.lua`
+    merely executes it). Presets are name lists over **one** entry table, not
+    three copies of it. The behaviour sits in `bindings/actions.lua`: an entry
+    *names* an action, it does not implement one.
+12. ✅ **Done 2026-08-23.** `:Lsp` now has 15 subcommands
     (`status servers info health doctor start stop restart force-restart
-    recover format diag workspace root log`), die flachen ~25 Commands sind
-    Aliase darauf — abschaltbar über `usrcmds.legacy_aliases = false`,
-    standardmäßig an, weil Muskelgedächtnis mehr wiegt als Ordnung und ein
-    Alias eine Zeile kostet. Beide Wege rufen dieselben Funktionen in
-    `bindings/actions.lua` bzw. `lsp.usercmds.*`, können also nicht mehr
-    auseinanderlaufen.
+    recover format diag workspace root log`), the flat ~25 commands are aliases
+    onto them — switchable via `usrcmds.legacy_aliases = false`, on by default,
+    because muscle memory weighs more than tidiness and an alias costs one line.
+    Both paths call the same functions in `bindings/actions.lua` resp.
+    `lsp.usercmds.*`, so they can no longer diverge.
 
-    Zwei Abweichungen vom Entwurf: `force-restart` ist ein eigener Subcommand
-    statt eines Flags an `restart` (ein Literal nach `restart` wäre mehrdeutig
-    mit einem Server, der tatsächlich „force“ heißt), und `:LspMdHints` wird
-    **nicht** eingefaltet — es ist marksman-spezifisch, und Server-Commands
-    gehören nicht in ein globales Verb. `:LspDoctor` behält wie vorgesehen sein
-    eigenes Verb und ist zusätzlich als `:Lsp doctor` erreichbar.
+    Two deviations from the draft: `force-restart` is its own subcommand instead
+    of a flag on `restart` (a literal after `restart` would be ambiguous with a
+    server actually named "force"), and `:LspMdHints` is **not** folded in — it
+    is marksman-specific, and server commands do not belong in a global verb.
+    `:LspDoctor` keeps its own verb as planned and is additionally reachable as
+    `:Lsp doctor`.
 
-    Server-Namen vervollständigen aus dem **lebenden** Satz — attachte Clients
-    zuerst, dann alles aus `servers` — über einen eigenen Composer-Argumenttyp.
-    Genau das verlangt `NEW-26`: eine Wertemenge, die sich zur Laufzeit ändert,
-    muss zur Completion-Zeit berechnet werden; ein bei der Registrierung
-    eingefrorenes Enum wäre veraltet, sobald ein Server dazukommt.
-13. ✅ `docs/BINDINGS.md` wird von `scripts/gen_bindings.lua` aus dem Katalog
-    **generiert**, CI prüft mit `--check` — die Doku kann nicht mehr driften.
-    which-key labelt bewusst nur `<leader>x`: aus den gebundenen Prefixen
-    abgeleitete Labels hätten auch `<leader>f` (der Find-Prefix der Config)
-    „LSP" genannt.
-14. ✅ `bindings/mappings/{lsp,trouble}.lua` gelöscht und ausgetragen, die vier
-    FzfLua-LSP-Zeilen entfernt (`<leader>fq` bleibt — ein Quickfix-Picker ist
-    kein LSP), `config/inc_rename` bindet keine Taste mehr, behält aber sein
-    Setup (den `post_hook`-Auto-Save).
+    Server names complete out of the **living** set — attached clients first,
+    then everything from `servers` — via a dedicated composer argument type.
+    That is exactly what `NEW-26` demands: a value set that changes at runtime
+    must be computed at completion time; an enum frozen at registration would be
+    stale as soon as a server is added.
+13. ✅ `docs/BINDINGS.md` is **generated** from the catalogue by
+    `scripts/gen_bindings.lua`, CI checks with `--check` — the docs can no
+    longer drift. which-key deliberately labels only `<leader>x`: labels derived
+    from the bound prefixes would also have called `<leader>f` (the config's
+    find prefix) "LSP".
+14. ✅ `bindings/mappings/{lsp,trouble}.lua` deleted and deregistered, the four
+    FzfLua LSP lines removed (`<leader>fq` stays — a quickfix picker is not
+    LSP), `config/inc_rename` binds no key any more but keeps its setup (the
+    `post_hook` auto-save).
 
-**Neu dabei, stand nicht im Plan:** `bindings/autocmds.lua` bindet `grn` und
-`grt` bei `LspAttach` buffer-lokal nach. Neovim 0.11 setzt seine eigenen
-`gr*`-Maps genau dort buffer-lokal, und buffer-lokal schlägt global — ohne das
-wäre der Katalog-Rename genau in den Buffern überschattet, für die er gedacht
-ist. Harmlos solange beide `vim.lsp.buf.rename` riefen, falsch sobald
-`rename.provider` inc-rename wählt. §8.1 hatte das als Anforderung notiert.
+**New along the way, not in the plan:** `bindings/autocmds.lua` re-binds `grn`
+and `grt` buffer-locally on `LspAttach`. Neovim 0.11 sets its own `gr*` maps
+buffer-locally in exactly that spot, and buffer-local beats global — without
+this the catalogue rename would be shadowed in precisely the buffers it is meant
+for. Harmless as long as both called `vim.lsp.buf.rename`, wrong as soon as
+`rename.provider` picks inc-rename. §8.1 had noted this as a requirement.
 
-Verifiziert gegen die echte Config: 42 Keymaps gebunden, 0 Setup-Warnungen, und
+Verified against the real config: 42 keymaps bound, 0 setup warnings, and
 `]q`/`[q`/`grn`/`<leader>rn`/`lsd`/`<leader>xt`/`<leader>dos`/`<leader>wq`/`]w`
-lösen alle auf Katalogeinträge auf.
+all resolve to catalogue entries.
 
-### Phase 4 — Integrationen (Schicht 2) — ✅ größtenteils erledigt 2026-08-23
+### Phase 4 — integrations (layer 2) — ✅ mostly done 2026-08-23
 
-15. ✅ 12 Adapter: nvchad, cmp, blink, lazydev, conform, trouble, inc_rename,
-    picker, lspsaga, lensline, noice, mason. which-key ist bewusst **keiner**
-    — `bindings/which_key.lua` macht das seit Phase 3, ein zweiter Ort dafür
-    wäre genau die Doppelung, die die Schicht beseitigen soll.
-    workspace-diagnostics ebenso nicht: `core/workspace_diagnostics.lua` ist
-    **eigener** Code, kein Wrapper um ein Fremdplugin.
+15. ✅ 12 adapters: nvchad, cmp, blink, lazydev, conform, trouble, inc_rename,
+    picker, lspsaga, lensline, noice, mason. which-key is deliberately **not**
+    one — `bindings/which_key.lua` has done that since phase 3, and a second
+    place for it would be exactly the duplication the layer is meant to remove.
+    workspace-diagnostics likewise not: `core/workspace_diagnostics.lua` is
+    **own** code, not a wrapper around a third-party plugin.
 
-    **Der eigentliche Gewinn ist die Abhängigkeitsrichtung.** Die Adapter
-    werden nicht vom Kern *gerufen* — das wäre genau der Schichtverstoß, gegen
-    den `scripts/gen_map.lua` eine Regel deklariert. Sie reichen ihre Beiträge
-    an `lsp/init.lua` (das keiner der beiden Schichten angehört), und das gibt
-    sie als **einfache Funktionen** in den Kern:
+    **The real gain is the direction of dependency.** The adapters are not
+    *called* by the core — that would be exactly the layering violation that
+    `scripts/gen_map.lua` declares a rule against. They hand their contributions
+    to `lsp/init.lua` (which belongs to neither layer), and that passes them
+    into the core as **plain functions**:
 
-    - `core/capabilities.get(contributors)` statt drei `pcall(require, …)` auf
-      NvChad, cmp und blink. Reihenfolge bewusst erhalten (NvChad zuerst,
-      Completion-Engine danach), weil `tbl_deep_extend("force", …)` den
-      späteren gewinnen lässt. Im Kern bleibt, was Kern ist: Basis-Capabilities,
-      die Prüfung, dass überhaupt jemand Completion beigetragen hat, und der
-      Fallback — also genau die Prüfung, die B1 überhaupt sichtbar gemacht hat.
-    - `core/attach.build({ hooks = … })` statt lazydev und NvChad inline.
+    - `core/capabilities.get(contributors)` instead of three
+      `pcall(require, …)` on NvChad, cmp and blink. The order is deliberately
+      preserved (NvChad first, completion engine after), because
+      `tbl_deep_extend("force", …)` lets the later one win. What stays in the
+      core is what is core: base capabilities, the check that anyone contributed
+      completion at all, and the
+      fallback — that is, exactly the check that made B1 visible in the first
+      place.
+    - `core/attach.build({ hooks = … })` instead of lazydev and NvChad inline.
 
-    Folge: `capabilities.apply_globally()` braucht die Contributors übergeben
-    und kann sie nicht selbst nachschlagen. `require("lsp").apply_capabilities()`
-    ist der Einstieg, der das tut; die Config ruft jetzt den.
-    `:checkhealth lsp` liest die Liste aus der Registry statt aus einer zweiten,
-    handgepflegten.
-16. ✅ Nichts zu tun — B5 war bereits gelöst, siehe die korrigierte Zeile oben.
-17. ⚠️ **Nur teilweise.** `config/mason/**` ist in Phase 2 mitgezogen und
-    gelöscht. `config/{trouble,inc_rename,copilot}` bleiben: sie hängen an den
-    Lazy-Specs in `plugins/*.lua`, und Specs zu verschieben ist Phase 5 (§6),
-    nicht diese hier. Das Plugin konfiguriert bis dahin sein eigenes Verhalten,
-    die Fremdplugins ihres.
+    Consequence: `capabilities.apply_globally()` needs the contributors passed
+    in and cannot look them up itself. `require("lsp").apply_capabilities()` is
+    the entry point that does so; the config now calls that one.
+    `:checkhealth lsp` reads the list from the registry instead of from a
+    second, hand-maintained one.
+16. ✅ Nothing to do — B5 was already solved, see the corrected row above.
+17. ⚠️ **Only partly.** `config/mason/**` moved along in phase 2 and was
+    deleted. `config/{trouble,inc_rename,copilot}` remain: they hang off the
+    lazy specs in `plugins/*.lua`, and moving specs is phase 5 (§6), not this
+    one. Until then the plugin configures its own behaviour and the third-party
+    plugins configure theirs.
 
-**Bewusst nicht gebaut:**
+**Deliberately not built:**
 
-- `mason.register(kind, packages)` aus E2 — `dap.nvim` ruft es nicht, und eine
-  API ohne Aufrufer ist keine API. Kommt, wenn `dap.nvim` sie braucht.
-- Die Picker-Abstraktion über telescope/snacks/pickers.nvim aus §7. Es ist
-  weiterhin fzf-lua fest verdrahtet; eine Indirektion mit genau einer
-  Implementierung dahinter verschleiert nur, dass die Wahl nicht getroffen ist.
+- `mason.register(kind, packages)` from E2 — `dap.nvim` does not call it, and an
+  API without a caller is not an API. It comes when `dap.nvim` needs it.
+- The picker abstraction over telescope/snacks/pickers.nvim from §7. fzf-lua is
+  still hardwired; an indirection with exactly one implementation behind it only
+  obscures that the choice has not been made.
 
-Verifiziert gegen die echte Config: 0 Setup-Warnungen, 0 Capability-Warnungen,
-`snippetSupport = true` und `resolveSupport` weiterhin mit cmps fünf
-Properties (die B1-Regression, die dieser Umbau plausibel hätte auslösen
-können), 8 Server, 42 Keymaps, 2 `on_attach`- und 1 `on_init`-Hook verdrahtet,
-und `lua_ls` attached an einem Lua-Buffer.
+Verified against the real config: 0 setup warnings, 0 capability warnings,
+`snippetSupport = true` and `resolveSupport` still carrying cmp's five
+properties (the B1 regression this rework could plausibly have triggered), 8
+servers, 42 keymaps, 2 `on_attach` and 1 `on_init` hook wired, and `lua_ls`
+attached on a Lua buffer.
 
-### Phase 5 — Pack (Schicht 3) — ✅ erledigt 2026-08-23
+### Phase 5 — pack (layer 3) — ✅ done 2026-08-23
 
-18. ✅ `pack/{init,core,ui,completion,completion_blink}.lua`. Die
-    Plugin-Konfiguration ist dabei in die Adapter gewandert, damit der Pack
-    wirklich nur Specs enthält: Troubles Preview/Formatter/0.12-Patch,
-    lspsagas Optionstabelle, lenslines Profil und inc-renames post_hook
-    (aus `config/inc_rename/` mitgezogen und in `configure()` gewickelt — es
-    lief seine `setup()` und setzte eine globale Option bisher als
-    Seiteneffekt des bloßen `require`).
-19. ✅ `import = "lsp.pack"` in `init.lua`, neben dem lib.nvim-`dir`-Pin und aus
-    demselben Grund plus einem: `import` lässt lazy `lsp.pack` **während der
-    Spec-Sammlung** requiren, das Verzeichnis muss also vorher feststehen.
-    `plugins/trouble.lua`, `config/trouble/` und `config/inc_rename/`
-    gelöscht; `plugins/lsp.lua` behält nur noch, was wirklich config-eigen ist
-    (die personal-names-Completion-Quelle und die Copilot-Brücke).
+18. ✅ `pack/{init,core,ui,completion,completion_blink}.lua`. The plugin
+    configuration moved into the adapters along the way, so that the pack really
+    contains only specs: Trouble's preview/formatter/0.12 patch, lspsaga's
+    option table, lensline's profile and inc-rename's post_hook (moved along
+    from `config/inc_rename/` and wrapped in `configure()` — it used to run its
+    `setup()` and set a global option as a side effect of the mere `require`).
+19. ✅ `import = "lsp.pack"` in `init.lua`, next to the lib.nvim `dir` pin and
+    for the same reason plus one: `import` makes lazy require `lsp.pack`
+    **during spec collection**, so the directory has to be settled beforehand.
+    `plugins/trouble.lua`, `config/trouble/` and `config/inc_rename/` deleted;
+    `plugins/lsp.lua` keeps only what is genuinely config-owned (the
+    personal-names completion source and the Copilot bridge).
 
-**Korrektur an §6.1/§6.2 — der erste Entwurf war falsch und hat ein Plugin
-installiert, das niemand wollte.** `import` benennt ein **Verzeichnis**: lazy
-requirt *jedes* Modul unter `lua/lsp/pack/` und behandelt jedes Ergebnis als
-Spec-Liste. Ein `pack/init.lua`, das bedingte `{ import = "lsp.pack.completion" }`
--Einträge zurückgibt, gated damit **nichts** — die Geschwister werden ohnehin
-importiert, es würde sie nur ein zweites Mal einlesen. Beim ersten Testlauf
-wurde deshalb blink.cmp in die Config geklont (wieder entfernt). Konsequenzen:
+**Correction to §6.1/§6.2 — the first draft was wrong and installed a plugin
+nobody wanted.** `import` names a **directory**: lazy requires *every* module
+under `lua/lsp/pack/` and treats every result as a spec list. A `pack/init.lua`
+that returns conditional `{ import = "lsp.pack.completion" }` entries therefore
+gates **nothing** — the siblings are imported anyway, it would only read them a
+second time. On the first test run blink.cmp was consequently cloned into the
+config (removed again). Consequences:
 
-- Selektion läuft pro Spec über `enabled`, gelesen aus `lsp.config.pack`.
-- Der Helper musste **aus** `pack/` heraus, weil ein Modul dort als Spec
-  gelesen würde. Er liegt in `config/pack.lua` — was ohnehin stimmiger ist, er
-  liest ja Konfiguration.
-- `pack/init.lua` gibt `{}` zurück und hält diese Einschränkung fest.
+- Selection happens per spec via `enabled`, read from `lsp.config.pack`.
+- The helper had to move **out of** `pack/`, because a module there would be
+  read as a spec. It lives in `config/pack.lua` — which is more coherent
+  anyway, since it reads configuration.
+- `pack/init.lua` returns `{}` and records this restriction.
 
-Die Zwei-Kanal-Trennung aus §6.2 (`vim.g` = *ob*, `opts` = *wie*) stimmt
-unverändert — nur der Mechanismus dahinter ist ein anderer als gedacht.
+The two-channel split from §6.2 (`vim.g` = *whether*, `opts` = *how*) holds
+unchanged — only the mechanism behind it is a different one than assumed.
 
-**Nebenbefund:** der Trouble-0.12-Patch überschrieb `TSHighlighter._on_win`/
-`_on_line` **bedingungslos**. Auf einem Neovim, das sie noch hat, ersetzte er
-funktionierende Methoden durch die gleichnamigen Fallbacks. Jetzt mit Guard —
-§7 hatte genau das gefordert („mit Versions-Guard statt bedingungslos").
+**Side finding:** the Trouble 0.12 patch overwrote
+`TSHighlighter._on_win`/`_on_line` **unconditionally**. On a Neovim that still
+has them, it replaced working methods with the identically named fallbacks. Now
+with a guard — §7 had demanded exactly that ("with a version guard instead of
+unconditionally").
 
-Verifiziert gegen die echte Config: alle sieben Pack-Plugins in der Spec,
-blink korrekt abwesend, 8 Server, 42 Keymaps, 0 Warnungen, und die
-Konfiguration wirklich angewandt (Troubles Preview rechts mit Index-Formatter,
-`inccommand=split`, `:IncRename` registriert, lspsaga konfiguriert).
+Verified against the real config: all seven pack plugins in the spec, blink
+correctly absent, 8 servers, 42 keymaps, 0 warnings, and the configuration
+really applied (Trouble's preview on the right with the index formatter,
+`inccommand=split`, `:IncRename` registered, lspsaga configured).
 
-### Phase 6 — Abschluss
+### Phase 6 — wrap-up
 
-20. ✅ **Erledigt 2026-08-23** — als Portierung, nicht als Verschieben; siehe §4.
-21. `docs/**`, `doc/lsp.txt`, README, ROADMAP finalisieren; `gh repo edit`
-    (Description, Topics), committen & pushen.
-    (Branch `main` ist seit 2026-08-23 erledigt — s. Phase 1.)
-22. Diesen Roadmap-Eintrag auf „abgeschlossen“ setzen, Memory-Notiz analog zu
-    `lib-nvim-extraction.md` anlegen.
-
----
-
-## 14. Roadmap: neue Features
-
-Für `docs/ROADMAP.md` des neuen Plugins — nicht alles sofort umsetzen:
-
-| Feature | Nutzen | Aufwand |
-|---|---|---|
-| **Inlay-Hints-Toggle** (`vim.lsp.inlay_hint`, global + per Filetype) | Nirgends in `lua/lsp/` referenziert, obwohl seit Neovim 0.10 nativ | klein |
-| **Code-Action-Indikator** (Sign/virtueller Text, wenn `textDocument/codeAction` etwas liefert) | Sichtbarkeit ohne blindes `lsa` | mittel |
-| **`:Lsp log`** | ✅ **ERLEDIGT (2026-08-23)** — `:Lsp log open` öffnet die Datei im Split, `:Lsp log level` schaltet den Level, mit Completion über die geschlossene Menge. Kein eigener Tail-Renderer: das Log *ist* eine Datei, und ein Split darauf kann alles, was ein Scratch-Buffer könnte, plus `:e` |
-| **Auto-Restart mit Backoff** bei Client-Crash | `core/attach.lua` hat keine Crash-Behandlung | mittel |
-| **Formatter-Prioritäts-Audit** | `lspdoctor` hat `formatter_priority` + `show_conflicts` — unklar, ob das in `formatter/conform.lua` durchgesetzt wird | klein (Audit) |
-| **Workspace-Symbol-/Call-Hierarchy-Picker** über den `picker`-Adapter | Konsistente Picker-UI statt Ad-hoc-Telescope in `ts_type_lookup` | mittel |
-| **Per-Projekt-Override** (`.nvim-lsp.json` im Repo-Root) | Server X in Projekt Y deaktivieren ohne globale Config-Änderung | mittel-groß |
-| **Multi-Root/Monorepo-Workspace-Switcher** als eigenes Feature | Formalisiert, was in `root_scope_picker` halb existiert | klein |
-| **Hover-Cache** via `lib.lua.memo` | Wiederholtes Hover auf gleicher Position/Version spart einen Roundtrip | klein |
-| **Sprung zum Lua-Table-/Funktions-Root** (ehem. `<leader>gtt`) | Aus B2 gerettet: aus einer tief verschachtelten Lua-Tabelle an den Kopf der umschließenden Struktur springen, optional zentriert. Die Taste war jahrelang auf ein Modul gemappt, das es nie gab — das Feature war also gewollt, nur nie gebaut | mittel |
-| **Diagnostics-Debounce** bei `publishDiagnostics` | `core/handlers.lua` dedupliziert, debounced aber nicht (chatty Server wie `ts_ls`) | klein |
-| **Test-Entry-Point** (`tools/_test`) | ✅ **ERLEDIGT (2026-08-23)** — als `TESTS/lsp/*_spec.lua` auf plenarys busted-Harness (wie `dap.nvim`), nicht als `tools/_test`: der Ort aus dem Konzept hätte die Tests unter *ein* Werkzeug gehängt, gehören tun sie zum ganzen Plugin. 124 Specs über Config-Normalisierung, Keymap-Katalog, Capabilities-Kette, Adapter-Registry, Pack-Gating, die `:Lsp`-Routen und Server-Registry — also genau die Stellen, aus denen die Bugs dieser Migration kamen. Dazu bleibt `TESTS/smoke.lua` als End-to-End-Lauf. |
-| **Eigene Completion-Quellen engine-neutral machen + Frequenz-Ranking** | ✅ **ERLEDIGT (2026-08-24)** — `lsp.completion.usage` (geteilter Zähler), `lsp.completion.register` (Registrar) und `lsp.completion.blink` (Adapter); beide Quellen kennen ihre Engine nicht mehr, `md_words` hat das Ranking. Details und die drei Befunde aus dem Bau in §16 |
-| **Signature-Help-Modul reduzieren** | `tools/lsp_signature/**` ist eine komplette Eigenimplementierung (~800 LOC) | groß (erstmal nur beobachten) |
-| **Keymap-Kollisionsprüfer** in `:checkhealth lsp` | Halb erledigt: `keymaps_spec.lua` prüft, dass keine zwei Katalog-Einträge dieselbe Taste im selben Mode beanspruchen — zur Build-Zeit, wo ein Fehler nichts kostet. Offen bleibt die Laufzeit-Frage, die nur `:checkhealth` sehen kann: kollidiert der Katalog mit einer Taste, die *du* oder ein anderes Plugin gesetzt hast | klein |
-| **Profil-Presets** (`preset = "lean"\|"default"\|"full"`) | Ein Schalter statt 20 Einzeloptionen für „schlank auf schwacher Maschine“ | mittel |
+20. ✅ **Done 2026-08-23** — as a port, not as a move; see §4.
+21. Finalise `docs/**`, `doc/lsp.txt`, README, ROADMAP; `gh repo edit`
+    (description, topics), commit & push.
+    (Branch `main` has been done since 2026-08-23 — see phase 1.)
+22. Set this roadmap entry to "complete", create a memory note analogous to
+    `lib-nvim-extraction.md`.
 
 ---
 
-## 15. Entscheidungen & offene Fragen
+## 14. Roadmap: new features
 
-### Entschieden (2026-07-26)
+For the new plugin's `docs/ROADMAP.md` — not everything to be implemented at
+once:
 
-| # | Frage | Entscheidung |
+| Feature | Benefit | Effort |
 |---|---|---|
-| E1 | **Abhängigkeitsmodell** | Harte Dependencies sind **by design** erwünscht. Fremdplugins nachbauen bringt nichts. `pcall` bleibt als Blast-Radius-Begrenzung, nicht als Optionalitäts-Versprechen. → §3 |
-| E2 | **Mason-Zuständigkeit** | `ensure_install` zieht **vollständig nach `lsp.nvim`** (`integrations/mason/`), nicht nach `lib.nvim`. `dap.nvim` meldet seine DAP-Pakete per `register("dap", …)` an. → §4 |
-| E3 | **Keymap-Preset** (B10) | `ls*`-Belegung **bleibt**. Die Neovim-0.11-Defaults (`grr`/`gri`/`grn`/`grt`/`gO`) laufen buffer-lokal parallel weiter — kein Konflikt. → §8.1 |
-| E4 | **B1 (Merge-Konflikt in `capabilities.lua`)** | **Erledigt**, vor der Migration im Host gefixt. |
+| **Inlay-hints toggle** (`vim.lsp.inlay_hint`, global + per filetype) | Referenced nowhere in `lua/lsp/`, although native since Neovim 0.10 | small |
+| **Code-action indicator** (sign/virtual text when `textDocument/codeAction` returns something) | Visibility without a blind `lsa` | medium |
+| **`:Lsp log`** | ✅ **DONE (2026-08-23)** — `:Lsp log open` opens the file in a split, `:Lsp log level` switches the level, with completion over the closed set. No dedicated tail renderer: the log *is* a file, and a split on it can do everything a scratch buffer could, plus `:e` |
+| **Auto-restart with backoff** on client crash | `core/attach.lua` has no crash handling | medium |
+| **Formatter priority audit** | `lspdoctor` has `formatter_priority` + `show_conflicts` — unclear whether that is enforced in `formatter/conform.lua` | small (audit) |
+| **Workspace-symbol / call-hierarchy picker** via the `picker` adapter | Consistent picker UI instead of ad-hoc telescope in `ts_type_lookup` | medium |
+| **Per-project override** (`.nvim-lsp.json` in the repo root) | Disable server X in project Y without a global config change | medium-large |
+| **Multi-root/monorepo workspace switcher** as its own feature | Formalises what half exists in `root_scope_picker` | small |
+| **Hover cache** via `lib.lua.memo` | Repeated hover on the same position/version saves a roundtrip | small |
+| **Jump to the Lua table/function root** (formerly `<leader>gtt`) | Rescued from B2: jump from a deeply nested Lua table to the head of the enclosing structure, optionally centred. The key was mapped for years onto a module that never existed — so the feature was wanted, just never built | medium |
+| **Diagnostics debounce** on `publishDiagnostics` | `core/handlers.lua` deduplicates but does not debounce (chatty servers like `ts_ls`) | small |
+| **Test entry point** (`tools/_test`) | ✅ **DONE (2026-08-23)** — as `TESTS/lsp/*_spec.lua` on plenary's busted harness (like `dap.nvim`), not as `tools/_test`: the location from the concept would have hung the tests under *one* tool, while they belong to the whole plugin. 124 specs across config normalisation, the keymap catalogue, the capabilities chain, the adapter registry, pack gating, the `:Lsp` routes and the server registry — that is, exactly the places this migration's bugs came from. Alongside that, `TESTS/smoke.lua` remains as an end-to-end run. |
+| **Make the plugin's own completion sources engine-neutral + frequency ranking** | ✅ **DONE (2026-08-24)** — `lsp.completion.usage` (shared counter), `lsp.completion.register` (registrar) and `lsp.completion.blink` (adapter); neither source knows its engine any more, and `md_words` has the ranking. Details and the three findings from building it are in §16 |
+| **Shrink the signature-help module** | `tools/lsp_signature/**` is a complete homegrown implementation (~800 LOC) | large (just observe for now) |
+| **Keymap collision checker** in `:checkhealth lsp` | Half done: `keymaps_spec.lua` checks that no two catalogue entries claim the same key in the same mode — at build time, where a mistake costs nothing. What stays open is the runtime question only `:checkhealth` can see: does the catalogue collide with a key *you* or another plugin have set | small |
+| **Profile presets** (`preset = "lean"\|"default"\|"full"`) | One switch instead of 20 individual options for "lean on a weak machine" | medium |
 
-### Aus dem NEW_PROJECT-Durchlauf (2026-08-23)
+---
 
-- **Die Modulwurzel `lsp` überschattet sich selbst.** Solange die Config ihr
-  eigenes `lua/lsp/**` hat, gewinnt sie auf der `runtimepath` und `require("lsp")`
-  landet dort, nicht im Plugin. Der erste Testlauf hat genau das getan und
-  stillschweigend den falschen Code geprüft. Das ist kein Argument gegen die
-  Namenswahl aus §5 — der Vorteil (alle `require("lsp.…")`-Pfade bleiben gültig)
-  ist derselbe —, aber eine Bedingung, die dort fehlte: **Config-Ordner löschen
-  und Plugin installieren müssen derselbe Schritt sein.** Ein Übergangszustand
-  „beides da" ist nicht neutral, er ist unsichtbar kaputt. Für Phase 2 (§13,
-  Schritt 10) heißt das: die dort vorgesehene Reihenfolge „erst umstellen, alten
-  Ordner später löschen, wenn getestet" funktioniert so nicht — getestet werden
-  kann erst *nach* dem Löschen. Vorschlag: Config-Ordner nach
-  `lua/lsp_legacy/**` umbenennen statt löschen, dann umstellen, testen, und erst
-  danach wegwerfen.
-- **`doc/lsp.txt` ist vergeben.** Neovims Runtime liefert selbst eines (`:h lsp`).
-  Die vimdoc heißt deshalb `doc/lsp.nvim.txt`, alle Tags sind `lsp.nvim-…`
-  präfixiert, `*lsp*` bleibt unangetastet. §5 nennt noch `doc/lsp.txt`.
-- **`NEW-20` widerspricht der jüngeren Map-Entscheidung.** Das Gate verlangt
-  `scripts/gen_map.lua` **plus** `--check` in CI; `--check` vergleicht aber
-  byte-genau gegen eine **eingecheckte** Map (siehe
-  `documentation.nvim/docs/REUSE.md`), und die wird seit `dap.nvim`/`cascade.nvim`
-  bewusst nicht mehr committet. Beides zusammen geht nicht — bestätigt beim
-  Nachprüfen am 2026-08-23: `documentation.nvim` selbst ist die einzige
-  Ausnahme (3 Dateien committet, Dogfooding, ~3 MB), `docmap-desktop`,
-  `dap.nvim`, `cascade.nvim`, `gopath.nvim` und `lsp.nvim` haben alle
-  `docs/map/` gitignored. Gehört im Gate entschieden, nicht pro Repo still in
-  eine Richtung aufgelöst.
+## 15. Decisions & open questions
 
-  **Übernommen ins Gate am 2026-08-24** (`WKDBooks`-Commit `10b03c4`):
-  `NEW-20` verlangt jetzt „`gen_map.lua` gemäß REUSE.md übernehmen; `docs/map/`
-  wird nicht committet außer bei `documentation.nvim` und `docmap-desktop`
-  (Dogfooding); `--check` in CI nur dort, wo die Map committet wird“. Auch
-  festgehalten: `--check` lief zu dem Zeitpunkt in **keinem** der fünf
-  bestehenden Repos, auch nicht in `documentation.nvim`, wo es funktioniert
-  hätte.
-- **Das Gate nennt zwei veraltete Pfade**: `e:\repos\` in `NEW-01`,
+### Decided (2026-07-26)
+
+| # | Question | Decision |
+|---|---|---|
+| E1 | **Dependency model** | Hard dependencies are wanted **by design**. Rebuilding third-party plugins buys nothing. `pcall` stays as blast-radius containment, not as a promise of optionality. → §3 |
+| E2 | **Mason responsibility** | `ensure_install` moves **completely into `lsp.nvim`** (`integrations/mason/`), not into `lib.nvim`. `dap.nvim` announces its DAP packages via `register("dap", …)`. → §4 |
+| E3 | **Keymap preset** (B10) | The `ls*` assignment **stays**. The Neovim 0.11 defaults (`grr`/`gri`/`grn`/`grt`/`gO`) keep running buffer-locally in parallel — no conflict. → §8.1 |
+| E4 | **B1 (merge conflict in `capabilities.lua`)** | **Done**, fixed in the host before the migration. |
+
+### From the NEW_PROJECT walkthrough (2026-08-23)
+
+- **The module root `lsp` shadows itself.** As long as the config has its own
+  `lua/lsp/**`, it wins on the `runtimepath` and `require("lsp")` lands there,
+  not in the plugin. The first test run did exactly that and silently checked
+  the wrong code. That is not an argument against the naming from §5 — the
+  advantage (all `require("lsp.…")` paths stay valid) is the same — but it is a
+  condition that was missing there: **deleting the config folder and installing
+  the plugin have to be the same step.** A transitional state of "both present"
+  is not neutral, it is invisibly broken. For phase 2 (§13, step 10) that means:
+  the order envisaged there — "switch over first, delete the old folder later
+  once tested" — does not work that way; testing is only possible *after* the
+  deletion. Proposal: rename the config folder to `lua/lsp_legacy/**` instead of
+  deleting it, then switch over, test, and only throw it away afterwards.
+- **`doc/lsp.txt` is taken.** Neovim's runtime ships one itself (`:h lsp`). The
+  vimdoc is therefore called `doc/lsp.nvim.txt`, all tags are prefixed
+  `lsp.nvim-…`, `*lsp*` stays untouched. §5 still says `doc/lsp.txt`.
+- **`NEW-20` contradicts the more recent map decision.** The gate demands
+  `scripts/gen_map.lua` **plus** `--check` in CI; but `--check` compares
+  byte-exactly against a **checked-in** map (see
+  `documentation.nvim/docs/REUSE.md`), and that has deliberately not been
+  committed since `dap.nvim`/`cascade.nvim`. The two cannot both hold —
+  confirmed when re-checking on 2026-08-23: `documentation.nvim` itself is the
+  only exception (3 files committed, dogfooding, ~3 MB), while `docmap-desktop`,
+  `dap.nvim`, `cascade.nvim`, `gopath.nvim` and `lsp.nvim` all have `docs/map/`
+  gitignored. This belongs decided in the gate, not silently resolved per repo
+  in one direction.
+
+  **Adopted into the gate on 2026-08-24** (`WKDBooks` commit `10b03c4`):
+  `NEW-20` now demands "adopt `gen_map.lua` per REUSE.md; `docs/map/`
+  is not committed except in `documentation.nvim` and `docmap-desktop`
+  (dogfooding); `--check` in CI only where the map is committed". Also recorded:
+  at that point `--check` ran in **none** of the five existing repos, not even
+  in `documentation.nvim`, where it would have worked.
+- **The gate names two stale paths**: `e:\repos\` in `NEW-01`,
   `C:\Users\bartl\…` in `NEW-35`.
 
-- **Die Checkliste altert schneller als der Code.** Beim ersten Durchgang war
-  das Repo ein Gerüst, und ein knappes Drittel der Punkte war mit „noch leer“
-  oder „noch nicht zutreffend“ beantwortet — `NEW-15` (keine Keymaps), `NEW-21`
-  (leerer Katalog), `NEW-25` (kein Count, weil es keine Taste gab), `NEW-29`.
-  Nach der Migration stimmte davon nichts mehr: das Protokoll beschrieb ein
-  Repo, das es nicht mehr gibt. Für die nächste Extraktion: ein Punkt, dessen
-  Antwort „gibt es noch nicht“ lautet, ist **nicht abgehakt, sondern vertagt**,
-  und gehört auf eine Liste, die am Ende der Migration nochmal drankommt.
-- **`NEW-25` war genau so ein Punkt** und ist erledigt. `v:count1` wirkt auf die
-  acht Bewegungstasten (`]d`/`[d`, `]q`/`[q`, `]l`/`[l`, `]w`/`[w`); `3]q`
-  springt drei Quickfix-Einträge. Nicht über eine Schleife: `:{count}cnext` und
-  `vim.diagnostic.jump({ count = N })` können das nativ, feuern die Autocommands
-  einmal statt N-mal und laufen so weit sie kommen, statt am ersten `E553`
-  stehenzubleiben. Die leader-präfixierten Aktionen bekommen keinen — eine
-  Liste füllen oder eine Einstellung umschalten hat kein geordnetes Ziel, in das
-  ein Count indizieren könnte.
-- **Ein Linter sieht, was ein Reviewer überliest.** `steps()` stand als `local`
-  *unter* der Closure, die es aufruft — in Lua ist der Name dort ein Global,
-  also `nil`. Liest sich vollkommen richtig, läuft in die Wand. Die Specs haben
-  es nicht gefunden, weil trouble.nvim im Testlauf fehlt und die Funktion vorher
-  am `pcall(require, ...)` zurückkehrt; luacheck hat es sofort gesehen. Deshalb
-  steht der Lint-Aufruf jetzt in `TESTS/README.md` neben der Suite.
+- **The checklist ages faster than the code.** On the first pass the repo was a
+  scaffold, and close to a third of the items were answered with "still empty"
+  or "not applicable yet" — `NEW-15` (no keymaps), `NEW-21` (empty catalogue),
+  `NEW-25` (no count, because there was no key), `NEW-29`. After the migration
+  none of that held any more: the record described a repo that no longer exists.
+  For the next extraction: an item whose answer is "does not exist yet" is
+  **not ticked off, it is deferred**, and belongs on a list that comes up again
+  at the end of the migration.
+- **`NEW-25` was exactly such an item** and is done. `v:count1` applies to the
+  eight motion keys (`]d`/`[d`, `]q`/`[q`, `]l`/`[l`, `]w`/`[w`); `3]q` jumps
+  three quickfix entries. Not via a loop: `:{count}cnext` and
+  `vim.diagnostic.jump({ count = N })` can do it natively, fire the autocommands
+  once instead of N times, and run as far as they get instead of stopping at the
+  first `E553`. The leader-prefixed actions get none — filling a list or
+  toggling a setting has no ordered target for a count to index into.
+- **A linter sees what a reviewer reads past.** `steps()` sat as a `local`
+  *below* the closure that calls it — in Lua the name is a global there, i.e.
+  `nil`. It reads perfectly right and runs into a wall. The specs did not find
+  it, because trouble.nvim is missing in the test run and the function returns
+  earlier at the `pcall(require, ...)`; luacheck saw it immediately. That is why
+  the lint invocation now stands in `TESTS/README.md` next to the suite.
 
-### Entschieden (2026-08-23, zweiter Durchgang)
+### Decided (2026-08-23, second pass)
 
-- **Trouble als Default-Senke für `]d`/`[d`: ja, implementiert 2026-08-24.**
-  Alles andere wäre, das halbe Plugin nachzubauen — Trouble bringt viel mit,
-  und die meisten Nutzer greifen ohnehin dazu. `diagnostics.ui`
-  (`"auto"|"native"|"trouble"`, Default `"auto"`) entscheidet; `"trouble"` und
-  `"auto"` verhalten sich zur Laufzeit identisch, solange Trouble installiert
-  ist. Nicht Teil von `vim.diagnostic.config()` — `lsp/init.lua` entfernt das
-  Feld, bevor es dorthin geht, sonst bekäme die native API einen Schlüssel,
-  den sie nicht kennt.
+- **Trouble as the default sink for `]d`/`[d`: yes, implemented 2026-08-24.**
+  Anything else would mean rebuilding half the plugin — Trouble brings a lot
+  along, and most users reach for it anyway. `diagnostics.ui`
+  (`"auto"|"native"|"trouble"`, default `"auto"`) decides; `"trouble"` and
+  `"auto"` behave identically at runtime as long as Trouble is installed. Not
+  part of `vim.diagnostic.config()` — `lsp/init.lua` removes the field before it
+  goes there, otherwise the native API would get a key it does not know.
 
-  Bewusst mehr als eine Config-Zeile: `]d`/`[d` sollten sich exakt wie
-  Trouble's eigenes `next`/`prev` verhalten (Panel öffnet, Fokus wechselt) —
-  die naheliegende Umsetzung wäre gewesen, Trouble's öffentliche
-  `next(opts)`/`prev(opts)`-Wrapper zu rufen. Die lesen `vim.v.count1` aber
-  **selbst**, innerhalb der Action. Der bereits bestehende Code für `]w`/`[w`
-  (`trouble_move`) rief genau diese Wrapper in einer Schleife über
-  `steps(count)` auf — bei `3]w` wurde `steps` aus `v:count1` (=3) aufgelöst,
-  und jede der 3 Schleifen-Iterationen las dasselbe, noch nicht verbrauchte
-  `v:count1` erneut: netto 3×3=9 Bewegungen statt 3. Ein echter, bereits
-  ausgelieferter Bug, gefunden beim Nachlesen von Trouble's eigenem Quellcode
-  für dieses Feature — behoben, indem `view:move({down/up=n, jump=true})`
-  direkt gerufen wird (dieselbe Primitive, die Trouble's `next`/`prev`
-  intern nutzt), statt über den zählenden Wrapper zu gehen. `]w`/`[w` bleiben
-  in ihrer Semantik unverändert (bewegen nur innerhalb einer bereits offenen
-  Liste), sind aber vom selben Fix mitbetroffen.
+  Deliberately more than one config line: `]d`/`[d` should behave exactly like
+  Trouble's own `next`/`prev` (the panel opens, focus switches) — the obvious
+  implementation would have been to call Trouble's public `next(opts)`/`prev(opts)`
+  wrappers. Those read `vim.v.count1` **themselves**, though, inside the action.
+  The already existing code for `]w`/`[w` (`trouble_move`) called exactly those
+  wrappers in a loop over `steps(count)` — on `3]w`, `steps` resolved from
+  `v:count1` (=3), and each of the 3 loop iterations read the same, not yet
+  consumed `v:count1` again: net 3×3=9 movements instead of 3. A real,
+  already-shipped bug, found while reading Trouble's own source for this
+  feature — fixed by calling `view:move({down/up=n, jump=true})` directly (the
+  same primitive Trouble's `next`/`prev` use internally) instead of going
+  through the counting wrapper. `]w`/`[w` keep their semantics unchanged (they
+  only move within an already open list) but are affected by the same fix.
 
-  `view:move()` braucht ein bereits gemountetes Fenster; Trouble mountet es
-  aber asynchron, in einem Promise-Callback (`view:refresh({opening=true})
-  :next(...)`), nicht synchron innerhalb von `trouble.open()`. Deshalb läuft
-  auch der eigene Move-Aufruf über `view:wait(fn)` — dieselbe Verzögerung, die
-  `trouble.next()`/`.prev()` intern selbst verwenden.
-- **Completion-Engine: `blink` ist seit 2026-08-24 der Plugin-Default**
-  (`lua/lsp/config/pack.lua`), nach echtem Live-Test beider Engines. Beide
-  Adapter existieren seit Phase 5 und sind seit 2026-08-23 über
-  `vim.g.lsp_nvim.pack.completion = "cmp"|"blink"` echt umschaltbar — zuvor war
-  blink nur ein auskommentierter Block in `plugins/lsp.lua`, nie tatsächlich
-  erreichbar. Die Config testete es zunächst probeweise per Override; der
-  Override ist wieder entfernt, seit blink der tatsächliche Default ist.
+  `view:move()` needs an already mounted window; Trouble mounts it
+  asynchronously, though, in a promise callback (`view:refresh({opening=true})
+  :next(...)`), not synchronously inside `trouble.open()`. That is why the
+  plugin's own move call also goes through `view:wait(fn)` — the same deferral
+  `trouble.next()`/`.prev()` use internally.
+- **Completion engine: `blink` has been the plugin default since 2026-08-24**
+  (`lua/lsp/config/pack.lua`), after a real live test of both engines. Both
+  adapters have existed since phase 5 and have been genuinely switchable via
+  `vim.g.lsp_nvim.pack.completion = "cmp"|"blink"` since 2026-08-23 — before
+  that blink was only a commented-out block in `plugins/lsp.lua`, never actually
+  reachable. The config tested it via an override at first; the override has
+  been removed again since blink became the actual default.
 
-  Der erste echte Testlauf hat sofort einen Bug gefunden: `lsp.integrations.cmp`
-  warnte unbedingt „nvim-cmp not found!“, auch wenn blink bewusst gewählt war
-  — ein Rest aus der Zeit, als cmp der einzige Motor war.
-  `lsp.integrations.blink` war schon symmetrisch (schweigt, wenn abwesend);
-  `cmp.lua` jetzt auch. `core.capabilities.get()` behält seine eigene
-  Aggregat-Warnung, wenn wirklich **kein** Contributor Completion-Capabilities
-  liefert — dort bleibt B1 (die stillschweigend degradierte Completion aus der
-  ursprünglichen Config) weiterhin gefangen. Behoben in `lsp.nvim` (Commit
-  `ba4ecb8`).
+  The first real test run found a bug immediately: `lsp.integrations.cmp` warned
+  unconditionally "nvim-cmp not found!", even when blink had deliberately been
+  chosen — a leftover from the time when cmp was the only engine.
+  `lsp.integrations.blink` was already symmetric (silent when absent);
+  `cmp.lua` is now too. `core.capabilities.get()` keeps its own aggregate
+  warning for when really **no** contributor supplies completion capabilities —
+  that is where B1 (the silently degraded completion from the original config)
+  stays caught. Fixed in `lsp.nvim` (commit `ba4ecb8`).
 
-  Die genannte Lücke — `personal_names` hatte kein blink-Gegenstück — ist mit
-  §16 geschlossen (siehe dort): beide Quellen laufen seit 2026-08-24 über
-  `lsp.completion.register` unter beiden Engines.
-### Erledigt durch das Gebaute (2026-08-23 / 2026-08-24)
+  The gap mentioned — `personal_names` had no blink counterpart — is closed with
+  §16 (see there): both sources have run through `lsp.completion.register` under
+  both engines since 2026-08-24.
+### Settled by what was built (2026-08-23 / 2026-08-24)
 
-Die folgenden Punkte standen bis eben unter „Offen“ und sind es nicht mehr —
-nicht weil sie entschieden wurden, sondern weil der Code die Frage beantwortet:
+The following points stood under "Open" until just now and no longer do — not
+because they were decided, but because the code answers the question:
 
-| # | Frage | Wie sie ausging |
+| # | Question | How it turned out |
 |---|---|---|
-| 3 | **Modulwurzel `lsp`** | Beibehalten. Alle `require("lsp.…")`-Pfade blieben gültig; die Kollision aus dem `dap.nvim`-Fall trat nicht ein. Der reale Fallstrick war ein anderer und steht oben: solange die Config ihr eigenes `lua/lsp/**` hat, gewinnt sie auf der `runtimepath` |
-| 4 | **Windows-Formatter** (B6) | War nie eine Einschränkung, nur ein veralteter Kopfkommentar. `formatter/conform.lua` verzweigt seit jeher auf PATH-Separator, `.cmd`-Suffix und Mason-Bin-Pfad |
-| 5 | **`lspdoctor` vs. `:checkhealth`** | Können nicht divergieren: beide lesen `require("lsp").status()`, es gibt keine zweite Stelle, an der sich das Plugin selbst beschreibt. `:checkhealth` verweist für die Buffer-Ebene auf `:LspDoctor`, statt sie zu wiederholen |
-| 6 | **`dap.nvim` ↔ `lsp.nvim`** | Wie vorgeschlagen: `integrations/mason/` nimmt Registrierungen entgegen, `dap.nvim` meldet sich pcall-geschützt an und bleibt standalone lauffähig |
-| 7 | **Umfang von Phase 1** | Wie vorgeschlagen: Pack erst in Phase 5. Hat sich gelohnt — der erste Pack-Entwurf hat blink.cmp in die Config installiert, weil lazys `import` ein *Verzeichnis* liest und die bedingten Imports nichts abgeschirmt haben. In Phase 1 hätte dieser Fehler die Kern-Migration blockiert |
-| 3 (NEW-20) | **gen_map `--check` gegen eine nicht committete Map** | Keine Repo-Entscheidung, wie zuerst vermutet, sondern eine Lücke im Gate selbst — bestätigt anhand aller fünf bestehenden Repos (siehe oben) und am 2026-08-24 dort behoben |
+| 3 | **Module root `lsp`** | Kept. All `require("lsp.…")` paths stayed valid; the collision from the `dap.nvim` case did not occur. The real pitfall was a different one and stands above: as long as the config has its own `lua/lsp/**`, it wins on the `runtimepath` |
+| 4 | **Windows formatter** (B6) | Was never a limitation, only a stale header comment. `formatter/conform.lua` has always branched on the PATH separator, the `.cmd` suffix and the Mason bin path |
+| 5 | **`lspdoctor` vs. `:checkhealth`** | They cannot diverge: both read `require("lsp").status()`, there is no second place where the plugin describes itself. `:checkhealth` points at `:LspDoctor` for the buffer level instead of repeating it |
+| 6 | **`dap.nvim` ↔ `lsp.nvim`** | As proposed: `integrations/mason/` accepts registrations, `dap.nvim` registers pcall-guarded and stays runnable standalone |
+| 7 | **Scope of phase 1** | As proposed: the pack only in phase 5. That paid off — the first pack draft installed blink.cmp into the config, because lazy's `import` reads a *directory* and the conditional imports shielded nothing. In phase 1 this mistake would have blocked the core migration |
+| 3 (NEW-20) | **gen_map `--check` against a non-committed map** | Not a repo decision, as first assumed, but a gap in the gate itself — confirmed across all five existing repos (see above) and fixed there on 2026-08-24 |
 
 ---
 
-## 16. Eigene Completion-Quellen: engine-neutral + Frequenz-Ranking
+## 16. The plugin's own completion sources: engine-neutral + frequency ranking
 
-**Status: erledigt 2026-08-24.** Aufgenommen 2026-08-23 aus zwei Beobachtungen
-beim Blink-Test, gebaut einen Tag später. Der Abschnitt bleibt stehen, weil der
-Bau drei Dinge gefunden hat, die der Entwurf unten nicht vorhergesehen hat.
+**Status: done 2026-08-24.** Recorded 2026-08-23 out of two observations during
+the blink test, built a day later. The section stays because building it found
+three things the draft below did not anticipate.
 
-### Der Befund
+### The finding
 
-Es gab genau zwei handgeschriebene Completion-Quellen, beide **cmp-only**:
+There were exactly two hand-written completion sources, both **cmp-only**:
 
-| Quelle | Was sie liefert | Frequenz-Ranking? |
+| Source | What it supplies | Frequency ranking? |
 |---|---|---|
-| `lsp.completion.personal_names` | die ~30 gepunkteten `*.nvim`-Plugin-Namen als je *ein* Kandidat | **ja** — persistenter Zähler in `stdpath("state")/personal_names_usage.json`, als nullgepolsterter `sortText`-Rang kodiert |
-| `lsp.languages.documentation.markdown_words` | das projektweite Wort-Wörterbuch für Markdown | **nein** — `table.sort` rein alphabetisch (`words_to_items`) |
+| `lsp.completion.personal_names` | the ~30 dotted `*.nvim` plugin names, each as *one* candidate | **yes** — a persistent counter in `stdpath("state")/personal_names_usage.json`, encoded as a zero-padded `sortText` rank |
+| `lsp.languages.documentation.markdown_words` | the project-wide word dictionary for markdown | **no** — `table.sort` purely alphabetical (`words_to_items`) |
 
-Beide hingen an `cmp.register_source` und warnten beim Fehlen von nvim-cmp.
-Unter blink war das die Meldung, die den Punkt überhaupt ausgelöst hat:
+Both hung off `cmp.register_source` and warned when nvim-cmp was missing. Under
+blink that was the message that triggered this item in the first place:
 `[md_words] nvim-cmp not found – source will not appear in completions.`
 
-Das gewünschte Feature — „oft verwendete Vorschläge weiter oben“ — war also
-**nicht neu zu erfinden**, sondern aus `personal_names` herauszulösen und auf
-`markdown_words` anzuwenden.
+The desired feature — "frequently used suggestions further up" — therefore did
+**not** need inventing, only extracting from `personal_names` and applying to
+`markdown_words`.
 
-### Was gebaut wurde
+### What was built
 
-| Datei | Rolle |
+| File | Role |
 |---|---|
-| `lua/lsp/completion/usage.lua` | der persistente Zähler, aus `personal_names` herausgezogen: `bump`/`count`/`ranked` plus die `sortText`-Kodierung. Eine Datei (`stdpath("state")/lsp_completion_usage.json`), zwei Top-Level-Namensräume — die unten offene Frage, so entschieden. Die alte `personal_names_usage.json` wird beim ersten Laden einmalig eingefaltet, sonst wären monatelang gesammelte Zähler stillschweigend weg |
-| `lua/lsp/completion/register.lua` | der Registrar. Eine Quelle übergibt `{ name, items, namespace?, filetypes?, keyword_pattern?, on_pick? }` und erfährt nie, welche Engine gewonnen hat |
-| `lua/lsp/completion/blink.lua` | der blink-Provider, der einen registrierten Spec bedient. blink löst Provider über einen `module`-Pfad auf und kann keinen Closure bekommen — deshalb trägt `opts.source` den Namen, und der Spec wird zur Anfragezeit nachgeschlagen |
-| `lua/lsp/pack/completion_blink.lua` | deklariert beide Quellen als Provider; `md_words` per `per_filetype` mit `inherit_defaults` statt global |
-| `TESTS/lsp/completion_spec.lua` | 19 Specs auf die Naht: Ranking engine-unabhängig, Namensräume dicht, Pick wird gezählt egal welche Engine ihn meldet |
+| `lua/lsp/completion/usage.lua` | the persistent counter, pulled out of `personal_names`: `bump`/`count`/`ranked` plus the `sortText` encoding. One file (`stdpath("state")/lsp_completion_usage.json`), two top-level namespaces — the question left open below, decided that way. The old `personal_names_usage.json` is folded in once on first load, otherwise counters collected over months would silently be gone |
+| `lua/lsp/completion/register.lua` | the registrar. A source passes `{ name, items, namespace?, filetypes?, keyword_pattern?, on_pick? }` and never learns which engine won |
+| `lua/lsp/completion/blink.lua` | the blink provider that serves a registered spec. blink resolves providers via a `module` path and cannot be given a closure — that is why `opts.source` carries the name and the spec is looked up at request time |
+| `lua/lsp/pack/completion_blink.lua` | declares both sources as providers; `md_words` via `per_filetype` with `inherit_defaults` instead of globally |
+| `TESTS/lsp/completion_spec.lua` | 19 specs on the seam: ranking engine-independent, namespaces sealed, a pick is counted no matter which engine reports it |
 
-Die Optionen liegen unter `completion.personal_names` (`enable`, `labels`), und
-`labels` ist ein *Reader*, keine Liste: die Plugin-Namen sind Daten der
-Host-Config, die sie übergibt, statt dass dieses Plugin in `plugins.personal`
-hineingreift.
+The options live under `completion.personal_names` (`enable`, `labels`), and
+`labels` is a *reader*, not a list: the plugin names are data of the host config,
+which passes them in, rather than this plugin reaching into `plugins.personal`.
 
-### Drei Befunde aus dem Bau
+### Three findings from building it
 
-1. **Die Registrierung darf nicht im Engine-Spec stehen.** `personal_names`
-   wurde aus der `opts`-Funktion von nvim-cmp heraus aufgerufen — die unter
-   blink nie läuft. Ergebnis beim ersten Live-Test: `sources = {}`, die Quelle
-   war unter blink weiterhin weg, obwohl der ganze Registrar dafür gebaut war.
-   Der Aufruf gehört in `lsp.setup()`, also dorthin, wo keine Engine ihn sehen
-   kann.
-2. **Ein Pick darf das Wörterbuch nicht neu bauen.** Der erste Wurf setzte nach
-   jedem angenommenen Wort `items = nil`. Das löste einen vollständigen
-   Projekt-Rescan aus — Datei-I/O pro Wort, und weil ein laufender Rebuild
-   nichts zurückgibt, wäre das Menü direkt nach dem Pick leer gewesen. Danach
-   nur noch neu sortiert, statt neu zu scannen: gemessen **31 ms pro Wort** für
-   24703 Einträge, immer noch zu teuer. Jetzt bekommen nur die Labels *mit*
-   Zähler einen Rang gestempelt, in place: **0,003 ms**.
-3. **Ein fehlendes `sortText` heißt „keine Meinung“, nicht „ganz nach hinten“.**
-   Beide Engines überspringen das Paar und geben es an den nächsten Komparator
-   weiter (`blink/cmp/fuzzy/sort.lua:35`, `cmp/config/compare.lua:97`). Die
-   naheliegende Sparmaßnahme — ungenutzten Items gar kein `sortText` geben —
-   hätte also genau die Eigenschaft verloren, für die das Modul existiert.
-   Ungenutzte Items tragen deshalb `"~" .. label`: alphabetisch untereinander,
-   hinter jedem Rang, und hinter dem, was ein LSP-Server typischerweise sendet.
+1. **The registration must not sit in the engine spec.** `personal_names` was
+   called out of nvim-cmp's `opts` function — which never runs under blink.
+   Result on the first live test: `sources = {}`, the source was still absent
+   under blink even though the whole registrar had been built for it. The call
+   belongs in `lsp.setup()`, i.e. where no engine can see it.
+2. **A pick must not rebuild the dictionary.** The first attempt set
+   `items = nil` after every accepted word. That triggered a complete project
+   rescan — file I/O per word, and because a running rebuild returns nothing,
+   the menu would have been empty right after the pick. After that it only
+   re-sorted instead of re-scanning: measured **31 ms per word** for 24,703
+   entries, still too expensive. Now only the labels *with* a counter get a rank
+   stamped, in place: **0.003 ms**.
+3. **A missing `sortText` means "no opinion", not "all the way to the back".**
+   Both engines skip the pair and hand it to the next comparator
+   (`blink/cmp/fuzzy/sort.lua:35`, `cmp/config/compare.lua:97`). The obvious
+   saving — giving unused items no `sortText` at all — would therefore have lost
+   exactly the property the module exists for. Unused items therefore carry
+   `"~" .. label`: alphabetical among themselves, behind every rank, and behind
+   what an LSP server typically sends.
 
-### Was das Portieren einfach gemacht hat
+### What made the port easy
 
-Geprüft am installierten blink.cmp v1.x, nicht angenommen:
+Checked against the installed blink.cmp v1.x, not assumed:
 
-- **`sortText` wirkt in beiden Engines identisch.** blinks Default ist
+- **`sortText` works identically in both engines.** blink's default is
   `fuzzy.sorts = { "score", "sort_text" }` (`lua/blink/cmp/config/fuzzy.lua`),
-  cmps Default-Kette enthält `compare.sort_text`. Die Ranking-Mechanik ist
-  damit **engine-neutral** — nur Registrierung und Accept-Hook unterscheiden
-  sich.
-- **blinks Accept-Hook ist sauberer als cmps.** Eine blink-Source implementiert
-  `execute(ctx, item, callback, default)` am eigenen Item; cmp braucht das
-  globale `cmp.event:on("confirm_done")` mit Filterung auf den Source-Namen.
-- **Der Item-Aufbau ist derselbe** (`label`/`kind`/`filterText`/`insertText`/
-  `sortText`) — blink nimmt LSP-`CompletionItem`s genau wie cmp.
+  cmp's default chain contains `compare.sort_text`. The ranking mechanics are
+  therefore **engine-neutral** — only registration and the accept hook differ.
+- **blink's accept hook is cleaner than cmp's.** A blink source implements
+  `execute(ctx, item, callback, default)` on its own item; cmp needs the global
+  `cmp.event:on("confirm_done")` with filtering on the source name.
+- **The item structure is the same** (`label`/`kind`/`filterText`/`insertText`/
+  `sortText`) — blink takes LSP `CompletionItem`s exactly like cmp.
 
-### Die offenen Fragen, beantwortet
+### The open questions, answered
 
-- **Eine Datei oder zwei?** Eine, mit zwei Top-Level-Schlüsseln — die Tendenz
-  aus dem Entwurf, und die Namensräume sind nicht optional: ein Markdown-Wort
-  und ein Plugin-Name können gleich heißen, und ein gemeinsamer Zähler würde
-  das Schreiben von Prosa die Plugin-Liste umsortieren lassen.
-- **Wird `personal_names` unter blink überhaupt gebraucht?** Ja. Vor dem
-  Portieren gemessen, wie der Entwurf verlangt: blinks Fuzzy-Matcher bringt
-  „do“ ebenfalls nicht auf „documentation.nvim“.
+- **One file or two?** One, with two top-level keys — the tendency from the
+  draft, and the namespaces are not optional: a markdown word and a plugin name
+  can be identical, and a shared counter would let writing prose re-sort the
+  plugin list.
+- **Is `personal_names` needed under blink at all?** Yes. Measured before the
+  port, as the draft demands: blink's fuzzy matcher likewise does not get from
+  "do" to "documentation.nvim".
 
 ---
 
-## Aus `MyPlugin-Notes/LSPDoctor/` (Analyse 2026-08-08)
+## From `MyPlugin-Notes/LSPDoctor/` (analysis 2026-08-08)
 
-Quelle: `MyPlugin-Notes/LSPDoctor/{lspdoctor,lsprelive}.md` — **existiert
-nicht mehr**: unter `C:\repos\Notes\MyPlugin-Notes\` liegen heute nur noch
-`README-TEMPLATES/`, `_archive/`, `cmdlog/` und `nvim_cfg_patches/`. Der für
-`lsp.nvim` relevante Inhalt ist unten festgehalten, das Original ist weg.
+Source: `MyPlugin-Notes/LSPDoctor/{lspdoctor,lsprelive}.md` — **no longer
+exists**: under `C:\repos\Notes\MyPlugin-Notes\` there are today only
+`README-TEMPLATES/`, `_archive/`, `cmdlog/` and `nvim_cfg_patches/`. The content
+relevant to `lsp.nvim` is recorded below, the original is gone.
 
-**Befund: die Notiz ist überholt.** Sie entwirft eine ~30-zeilige `M.check()`
-(Mason da? LSP attached? Diagnostics vorhanden? trouble geladen?). Der reale
-Stand ist `lspdoctor/**` mit 948 Zeilen und fünf Modi
-(`:LspDoctor {health,debug,quick,deep,all}`) — siehe §11 dieses Dokuments.
+**Finding: the note is outdated.** It sketches a ~30-line `M.check()` (Mason
+there? LSP attached? diagnostics present? trouble loaded?). The real state is
+`lspdoctor/**` with 948 lines and five modes
+(`:LspDoctor {health,debug,quick,deep,all}`) — see §11 of this document.
 
-Aufgehoben, weil sie zwei Dinge enthält, die im Konzept noch nicht stehen:
+Kept because it contains two things that are not yet in the concept:
 
-### 1. Kennzahl „installiert vs. attached"
+### 1. The "installed vs. attached" metric
 
-`lsprelive.md` hält fest, warum die häufige Sorge unbegründet ist: Ein
-installierter Server kostet nichts, solange er an keinen Buffer attached ist.
-Teuer wird erst „viele grosse Buffer × schwerer Server" (tsserver, pyright).
+`lsprelive.md` records why the common worry is unfounded: an installed server
+costs nothing as long as it is attached to no buffer. It only gets expensive
+with "many large buffers × a heavy server" (tsserver, pyright).
 
-- [ ] Als Zeile im `:checkhealth lsp`-Report ausgeben: *installiert: N,
-      aktuell attached: M, davon in diesem Buffer: K* — plus Warnung erst, wenn
-      ein bekannt schwerer Server über vielen Buffern hängt.
+- [ ] Output as a line in the `:checkhealth lsp` report: *installed: N,
+      currently attached: M, of those in this buffer: K* — plus a warning only
+      when a known-heavy server hangs over many buffers.
 
-Das beantwortet die Frage, die man tatsächlich stellt, statt nur zu listen.
+That answers the question one actually asks, instead of merely listing.
 
-**Aufwand:** Quick Win
-**Nutzen:** mittel.
+**Effort:** quick win
+**Benefit:** medium.
 
-### 2. Fehlerprovokation als Testhilfe
+### 2. Provoking errors as a testing aid
 
-Die Notiz enthält absichtlich kaputte Snippets (Go: fehlende Klammer, JS:
-`const x =`), um zu prüfen, ob Diagnostics überhaupt ankommen.
+The note contains deliberately broken snippets (Go: a missing brace, JS:
+`const x =`) to check whether diagnostics arrive at all.
 
-- [ ] In die Testsuite bzw. in `:LspDoctor deep` übernehmen: einen Scratch-Buffer
-      mit garantiert fehlerhaftem Inhalt anlegen und prüfen, ob binnen Timeout
-      Diagnostics eintreffen. Das unterscheidet „keine Fehler" von „Diagnostics
-      kommen gar nicht an" — genau der Fall, der sonst stundenlang Zeit kostet.
+- [ ] Adopt into the test suite resp. into `:LspDoctor deep`: create a scratch
+      buffer with guaranteed-faulty content and check whether diagnostics arrive
+      within a timeout. That distinguishes "no errors" from "diagnostics do not
+      arrive at all" — exactly the case that otherwise costs hours.
 
-**Aufwand:** Mittel
-**Nutzen:** hoch — der einzige Check, der die Kette End-to-End verifiziert
-statt nur Zustände abzufragen.
+**Effort:** medium
+**Benefit:** high — the only check that verifies the chain end-to-end instead of
+just querying states.

@@ -1,7 +1,7 @@
-:TypeDefGoTo — springt zur Type-Definition
-:TypeDefPeek — zeigt die Definition in einem Floating-Preview
-:TypeDefInNodeModules — durchsucht node_modules per rg (Fallback)
+:TypeDefGoTo — jumps to the type definition
+:TypeDefPeek — shows the definition in a floating preview
+:TypeDefInNodeModules — searches node_modules via rg (fallback)
 :TypeDefPick - Telescope
 
 
-erweitere ich das Modul so, dass es direkt innerhalb des Noice-Floating-UI kontextsensitiv arbeitet (z. B. Noice-Panel mit Link „open definition“), oder binde ein Telescope-Picker-Fallback ein
+Idea: extend the module so that it works context-sensitively right inside the Noice floating UI (e.g. a Noice panel with an "open definition" link), or wire in a Telescope picker fallback

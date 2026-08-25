@@ -3,58 +3,58 @@
 ## Table of content
 
   - [User Commands](#user-commands)
-    - [Quickfix (Workspace)](#quickfix-workspace)
-    - [Loclist (Buffer-lokal)](#loclist-buffer-lokal)
+    - [Quickfix (workspace)](#quickfix-workspace)
+    - [Loclist (buffer-local)](#loclist-buffer-local)
   - [Keymaps](#keymaps)
-  - [Aktualisiertes ASCII-Architekturdiagramm](#aktualisiertes-ascii-architekturdiagramm)
+  - [Updated ASCII architecture diagram](#updated-ascii-architecture-diagram)
 
 ---
 
 ## User Commands
 
-### Quickfix (Workspace)
+### Quickfix (workspace)
 
 * `:DiagQF [severity]`
-  Baut die Quickfix-Liste aus Workspace-Diagnostics und öffnet sie.
-  Entspricht `<leader>wq`.
+  Builds the quickfix list from workspace diagnostics and opens it.
+  Equivalent to `<leader>wq`.
 
 * `:DiagNextQF`
-  Springt zum nächsten Eintrag in der Quickfix-Liste.
+  Jumps to the next entry in the quickfix list.
 
 * `:DiagPrevQF`
-  Springt zum vorherigen Eintrag in der Quickfix-Liste.
+  Jumps to the previous entry in the quickfix list.
 
 * `:DiagNextQF!`
-  Erzwingt Navigation im Workspace (Quickfix), auch wenn Loclist aktiv ist.
+  Forces navigation in the workspace (quickfix), even when the loclist is active.
 
 * `:DiagPrevQF!`
-  Erzwingt Navigation im Workspace (Quickfix), auch wenn Loclist aktiv ist.
+  Forces navigation in the workspace (quickfix), even when the loclist is active.
 
-### Loclist (Buffer-lokal)
+### Loclist (buffer-local)
 
 * `:DiagLoc [severity]`
-  Baut die Location-List aus Buffer-Diagnostics und öffnet sie.
-  Entspricht `<leader>lq`.
+  Builds the location list from buffer diagnostics and opens it.
+  Equivalent to `<leader>lq`.
 
 * `:DiagNextLoc [severity]`
-  Springt zum nächsten Diagnostic im aktuellen Buffer (Loclist-orientiert).
+  Jumps to the next diagnostic in the current buffer (loclist-oriented).
 
 * `:DiagPrevLoc [severity]`
-  Springt zum vorherigen Diagnostic im aktuellen Buffer.
+  Jumps to the previous diagnostic in the current buffer.
 
 * `:DiagNextLoc! [severity]`
-  Erzwingt Buffer-lokale Navigation (Loclist), unabhängig von Quickfix.
+  Forces buffer-local navigation (loclist), independently of the quickfix list.
 
 * `:DiagPrevLoc! [severity]`
-  Erzwingt Buffer-lokale Navigation (Loclist), unabhängig von Quickfix.
+  Forces buffer-local navigation (loclist), independently of the quickfix list.
 
-Severity-Argumente (optional, überall gleich):
+Severity arguments (optional, the same everywhere):
 
 * `error`
 * `warn`
 * `info`
 * `hint`
-* `all` oder leer = kein Filter
+* `all` or empty = no filter
 
 ---
 
@@ -63,12 +63,12 @@ Severity-Argumente (optional, überall gleich):
 * `<leader>wq` → `:DiagQF`
 * `<leader>lq` → `:DiagLoc`
 
-Navigation Loclist / Buffer:
+Loclist / buffer navigation:
 
 * `]d` → `:DiagNextLoc`
 * `[d` → `:DiagPrevLoc`
 
-Navigation Quickfix:
+Quickfix navigation:
 
 * `]q` → `:DiagNextQF`
 * `[q` → `:DiagPrevQF`

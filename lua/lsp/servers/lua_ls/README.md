@@ -1,65 +1,65 @@
-# Lua Language Server (lua_ls) Setup für Neovim
+# Lua Language Server (lua_ls) setup for Neovim
 
-Diese Lua-Module konfigurieren den Lua Language Server (lua_ls) für Neovim mit intelligenter Root-Erkennung, präziser Workspace-Library-Verwaltung und optimierter Performance.
+These Lua modules configure the Lua Language Server (lua_ls) for Neovim with intelligent root detection, precise workspace library management and optimised performance.
 
-## 📋 Übersicht
+## 📋 Overview
 
-Das Setup besteht aus mehreren zusammenhängenden Modulen, die eine robuste und performante lua_ls-Integration bieten:
+The setup consists of several interconnected modules that provide a robust and performant lua_ls integration:
 
 ```
 lsp/servers/lua_ls/
-├── init.lua              # Hauptmodul: LSP-Server-Konfiguration
-├── rootresolver.lua      # Projekt-Root-Erkennung
-├── build_library.lua     # Workspace-Library-Konstruktion
-├── find_type_dirs.lua    # Scanner für Type-Verzeichnisse
-├── ignore.lua            # Zentrale Ignore-Konfiguration
-└── debug.lua             # Debugging-Utilities
+├── init.lua              # main module: LSP server configuration
+├── rootresolver.lua      # project root detection
+├── build_library.lua     # workspace library construction
+├── find_type_dirs.lua    # scanner for type directories
+├── ignore.lua            # central ignore configuration
+└── debug.lua             # debugging utilities
 ```
 
-## 🎯 Hauptfunktionen
+## 🎯 Main features
 
-### 1. **Intelligente Root-Erkennung**
-Das System erkennt automatisch die Projektgrenzen anhand mehrerer Kriterien:
+### 1. **Intelligent root detection**
+The system detects the project boundaries automatically from several criteria:
 
-- **VCS-Marker**: `.git`, `.hg`, `.svn` (höchste Priorität)
-- **Lua-Konfigurationsdateien**: `.luarc.json`, `.neoconf.json`, `selene.toml`, `stylua.toml`
-- **Neovim-Config-Verzeichnis**: Spezialbehandlung für `stdpath("config")`
-- **Fallback**: Aktuelles Verzeichnis für Single-File-Support
+- **VCS markers**: `.git`, `.hg`, `.svn` (highest priority)
+- **Lua configuration files**: `.luarc.json`, `.neoconf.json`, `selene.toml`, `stylua.toml`
+- **Neovim config directory**: special handling for `stdpath("config")`
+- **Fallback**: the current directory, for single-file support
 
-### 2. **Präzise Library-Verwaltung**
-Die Workspace-Libraries werden pro Projekt-Root dynamisch aufgebaut:
+### 2. **Precise library management**
+The workspace libraries are built dynamically per project root:
 
-#### **Enthaltene Libraries:**
-- **Third-Party Definitions** (`${3rd}/...`):
-  - `${3rd}/luv/library` - Typdefinitionen für vim.uv/vim.loop
-  - `${3rd}/busted/library` - Typdefinitionen für Busted Test-Framework
+#### **Included libraries:**
+- **Third-party definitions** (`${3rd}/...`):
+  - `${3rd}/luv/library` - type definitions for vim.uv/vim.loop
+  - `${3rd}/busted/library` - type definitions for the Busted test framework
 
-- **Neovim Runtime**: Alle Neovim-Laufzeitpfade für `vim.*` API-Erkennung
+- **Neovim runtime**: all Neovim runtime paths for `vim.*` API detection
 
-- **Projekt-Type-Verzeichnisse**: Automatische Erkennung von `types/` und `@types/` Ordnern
+- **Project type directories**: automatic detection of `types/` and `@types/` folders
 
-- **LuaRocks**: Unterstützung für global und lokal installierte Rocks
+- **LuaRocks**: support for globally and locally installed rocks
 
-- **Lokale Dependencies**: `lua_modules/`, `deps/`, `vendor/`
+- **Local dependencies**: `lua_modules/`, `deps/`, `vendor/`
 
-### 3. **Optimierte Performance**
-Das System ist auf Performance optimiert:
+### 3. **Optimised performance**
+The system is optimised for performance:
 
-- **Intelligente Ignore-Listen**: Überspringt `node_modules`, `.git`, `build` etc.
-- **Konfigurierbare Limits**:
-  - `maxPreload = 3000` - Maximale Anzahl vorgeladener Dateien
-  - `preloadFileSize = 500` - Maximale Dateigröße (KB)
-- **BFS-Scanning**: Breadth-First-Search mit konfigurierbarer Tiefe (`max_depth = 12`)
+- **Intelligent ignore lists**: skips `node_modules`, `.git`, `build` etc.
+- **Configurable limits**:
+  - `maxPreload = 3000` - maximum number of preloaded files
+  - `preloadFileSize = 500` - maximum file size (KB)
+- **BFS scanning**: breadth-first search with a configurable depth (`max_depth = 12`)
 
-### 4. **Git-Integration**
-- Respektiert `.gitignore` Dateien (`useGitIgnore = true`)
-- Überspringt Git-Verzeichnisse automatisch
+### 4. **Git integration**
+- Respects `.gitignore` files (`useGitIgnore = true`)
+- Skips git directories automatically
 
-## 📦 Module im Detail
+## 📦 The modules in detail
 
-### `init.lua` - Hauptmodul
+### `init.lua` - main module
 
-Das Herzstück der Konfiguration. Registriert den lua_ls Server mit:
+The heart of the configuration. Registers the lua_ls server with:
 
 ```lua
 require("lsp.servers.lua_ls").setup({
@@ -67,51 +67,51 @@ require("lsp.servers.lua_ls").setup({
   on_attach = on_attach,
   on_init = on_init,
 }, {
-  enable = true  -- Automatisch aktivieren
+  enable = true  -- enable automatically
 })
 ```
 
-**Wichtige Features:**
-- Verwendet die native `vim.lsp.config()` API (Neovim 0.10+)
-- Dynamische Library-Konfiguration via `on_new_config` Hook
-- LuaJIT-Runtime für Neovim-Optimierung
-- Inlay Hints aktiviert
-- Semantic Tokens deaktiviert (TreeSitter wird bevorzugt)
+**Important features:**
+- Uses the native `vim.lsp.config()` API (Neovim 0.10+)
+- Dynamic library configuration via the `on_new_config` hook
+- LuaJIT runtime for Neovim optimisation
+- Inlay hints enabled
+- Semantic tokens disabled (TreeSitter is preferred)
 
-### `rootresolver.lua` - Root-Erkennung
+### `rootresolver.lua` - root detection
 
-Polymorphe Resolver-Funktion, die sowohl mit Buffer-Nummern als auch Dateinamen funktioniert:
+A polymorphic resolver function that works with both buffer numbers and file names:
 
 ```lua
 local root = require("lsp.servers.lua_ls.rootresolver")
-local project_root = root(bufnr)  -- Oder: root(filename)
+local project_root = root(bufnr)  -- or: root(filename)
 ```
 
-**Algorithmus:**
-1. Prüfe ob innerhalb von `stdpath("config")` → Nutze Config-Dir
-2. Suche VCS-Root (`.git`, etc.) aufwärts
-3. Suche Lua-Marker (`.luarc.json`, etc.) aufwärts
-4. Fallback auf Start-Verzeichnis
+**Algorithm:**
+1. Check whether we are inside `stdpath("config")` → use the config dir
+2. Search upward for a VCS root (`.git`, etc.)
+3. Search upward for Lua markers (`.luarc.json`, etc.)
+4. Fall back to the start directory
 
-### `build_library.lua` - Library-Konstruktion
+### `build_library.lua` - library construction
 
-Baut die Workspace-Libraries pro Projekt-Root:
+Builds the workspace libraries per project root:
 
 ```lua
 local library = require("lsp.servers.lua_ls.build_library")(root)
 -- Returns: { [path] = true, [path2] = true, ... }
 ```
 
-**Library-Quellen:**
-- `${3rd}/luv/library` - luv Typen
-- `${3rd}/busted/library` - Busted Typen
-- Projekt-Type-Verzeichnisse via Scanner
-- LuaRocks global & lokal
-- Lokale Dependencies (`lua_modules`, etc.)
+**Library sources:**
+- `${3rd}/luv/library` - luv types
+- `${3rd}/busted/library` - Busted types
+- project type directories via the scanner
+- LuaRocks, global & local
+- local dependencies (`lua_modules`, etc.)
 
-### `find_type_dirs.lua` - Type-Scanner
+### `find_type_dirs.lua` - type scanner
 
-Durchsucht das Projekt nach Type-Verzeichnissen:
+Searches the project for type directories:
 
 ```lua
 local scanner = require("lsp.servers.lua_ls.find_type_dirs")
@@ -122,58 +122,58 @@ local type_dirs = scanner(root, {
 ```
 
 **Features:**
-- Breadth-First-Search (BFS) Algorithmus
-- Findet `types/` und `@types/` Verzeichnisse
-- Respektiert Ignore-Listen
-- Konfigurierbare Limits für Performance
+- Breadth-first search (BFS) algorithm
+- Finds `types/` and `@types/` directories
+- Respects the ignore lists
+- Configurable limits for performance
 
-### `ignore.lua` - Zentrale Ignore-Konfiguration
+### `ignore.lua` - central ignore configuration
 
-Zentralisierte Ignore-Listen für konsistente Behandlung:
+Centralised ignore lists for consistent handling:
 
 ```lua
 local ignore = require("lsp.servers.lua_ls.ignore")
 
--- Drei Export-Formate:
+-- Three export formats:
 local names = ignore.names()              -- ["node_modules", ...]
 local set = ignore.as_set()               -- {node_modules=true, ...}
 local patterns = ignore.as_luals_patterns() -- ["**/node_modules", ...]
 ```
 
-**Ignorierte Verzeichnisse (Beispiele):**
+**Ignored directories (examples):**
 - `node_modules`, `bower_components`
 - `.git`, `.svn`, `.hg`
 - `build`, `dist`, `target`, `out`
 - `.vscode`, `.idea`
 - `__pycache__`, `.pytest_cache`
 
-### `debug.lua` - Debugging-Utilities
+### `debug.lua` - debugging utilities
 
-Hilfsfunktionen zum Troubleshooting:
+Helper functions for troubleshooting:
 
 ```lua
 local debug = require("lsp.servers.lua_ls.debug")
 
--- Root für aktuellen Buffer
+-- Root for the current buffer
 local root = debug.root_for_buf(bufnr)
 
--- Library-Paths für Root
+-- Library paths for a root
 local libs = debug.debug_library(root)
 
--- Debug-Info ausgeben
+-- Print debug info
 debug.print_debug_info(bufnr)
 ```
 
-**Ausgabe-Beispiel:**
+**Example output:**
 ```
 LuaLS Debug Info:
 Root: /home/user/projects/my-plugin
 Library paths: /home/user/.config/nvim, /home/user/projects/my-plugin/types, ...
 ```
 
-## 🔧 Installation & Setup
+## 🔧 Installation & setup
 
-### 1. Dateien platzieren
+### 1. Place the files
 
 ```
 ~/.config/nvim/lua/lsp/servers/lua_ls/
@@ -185,25 +185,25 @@ Library paths: /home/user/.config/nvim, /home/user/projects/my-plugin/types, ...
 └── debug.lua
 ```
 
-### 2. Abhängigkeiten
+### 2. Dependencies
 
-Stelle sicher, dass diese Helper-Module existieren:
+Make sure these helper modules exist:
 - `lib.fs.is_subpath`
 - `lib.fs.find_upward_dir`
 - `lib.fs.ignore.list`
 
-### 3. LSP Setup
+### 3. LSP setup
 
-In deiner `init.lua` oder LSP-Konfiguration:
+In your `init.lua` or LSP configuration:
 
 ```lua
--- LSP Capabilities und Handlers
+-- LSP capabilities and handlers
 local capabilities = require('cmp_nvim_lsp').default_capabilities()
 local on_attach = function(client, bufnr)
-  -- Deine on_attach Logik
+  -- your on_attach logic
 end
 
--- Lua Language Server Setup
+-- Lua Language Server setup
 require("lsp.servers.lua_ls").setup({
   capabilities = capabilities,
   on_attach = on_attach,
@@ -214,39 +214,39 @@ require("lsp.servers.lua_ls").setup({
 
 ## 🐛 Debugging
 
-### Problem: Server erkennt vim.* APIs nicht
+### Problem: the server does not recognise the vim.* APIs
 
 ```lua
 :lua require("lsp.servers.lua_ls.debug").print_debug_info()
 ```
 
-Prüfe ob:
-- Root korrekt erkannt wurde
-- Neovim Runtime-Paths in Library enthalten sind
+Check whether:
+- the root was detected correctly
+- the Neovim runtime paths are contained in the library
 
-### Problem: Types nicht gefunden
+### Problem: types not found
 
 ```lua
 :lua vim.print(require("lsp.servers.lua_ls.find_type_dirs")(vim.fn.getcwd()))
 ```
 
-Prüfe ob:
-- Type-Verzeichnisse existieren
-- Ignore-Liste sie nicht ausblendet
+Check whether:
+- the type directories exist
+- the ignore list does not hide them
 
-### Problem: Performance-Issues
+### Problem: performance issues
 
-Reduziere Limits in `init.lua`:
+Reduce the limits in `init.lua`:
 ```lua
 workspace = {
-  maxPreload = 2000,      -- Weniger Dateien vorladen
-  preloadFileSize = 300,  -- Kleinere Dateien
+  maxPreload = 2000,      -- preload fewer files
+  preloadFileSize = 300,  -- smaller files
 }
 ```
 
-## 🎨 Anpassungen
+## 🎨 Customisation
 
-### Weitere ${3rd} Libraries hinzufügen
+### Adding further ${3rd} libraries
 
 In `build_library.lua`:
 ```lua
@@ -254,29 +254,29 @@ library["${3rd}/luasocket/library"] = true
 library["${3rd}/lfs/library"] = true
 ```
 
-### Ignore-Liste erweitern
+### Extending the ignore list
 
 In `lib.fs.ignore.list`:
 ```lua
 return {
   "node_modules",
-  "custom_build_dir",  -- Dein Custom-Verzeichnis
+  "custom_build_dir",  -- your custom directory
   -- ...
 }
 ```
 
-### Root-Erkennung anpassen
+### Adjusting root detection
 
 In `rootresolver.lua`:
 ```lua
--- Weitere Marker hinzufügen:
+-- Add further markers:
 local lua_markers = vim.fs.find(
   { ".luarc.json", ".neoconf.json", "my_custom_marker.toml" },
   { path = dir, upward = true }
 )
 ```
 
-## 📊 Architektur-Diagramm
+## 📊 Architecture diagram
 
 ```
 ┌─────────────────────────────────────────┐
@@ -327,48 +327,48 @@ local lua_markers = vim.fs.find(
                                     └─────────────────┘
 ```
 
-## 🔍 Wichtige Konzepte
+## 🔍 Important concepts
 
-### Per-Root Library Configuration
+### Per-root library configuration
 
-Jeder Projekt-Root erhält seine eigene Library-Konfiguration. Dies verhindert:
-- ❌ Cross-Contamination zwischen Projekten
-- ❌ Falsche Typ-Inferenz aus anderen Projekten
-- ❌ Performance-Degradation durch zu große Workspaces
+Every project root gets its own library configuration. This prevents:
+- ❌ cross-contamination between projects
+- ❌ wrong type inference from other projects
+- ❌ performance degradation from overly large workspaces
 
-### ${3rd} Placeholder System
+### The ${3rd} placeholder system
 
-lua_ls shipped mit eingebauten Type-Definitionen für populäre Libraries. Der `${3rd}` Prefix wird vom Server zur Laufzeit aufgelöst:
+lua_ls ships with built-in type definitions for popular libraries. The `${3rd}` prefix is resolved by the server at runtime:
 
 ```lua
 library["${3rd}/luv/library"] = true
 -- Resolves to: /path/to/lua-language-server/meta/3rd/luv/library
 ```
 
-### Dynamic on_new_config Hook
+### The dynamic on_new_config hook
 
-Der `on_new_config` Hook wird bei jedem Root-Wechsel aufgerufen. Das ermöglicht:
-- ✅ Root-spezifische Libraries
-- ✅ Dynamische Anpassung an Projekt-Struktur
-- ✅ Keine globale State-Pollution
+The `on_new_config` hook is called on every root switch. That makes possible:
+- ✅ root-specific libraries
+- ✅ dynamic adaptation to the project structure
+- ✅ no global state pollution
 
-## 📚 Weiterführende Ressourcen
+## 📚 Further resources
 
-- [lua_ls Dokumentation](https://luals.github.io/)
-- [Neovim LSP Guide](https://neovim.io/doc/user/lsp.html)
-- [lua_ls Settings](https://luals.github.io/wiki/settings/)
+- [lua_ls documentation](https://luals.github.io/)
+- [Neovim LSP guide](https://neovim.io/doc/user/lsp.html)
+- [lua_ls settings](https://luals.github.io/wiki/settings/)
 
 ## 🤝 Contributing
 
-Bei Problemen oder Verbesserungsvorschlägen:
-1. Debugging-Info sammeln: `:lua require("lsp.servers.lua_ls.debug").print_debug_info()`
-2. Issue erstellen mit Debug-Output
-3. Relevante Projekt-Struktur beschreiben
+For problems or improvement suggestions:
+1. Collect debugging info: `:lua require("lsp.servers.lua_ls.debug").print_debug_info()`
+2. Create an issue with the debug output
+3. Describe the relevant project structure
 
-## 📝 Lizenz
+## 📝 Licence
 
-Dieses Setup ist Teil deiner Neovim-Konfiguration und kann frei angepasst werden.
+This setup is part of your Neovim configuration and can be adapted freely.
 
 ---
 
-**Hinweis:** Diese Dokumentation beschreibt das System im Gesamtbild. Für Implementierungsdetails siehe die inline-Kommentare in den jeweiligen Modulen.
+**Note:** this documentation describes the system as a whole. For implementation details, see the inline comments in the respective modules.
