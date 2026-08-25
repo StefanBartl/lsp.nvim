@@ -26,7 +26,7 @@ function M.enable()
   Autocmd.create("FileType", function(args)
     require("lsp.languages.webdev.astro.keymaps").attach()
 
-    -- Falls nvim-ts-autotag nicht verfügbar, nutze manuelle Implementation
+    -- Without nvim-ts-autotag, fall back to the hand-rolled implementation.
     if not autotag_ok then
       autotag.setup_manual_autoclose(args.buf)
     end

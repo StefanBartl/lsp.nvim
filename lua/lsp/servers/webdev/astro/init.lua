@@ -1,5 +1,5 @@
 ---@module 'lsp.servers.webdev.astro'
---- Astro Language Server für .astro Komponenten
+--- Astro language server, for .astro components.
 --- FIXED: Consistent server name across config/enable
 
 local notify = require("lib.nvim.notify").create("[lsp.servers.webdev.astro]")

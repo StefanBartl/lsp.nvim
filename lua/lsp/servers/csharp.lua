@@ -16,7 +16,8 @@ local function find_omnisharp()
     return "omnisharp"
   end
 
-  -- Hilfsfunktion für absolute Pfadprüfungen (zuverlässiger als executable() bei WSL/Skripten)
+  -- Absolute-path check, rather than `executable()`: under WSL, and for
+  -- script wrappers, `executable()` answers about the wrong thing.
   local function file_exists(path)
     local stat = (vim.uv or vim.loop).fs_stat(path)
     return stat and stat.type == "file" or false
@@ -39,7 +40,7 @@ local function find_omnisharp()
   -- 3. MASON PACKAGES FALLBACK (Direkter Zugriff auf die Assembly)
   -- Mason entpackt OmniSharp unter Linux tief in diesen Unterordner:
   local mason_pkg_run = data_path .. "/mason/packages/omnisharp/OmniSharp"
-  -- Falls es die standalone Version ist (manchmal auch kleingeschrieben):
+  -- The standalone build, whose binary is sometimes lowercased:
   local mason_pkg_run_cmd = data_path .. "/mason/packages/omnisharp/omnisharp"
 
   if file_exists(mason_pkg_run) then

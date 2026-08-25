@@ -23,7 +23,7 @@ local PROFILES = {
     include_local_deps = false,
   },
 
-  -- Normal: Standard-Setup (schnell genug für tägliche Arbeit)
+  -- Normal: the everyday setup -- fast enough to keep working in.
   normal = {
     max_results = 100,
     max_depth = 10,
@@ -32,7 +32,7 @@ local PROFILES = {
     include_local_deps = true,
   },
 
-  -- Full: Komplett (für Debugging/Plugin-Development)
+  -- Full: everything, for debugging and plugin development.
   full = {
     max_results = 200,
     max_depth = 15,

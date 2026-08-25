@@ -28,12 +28,13 @@ function M.setup_all(shared, servers)
   local enabled = {}
 
   for _, name in ipairs(servers) do
-    -- Versuche beide Pfade: direkter Name und webdev-Präfix
+    -- Try both spellings: the bare name and the webdev-prefixed one.
     local paths = {
       "lsp.servers." .. name,
     }
 
-    -- Falls Name kein Punkt enthält, auch webdev-Variante versuchen
+    -- A name with a dot in it is already qualified; only a bare one can also
+    -- mean a server under `webdev/`.
     if not name:match("%.") then
       paths[#paths + 1] = "lsp.servers.webdev." .. name
     end

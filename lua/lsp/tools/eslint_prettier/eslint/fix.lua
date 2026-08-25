@@ -54,7 +54,7 @@ function M.eslint_fix(bufnr)
     end)
   end
 
-  -- Ermittle Projekt-Root und setze als cwd
+  -- Resolve the project root and run from there.
   local find_root = require("lsp.tools.eslint_prettier.core.find_root")
   local root = find_root(bufnr)
   if not root then

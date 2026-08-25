@@ -1,8 +1,10 @@
 ---@module 'lsp.tools.lsp_signature'
 --- Provides Insert- and Normal-mode mapping for LSP signature help / hover preview.
 --- Toggle: <C-b>
---- - Normalmodus: Popup öffnet, Fokus direkt auf Floating-Window für Scroll/Copy
---- - Insertmodus: Popup öffnet, Fokus bleibt im Hauptbuffer, Insertmodus aktiv
+--- - Normal mode: the popup opens and takes focus, so it can be scrolled and
+---   copied from.
+--- - Insert mode: the popup opens but focus stays in the buffer, so typing
+---   continues uninterrupted.
 --- - Popup persistent, Toggle zum Schließen
 
 local M = {}

@@ -17,7 +17,7 @@ function M.setup()
     return false
   end
 
-  -- Configure nvim-ts-autotag für Astro
+  -- Configure nvim-ts-autotag for Astro.
   autotag.setup({
     opts = {
       -- Enable closing tags for Astro files
@@ -59,7 +59,7 @@ function M.setup()
   return true
 end
 
---- Fallback: Manuelle Auto-Close Implementation (falls nvim-ts-autotag nicht verfügbar)
+--- Hand-rolled auto-close, for when nvim-ts-autotag is not installed.
 ---@param bufnr integer
 ---@return nil
 function M.setup_manual_autoclose(bufnr)

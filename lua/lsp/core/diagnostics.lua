@@ -6,9 +6,10 @@
 local M = {}
 
 --- Unified diagnostic visuals:
---- - virtual_lines nur für die aktuelle Zeile
---- - virtual_text aus
---- - moderne Sign-Konfiguration (Neovim 0.10+), Fallback für ältere Versionen
+--- - virtual_lines on the current line only
+--- - virtual_text off
+--- - the modern sign configuration (Neovim 0.10+), with a fallback for older
+---   versions
 ---@return nil
 function M.setup()
   local use_modern_signs = vim.fn.has("nvim-0.10") == 1
