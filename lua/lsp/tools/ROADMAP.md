@@ -1,3 +1,3 @@
 -- AUDIT:
 
-kann man das in den normalen lsp config mit einbauen?
+can this be folded into the normal lsp config?
