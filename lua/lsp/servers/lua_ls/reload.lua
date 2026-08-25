@@ -145,10 +145,17 @@ function M.setup()
     desc = "[lsp.lua_ls] Set library profile (minimal/normal/full)",
   })
 
-  -- Recompute root_dir for open buffers whenever <leader>lsp switches scope
+  -- Recompute root_dir for open buffers whenever <leader>lsp switches scope.
+  --
+  -- The cleared augroup is load-bearing, not decoration: `setup()` has no
+  -- idempotency guard and runs again on every config reload. The user commands
+  -- above survive that because `usercmd.create` defaults to `force = true`, but
+  -- a groupless autocmd has no such overwrite -- it would stack, and after N
+  -- reloads one scope switch would run `recompute_root()` N times.
   Autocmd.create("User", function()
     M.recompute_root()
   end, {
+    group = Autocmd.group("LspLuaLsRootScope", true),
     pattern = "LspRootScopeChanged",
     desc = "[lsp.lua_ls] Recompute root_dir on root-scope change",
   })

@@ -10,7 +10,10 @@ local Autocmd = require("lib.nvim.autocmd")
 
 ---@return nil
 function M.enable()
-  -- local grp = api.nvim_create_augroup("LangAstro", { clear = true })
+  -- Cleared augroup, not decoration: `enable()` has no idempotency guard, so
+  -- a groupless autocmd here stacks once per config reload. Measured before
+  -- the fix: three `enable()` runs left three identical FileType handlers.
+  local grp = Autocmd.group("LangAstro", true)
 
   require("lsp.languages.webdev.astro.usercmds").setup()
   require("lsp.languages.webdev.astro.autocmds").setup()
@@ -40,6 +43,7 @@ function M.enable()
     -- 2. vim.lsp.enable("astro") enables auto-attach on FileType
     -- 3. filetypes = { "astro" } triggers attachment
   end, {
+    group = grp,
     pattern = "astro",
     desc = "Configure Astro buffer settings",
   })

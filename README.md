@@ -288,7 +288,7 @@ in the layer that decides *whether* it is installed.
 | ---- | ------ |
 | [installation.md](docs/installation.md) | Managers, the pack, and the two things that will bite you |
 | [configuration.md](docs/configuration.md) | Why the options are shaped this way; the field list is `:h lsp.nvim-config` |
-| [features.md](docs/features.md) | What the plugin does, by area |
+| [FEATURES.md](docs/FEATURES.md) | What the plugin does, by area |
 | [commands.md](docs/commands.md) | The shape of `:Lsp`, and where to start when something is wrong |
 | [BINDINGS.md](docs/BINDINGS.md) | Every keymap and command, generated from the catalogue |
 | [architecture.md](docs/architecture.md) | The three layers, and which way the arrows point |
