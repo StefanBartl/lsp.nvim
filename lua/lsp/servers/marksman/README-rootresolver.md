@@ -1,27 +1,36 @@
-# rootresolver lua_ls vs marksman
+# rootresolver: lua_ls vs marksman
 
-Die beiden Ansätze sind sich funktional ähnlich – beide implementieren einen **polymorphen `root_dir`-Resolver**, der sowohl mit einem Buffer (`bufnr`) als auch mit einem Dateinamen (`fname`) umgehen kann. Es gibt aber deutliche Unterschiede in Design, Flexibilität und Detailtiefe.
+The two are functionally similar — both implement a **polymorphic `root_dir`
+resolver** that takes either a buffer (`bufnr`) or a filename (`fname`). They
+differ clearly in design, flexibility and how far they go.
 
-Hier die Gegenüberstellung:
+Side by side:
 
-| Aspekt                     | Marksman                                                                                                         | LuaLS (`rootresolver.lua`)                                                                                                                        |
-| -------------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Polymorphismus**         | Ja, akzeptiert `bufnr` oder `fname` und optional `cb`.                                                           | Ja, ebenfalls `bufnr` oder `fname` mit optionalem Callback.                                                                                       |
-| **Fallbacks**              | Falls `fname` leer oder kein Buffer verfügbar: nutzt `_cwd()` → aktuelle Arbeitsdirectory.                       | Nutzt `vim.fs.dirname(vim.fs.normalize(fname))` oder `cwd()` oder `vim.fn.getcwd()`.                                                              |
-| **Root-Ermittlung**        | Nur über `vim.fs.root(dir, M.cfg.root_dir_fallbacks)` → prüft Marker wie `.git`, `.marksman.toml`, `mkdocs.yml`. | Strikter: prüft VCS-Root (`.git`, `.hg`, `.svn`), dann Lua-spezifische Marker (`.luarc.json`, `selene.toml` usw.), dann ggf. `stdpath("config")`. |
-| **Markerkonfiguration**    | Wird über `M.cfg.root_dir_fallbacks` konfiguriert → leicht erweiterbar.                                          | Marker hart kodiert im Resolver; weniger konfigurierbar, dafür spezifischer für Lua-Projekte.                                                     |
-| **Callback-Unterstützung** | Vollständig unterstützt für asynchrone LSP-Pipeline.                                                             | Ja, optional, synchron + pcall-Schutz.                                                                                                            |
-| **Diagnostik & Extras**    | Enthält direkt ein spezielles Diagnostics-Handler-Setup für Markdown-Fehlerfilter.                               | Keine Diagnostics, nur Root-Resolver.                                                                                                             |
-| **Flexibilität**           | Eher generisch für jedes Markdown-Projekt.                                                                       | Eher projekt-spezifisch für Lua-Workspace-Ermittlung.                                                                                             |
-| **Struktur & Trennung**    | Alles in einem Modul (`marksman.lua`) inkl. LSP-Setup + Root + Diagnostics.                                      | Reines Utility-Modul (`rootresolver.lua`), LSP-Setup in `init.lua` getrennt.                                                                      |
+| Aspect | Marksman | LuaLS (`rootresolver.lua`) |
+| --- | --- | --- |
+| **Polymorphism** | Yes: accepts `bufnr` or `fname`, plus an optional `cb`. | Yes, likewise `bufnr` or `fname` with an optional callback. |
+| **Fallbacks** | `fname` empty or no buffer available: falls back to `_cwd()`, the working directory. | Uses `vim.fs.dirname(vim.fs.normalize(fname))`, then `cwd()`, then `vim.fn.getcwd()`. |
+| **Root detection** | Only `vim.fs.root(dir, M.cfg.root_dir_fallbacks)` — checks markers such as `.git`, `.marksman.toml`, `mkdocs.yml`. | Stricter: the VCS root (`.git`, `.hg`, `.svn`) first, then Lua-specific markers (`.luarc.json`, `selene.toml`, …), then `stdpath("config")` if needed. |
+| **Marker configuration** | Configured through `M.cfg.root_dir_fallbacks`, so it is easy to extend. | Markers are hard-coded in the resolver: less configurable, more specific to Lua projects. |
+| **Callback support** | Fully supported, for the asynchronous LSP pipeline. | Yes, optional, synchronous and pcall-guarded. |
+| **Diagnostics and extras** | Carries a dedicated diagnostics-handler setup for filtering Markdown errors. | No diagnostics; a root resolver and nothing else. |
+| **Flexibility** | Generic, for any Markdown project. | Project-specific, for working out a Lua workspace. |
+| **Structure and separation** | Everything in one module (`marksman.lua`): LSP setup, root detection and diagnostics together. | A pure utility module (`rootresolver.lua`), with the LSP setup kept separate in `init.lua`. |
 
-**Fazit:**
+**Conclusion:**
 
-* **Marksman:** einfacher, generisch, primär für Markdown-LSP. Root-Ermittlung auf wenige Marker beschränkt, dafür sauber in `cfg` konfigurierbar, gut für allgemeine Projekte. Hat Extras für Diagnostics.
-* **LuaLS:** sehr projekt-spezifisch, robust gegen verschiedene Lua-Projektstrukturen (VCS + Tool-Marker), weniger flexibel konfigurierbar, aber dafür strenger. Trennung zwischen Utility (`rootresolver.lua`) und LSP-Setup (`init.lua`) → sauberer für modulare Nutzung.
+* **Marksman**: simpler, generic, primarily for the Markdown LSP. Root
+  detection is limited to a few markers, but they are cleanly configurable via
+  `cfg`, which suits general projects. Comes with the diagnostics extras.
+* **LuaLS**: very project-specific and robust against the various shapes a Lua
+  project takes (VCS plus tool markers). Less configurable, stricter in return.
+  Splitting the utility (`rootresolver.lua`) from the LSP setup (`init.lua`)
+  makes it the cleaner one to reuse.
 
-Man kann sagen: **Marksman löst das Problem "grob, einfach, generisch"**, während **LuaLS "strikt, robust, projektspezifisch"** angeht.
+Put shortly: **Marksman solves the problem coarsely, simply and generically**,
+while **LuaLS goes at it strictly, robustly and project-specifically**.
 
-Wenn man wollte, könnte man die beiden Ansätze **vereinheitlichen**, z. B. ein generisches Modul `polymorphic_root_resolver` bauen, das Marker, Fallbacks und Asynchronität abstrahiert, und dann projekt- oder lsp-spezifisch konfigurieren.
-
-Willst du, dass ich so eine **vereinheitlichte Version** skizziere, die beide Ansätze abdeckt?
+The two could be unified — a generic `polymorphic_root_resolver` module
+abstracting markers, fallbacks and asynchrony, configured per project or per
+language server. That has since happened: `lib.nvim.fs.polymorphic_rootresolver`
+is exactly that module, and both callers route through it.
