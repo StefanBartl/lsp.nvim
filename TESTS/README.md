@@ -4,8 +4,8 @@ Two layers, run by CI and both runnable locally.
 
 | What | File(s) | Needs |
 | ---- | ------- | ----- |
-| Spec suite | `tests/lsp/*_spec.lua` | plenary.nvim, lib.nvim |
-| Smoke test | `tests/smoke.lua` | lib.nvim |
+| Spec suite | `TESTS/lsp/*_spec.lua` | plenary.nvim, lib.nvim |
+| Smoke test | `TESTS/smoke.lua` | lib.nvim |
 
 ## Run
 
@@ -15,13 +15,13 @@ same command works locally and in CI:
 ```sh
 PLENARY_PATH=~/.local/share/nvim/lazy/plenary.nvim \
 LIB_NVIM_PATH=../lib.nvim \
-nvim --headless --noplugin -u tests/minimal_init.lua \
-  -c "PlenaryBustedDirectory tests/lsp { minimal_init = 'tests/minimal_init.lua', sequential = true }"
+nvim --headless --noplugin -u TESTS/minimal_init.lua \
+  -c "PlenaryBustedDirectory TESTS/lsp { minimal_init = 'TESTS/minimal_init.lua', sequential = true }"
 ```
 
 ```sh
 nvim --headless -u NONE -c "set rtp^=." -c "set rtp^=../lib.nvim" \
-  -c "luafile tests/smoke.lua" -c "qa!"
+  -c "luafile TESTS/smoke.lua" -c "qa!"
 ```
 
 ## Lint

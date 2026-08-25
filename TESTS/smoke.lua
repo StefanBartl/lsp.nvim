@@ -1,8 +1,8 @@
--- tests/smoke.lua — headless load/setup check for lsp.nvim.
+-- TESTS/smoke.lua — headless load/setup check for lsp.nvim.
 --
 -- Run from the repo root, with lib.nvim reachable:
 --   nvim --headless -u NONE -c "set rtp^=." -c "set rtp^=../lib.nvim" \
---        -c "luafile tests/smoke.lua" -c "qa!"
+--        -c "luafile TESTS/smoke.lua" -c "qa!"
 --
 -- `rtp^=` prepends on purpose. `-u NONE` skips the user vimrc but leaves the
 -- user config directory on the runtimepath, and while the nvim config still

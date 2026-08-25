@@ -1,10 +1,10 @@
 -- Minimal init for running the plenary.nvim test suite headlessly:
---   nvim --headless --noplugin -u tests/minimal_init.lua \
---     -c "PlenaryBustedDirectory tests/lsp { minimal_init = 'tests/minimal_init.lua' }"
+--   nvim --headless --noplugin -u TESTS/minimal_init.lua \
+--     -c "PlenaryBustedDirectory TESTS/lsp { minimal_init = 'TESTS/minimal_init.lua' }"
 --
 -- plenary.nvim and lib.nvim are resolved via env vars rather than hardcoded
 -- paths, so this works locally (wherever they live for your normal config) and
--- in CI (checked out into a scratch dir by the workflow). See tests/README.md.
+-- in CI (checked out into a scratch dir by the workflow). See TESTS/README.md.
 
 -- `prepend`, not `append`: `-u` does not stop the user's config directory from
 -- being on the runtimepath, and while a config carries its own `lua/lsp/**`

@@ -189,7 +189,7 @@ Vier Dinge, die erst beim Anwenden aufgefallen sind:
    ihr eigenes `lua/lsp/**` hat, gewinnt sie auf der `runtimepath` und
    überschattet das Plugin vollständig — `require("lsp")` landet in der Config.
    Der erste Testlauf hat genau das getan und stillschweigend den falschen Code
-   geprüft (`tests/smoke.lua` prependet deshalb mit `rtp^=`, nicht `rtp+=`).
+   geprüft (`TESTS/smoke.lua` prependet deshalb mit `rtp^=`, nicht `rtp+=`).
    Konsequenz für die Migration: Config-Ordner löschen und Plugin installieren
    müssen **derselbe** Schritt sein. Das ist kein Nachteil der Namenswahl aus
    Roadmap §5, aber eine Bedingung, die dort noch nicht steht.

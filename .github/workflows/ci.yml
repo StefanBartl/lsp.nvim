@@ -16,7 +16,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           version: latest
-          args: --check lua/ scripts/ tests/
+          args: --check lua/ scripts/ TESTS/
 
       - uses: leafo/gh-actions-lua@v13
         with:
@@ -25,7 +25,7 @@ jobs:
           luaVersion: "5.1"
       - uses: leafo/gh-actions-luarocks@v6
       - run: luarocks install luacheck
-      - run: luacheck lua scripts tests
+      - run: luacheck lua scripts TESTS
 
       - uses: rhysd/action-setup-vim@v1
         with: { neovim: true, version: stable }
@@ -55,7 +55,7 @@ jobs:
           PLENARY_PATH: .deps/plenary.nvim
           LIB_NVIM_PATH: .deps/lib.nvim
         run: |
-          nvim --headless --noplugin -u tests/minimal_init.lua             -c "PlenaryBustedDirectory tests/lsp { minimal_init = 'tests/minimal_init.lua', sequential = true }"
+          nvim --headless --noplugin -u TESTS/minimal_init.lua             -c "PlenaryBustedDirectory TESTS/lsp { minimal_init = 'TESTS/minimal_init.lua', sequential = true }"
 
   smoke:
     # End-to-end, and deliberately separate from the specs above: this one runs
@@ -73,4 +73,4 @@ jobs:
       - run: |
           nvim --headless -u NONE \
             -c "set rtp^=." -c "set rtp^=.deps/lib.nvim" \
-            -c "luafile tests/smoke.lua" -c "qa!"
+            -c "luafile TESTS/smoke.lua" -c "qa!"

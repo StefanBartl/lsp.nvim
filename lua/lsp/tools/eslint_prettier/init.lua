@@ -44,7 +44,7 @@ function M.attach(_ctx)
   autocmds.attach(M)
 end
 
--- expose core helpers for tests/extensions
+-- expose core helpers for TESTS/extensions
 M._find_root = find_root
 M._check_config = check_config
 M._eslint_fix = eslint_fix

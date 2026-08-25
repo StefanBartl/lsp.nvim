@@ -867,7 +867,7 @@ alle weiteren Phasen.
    Angelegt: `lua/lsp/{init,health}.lua`, `config/{init,DEFAULTS,KEYMAPS}.lua`,
    `bindings/{init,keymaps,usrcmds,autocmds,which_key}.lua`, `@types/` je Ebene,
    `.luarc.json`, `stylua.toml`, `.luacheckrc`, `.gitattributes`, `.gitignore`,
-   `scripts/gen_map.lua`, `.github/workflows/ci.yml`, `tests/smoke.lua`,
+   `scripts/gen_map.lua`, `.github/workflows/ci.yml`, `TESTS/smoke.lua`,
    `README.md`, `doc/lsp.nvim.txt`, `docs/BINDINGS.md`,
    `docs/CHECKLISTS/NEW_PROJECT.md`.
 
@@ -1098,7 +1098,7 @@ Für `docs/ROADMAP.md` des neuen Plugins — nicht alles sofort umsetzen:
 | **Hover-Cache** via `lib.lua.memo` | Wiederholtes Hover auf gleicher Position/Version spart einen Roundtrip | klein |
 | **Sprung zum Lua-Table-/Funktions-Root** (ehem. `<leader>gtt`) | Aus B2 gerettet: aus einer tief verschachtelten Lua-Tabelle an den Kopf der umschließenden Struktur springen, optional zentriert. Die Taste war jahrelang auf ein Modul gemappt, das es nie gab — das Feature war also gewollt, nur nie gebaut | mittel |
 | **Diagnostics-Debounce** bei `publishDiagnostics` | `core/handlers.lua` dedupliziert, debounced aber nicht (chatty Server wie `ts_ls`) | klein |
-| **Test-Entry-Point** (`tools/_test`) | ✅ **ERLEDIGT (2026-08-23)** — als `tests/lsp/*_spec.lua` auf plenarys busted-Harness (wie `dap.nvim`), nicht als `tools/_test`: der Ort aus dem Konzept hätte die Tests unter *ein* Werkzeug gehängt, gehören tun sie zum ganzen Plugin. 124 Specs über Config-Normalisierung, Keymap-Katalog, Capabilities-Kette, Adapter-Registry, Pack-Gating, die `:Lsp`-Routen und Server-Registry — also genau die Stellen, aus denen die Bugs dieser Migration kamen. Dazu bleibt `tests/smoke.lua` als End-to-End-Lauf. |
+| **Test-Entry-Point** (`tools/_test`) | ✅ **ERLEDIGT (2026-08-23)** — als `TESTS/lsp/*_spec.lua` auf plenarys busted-Harness (wie `dap.nvim`), nicht als `tools/_test`: der Ort aus dem Konzept hätte die Tests unter *ein* Werkzeug gehängt, gehören tun sie zum ganzen Plugin. 124 Specs über Config-Normalisierung, Keymap-Katalog, Capabilities-Kette, Adapter-Registry, Pack-Gating, die `:Lsp`-Routen und Server-Registry — also genau die Stellen, aus denen die Bugs dieser Migration kamen. Dazu bleibt `TESTS/smoke.lua` als End-to-End-Lauf. |
 | **Eigene Completion-Quellen engine-neutral machen + Frequenz-Ranking** | ✅ **ERLEDIGT (2026-08-24)** — `lsp.completion.usage` (geteilter Zähler), `lsp.completion.register` (Registrar) und `lsp.completion.blink` (Adapter); beide Quellen kennen ihre Engine nicht mehr, `md_words` hat das Ranking. Details und die drei Befunde aus dem Bau in §16 |
 | **Signature-Help-Modul reduzieren** | `tools/lsp_signature/**` ist eine komplette Eigenimplementierung (~800 LOC) | groß (erstmal nur beobachten) |
 | **Keymap-Kollisionsprüfer** in `:checkhealth lsp` | Halb erledigt: `keymaps_spec.lua` prüft, dass keine zwei Katalog-Einträge dieselbe Taste im selben Mode beanspruchen — zur Build-Zeit, wo ein Fehler nichts kostet. Offen bleibt die Laufzeit-Frage, die nur `:checkhealth` sehen kann: kollidiert der Katalog mit einer Taste, die *du* oder ein anderes Plugin gesetzt hast | klein |
@@ -1177,7 +1177,7 @@ Für `docs/ROADMAP.md` des neuen Plugins — nicht alles sofort umsetzen:
   also `nil`. Liest sich vollkommen richtig, läuft in die Wand. Die Specs haben
   es nicht gefunden, weil trouble.nvim im Testlauf fehlt und die Funktion vorher
   am `pcall(require, ...)` zurückkehrt; luacheck hat es sofort gesehen. Deshalb
-  steht der Lint-Aufruf jetzt in `tests/README.md` neben der Suite.
+  steht der Lint-Aufruf jetzt in `TESTS/README.md` neben der Suite.
 
 ### Entschieden (2026-08-23, zweiter Durchgang)
 
@@ -1279,7 +1279,7 @@ Das gewünschte Feature — „oft verwendete Vorschläge weiter oben“ — war
 | `lua/lsp/completion/register.lua` | der Registrar. Eine Quelle übergibt `{ name, items, namespace?, filetypes?, keyword_pattern?, on_pick? }` und erfährt nie, welche Engine gewonnen hat |
 | `lua/lsp/completion/blink.lua` | der blink-Provider, der einen registrierten Spec bedient. blink löst Provider über einen `module`-Pfad auf und kann keinen Closure bekommen — deshalb trägt `opts.source` den Namen, und der Spec wird zur Anfragezeit nachgeschlagen |
 | `lua/lsp/pack/completion_blink.lua` | deklariert beide Quellen als Provider; `md_words` per `per_filetype` mit `inherit_defaults` statt global |
-| `tests/lsp/completion_spec.lua` | 19 Specs auf die Naht: Ranking engine-unabhängig, Namensräume dicht, Pick wird gezählt egal welche Engine ihn meldet |
+| `TESTS/lsp/completion_spec.lua` | 19 Specs auf die Naht: Ranking engine-unabhängig, Namensräume dicht, Pick wird gezählt egal welche Engine ihn meldet |
 
 Die Optionen liegen unter `completion.personal_names` (`enable`, `labels`), und
 `labels` ist ein *Reader*, keine Liste: die Plugin-Namen sind Daten der
