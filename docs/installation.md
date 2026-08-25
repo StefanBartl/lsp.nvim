@@ -35,12 +35,22 @@ vim.g.lsp_nvim = {
     core = true,          -- conform, lazydev, workspace-diagnostics
     ui = true,            -- trouble, lspsaga, lensline, inc-rename
     completion = "blink", -- "cmp" | "blink" | false (default: blink)
+    completion_accept = "cr", -- "cr" | "ctrl_y" (default: cr) -- blink only
     disable = { "lspsaga.nvim" },
   },
 }
 ```
 
-`vim.g` decides **whether**, `opts` decides **how**.
+`vim.g` decides **whether**, `opts` decides **how** — with one deliberate
+exception. `completion_accept` is a *how* question living in the *whether*
+channel, because the binding is part of blink's plugin spec and lazy resolves
+that long before `setup(opts)` exists to be read. It picks blink's `enter`
+preset (`<CR>`, the default) or its `default` one (`<C-y>`), and the difference
+is more than the key: `enter` binds `accept`, so Enter takes what is actually
+selected and still inserts a newline when nothing is, while `default` binds
+`select_and_accept`. It has no effect under nvim-cmp, where this pack
+contributes an `opts` fragment to a config's own cmp spec rather than owning
+the keymap.
 
 ## Two things that will bite you
 

@@ -15,6 +15,10 @@
 --- a completion is actually requested -- and `opts.source` is how the shared
 --- adapter knows which registered spec it is standing in for.
 ---
+--- The accept key comes from `vim.g.lsp_nvim.pack.completion_accept` and
+--- defaults to `<CR>`; everything else in the keymap is whichever blink preset
+--- that selects, so a config keeps overriding individual keys on top.
+---
 ---@see lsp.pack
 ---@see lsp.config.pack
 ---@see lsp.integrations.blink
@@ -29,6 +33,31 @@ return {
     -- Pinned to v1.x so the prebuilt fuzzy binaries match the Lua side.
     version = "1.*",
     opts = {
+      -- `<CR>` or `<C-y>`, from the pack option. Set as a whole preset rather
+      -- than a single binding: the two differ in more than the key, and a
+      -- `keymap` table without a `preset` assigns nothing else at all, so a
+      -- config that overrides one key would otherwise lose the rest.
+      keymap = {
+        preset = pack.completion_accept() == "cr" and "enter" or "default",
+      },
+      -- Suppress completion in utility buffers -- the same fix the nvim-cmp
+      -- fragment carries, and what makes `<CR>` safe to default to. blink's
+      -- own guard stops at `buftype = "prompt"`, but `lib.nvim.ui.kit`'s
+      -- floating input, chooser and confirm dialogs are `buftype = "nofile"`:
+      -- with the menu open over one and Enter bound to accept, submitting a
+      -- filename in a rename prompt would take a fuzzy-matched completion
+      -- instead of what was typed.
+      --
+      -- dap's REPL and dapui's panes are named explicitly because blink only
+      -- re-enables itself there when this predicate already said yes -- left
+      -- implicit they would be collateral of the nofile rule.
+      enabled = function()
+        local ft = vim.bo.filetype
+        if ft == "dap-repl" or vim.startswith(ft, "dapui_") then
+          return true
+        end
+        return vim.bo.buftype ~= "nofile"
+      end,
       sources = {
         default = { "lazydev", "lsp", "path", "snippets", "buffer", "personal_names" },
         -- md_words only makes sense where the dictionary was built, so it is

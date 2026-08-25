@@ -50,9 +50,9 @@ end
 
 --- Which completion engine the pack should install.
 ---
---- Defaults to nvim-cmp rather than nothing: a pack that installs no
---- completion source by default would look broken in the one place an umbrella
---- is supposed to help most.
+--- Defaults to an engine rather than to nothing: a pack that installs no
+--- completion at all would look broken in the one place an umbrella is
+--- supposed to help most.
 ---@return "cmp"|"blink"|false
 function M.completion()
   local choice = M.opts().completion
@@ -66,6 +66,38 @@ function M.completion()
     return choice
   end
   return false
+end
+
+--- Which key accepts the highlighted completion.
+---
+--- Its own pack option rather than an `opts` field for the same timing reason
+--- `completion` is one: the keymap is part of blink's plugin spec, which lazy
+--- resolves long before `setup(opts)` exists to be read.
+---
+--- Defaults to `<CR>`, not to blink's own `<C-y>`. Enter is what accepts in
+--- most editors, it is what the nvim-cmp side of this pack already behaved
+--- like, and it is the key people press without deciding to. `<C-y>` is one
+--- word away for anyone who wants Enter to only ever mean "newline".
+---
+--- Maps onto blink's own preset names -- `"cr"` is its `enter` preset,
+--- `"ctrl_y"` its `default`. That matters for more than the binding: `enter`
+--- binds `accept` where `default` binds `select_and_accept`, so Enter takes
+--- what is actually selected rather than force-selecting the top item first.
+---
+--- blink only. The nvim-cmp side of the pack is an `opts` fragment merged into
+--- whatever cmp spec a config already has (see `lsp.pack.completion`), so
+--- binding keys there would fight the host config for `<CR>` rather than
+--- configure it.
+---
+--- An unrecognised value falls back to the default instead of switching
+--- completion off -- unlike `completion`, where `false` is a meaningful
+--- answer, there is no such thing as "no accept key".
+---@return "cr"|"ctrl_y"
+function M.completion_accept()
+  if M.opts().completion_accept == "ctrl_y" then
+    return "ctrl_y"
+  end
+  return "cr"
 end
 
 --- Should this plugin be installed?

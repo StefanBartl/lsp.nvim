@@ -93,6 +93,53 @@ describe("lsp.config.pack", function()
     end)
   end)
 
+  describe("completion_accept", function()
+    it("defaults to <CR>", function()
+      assert.are.equal("cr", with(nil).completion_accept())
+    end)
+
+    it("takes ctrl_y", function()
+      assert.are.equal("ctrl_y", with({ completion_accept = "ctrl_y" }).completion_accept())
+    end)
+
+    it("falls back to the default on anything else", function()
+      -- Unlike `completion`, there is no "no accept key" -- a typo must not
+      -- leave the menu with nothing bound to take the selection.
+      assert.are.equal("cr", with({ completion_accept = "enter" }).completion_accept())
+      assert.are.equal("cr", with({ completion_accept = false }).completion_accept())
+    end)
+
+    it("selects the matching blink preset", function()
+      -- The two are not just a different key: blink's `enter` binds `accept`
+      -- and `default` binds `select_and_accept`, so only the former leaves
+      -- Enter alone when nothing is selected.
+      with(nil)
+      assert.are.equal("enter", require("lsp.pack.completion_blink")[1].opts.keymap.preset)
+
+      with({ completion_accept = "ctrl_y" })
+      assert.are.equal("default", require("lsp.pack.completion_blink")[1].opts.keymap.preset)
+    end)
+
+    it("keeps completion out of nofile buffers", function()
+      -- lib.nvim.ui.kit's floats are buftype=nofile, and blink's own guard
+      -- only covers buftype=prompt. With <CR> bound to accept, a rename
+      -- prompt would otherwise submit a completion instead of what was typed.
+      with(nil)
+      local enabled = require("lsp.pack.completion_blink")[1].opts.enabled
+
+      local buf = vim.api.nvim_create_buf(false, true)
+      vim.api.nvim_set_current_buf(buf)
+      vim.bo[buf].buftype = "nofile"
+      assert.is_false(enabled())
+
+      -- but not out of dap's panes, which blink re-enables only if we say yes
+      vim.bo[buf].filetype = "dapui_watches"
+      assert.is_true(enabled())
+
+      vim.api.nvim_buf_delete(buf, { force = true })
+    end)
+  end)
+
   describe("specs", function()
     ---@param module string
     ---@return table[]
