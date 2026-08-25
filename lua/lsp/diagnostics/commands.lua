@@ -38,34 +38,50 @@ function M.enable()
   end
 
   -- Location list (buffer)
-  usercmd.create("DiagLoc", function(ctx)
-    with_severity(ctx.args, function(sev)
-      loclist.to_loc({ open = true, severity = sev })
-    end)
-  end, vim.tbl_extend("force", severity_arg, {
-    desc = "Diagnostics of the current buffer into the location list [severity]",
-  }))
+  usercmd.create(
+    "DiagLoc",
+    function(ctx)
+      with_severity(ctx.args, function(sev)
+        loclist.to_loc({ open = true, severity = sev })
+      end)
+    end,
+    vim.tbl_extend("force", severity_arg, {
+      desc = "Diagnostics of the current buffer into the location list [severity]",
+    })
+  )
 
-  usercmd.create("DiagNextLoc", function(ctx)
-    with_severity(ctx.args, loclist.next_loc)
-  end, vim.tbl_extend("force", severity_arg, {
-    desc = "Jump to the next diagnostic in the current buffer [severity]",
-  }))
+  usercmd.create(
+    "DiagNextLoc",
+    function(ctx)
+      with_severity(ctx.args, loclist.next_loc)
+    end,
+    vim.tbl_extend("force", severity_arg, {
+      desc = "Jump to the next diagnostic in the current buffer [severity]",
+    })
+  )
 
-  usercmd.create("DiagPrevLoc", function(ctx)
-    with_severity(ctx.args, loclist.prev_loc)
-  end, vim.tbl_extend("force", severity_arg, {
-    desc = "Jump to the previous diagnostic in the current buffer [severity]",
-  }))
+  usercmd.create(
+    "DiagPrevLoc",
+    function(ctx)
+      with_severity(ctx.args, loclist.prev_loc)
+    end,
+    vim.tbl_extend("force", severity_arg, {
+      desc = "Jump to the previous diagnostic in the current buffer [severity]",
+    })
+  )
 
   -- Quickfix (workspace)
-  usercmd.create("DiagQF", function(ctx)
-    with_severity(ctx.args, function(sev)
-      quickfix.to_qf({ open = true, severity = sev })
-    end)
-  end, vim.tbl_extend("force", severity_arg, {
-    desc = "Workspace diagnostics into the quickfix list [severity]",
-  }))
+  usercmd.create(
+    "DiagQF",
+    function(ctx)
+      with_severity(ctx.args, function(sev)
+        quickfix.to_qf({ open = true, severity = sev })
+      end)
+    end,
+    vim.tbl_extend("force", severity_arg, {
+      desc = "Workspace diagnostics into the quickfix list [severity]",
+    })
+  )
 
   -- No `[severity]` here: these two step through the quickfix list itself
   -- (`:cnext`/`:cprevious`), not through diagnostics, and the list has already

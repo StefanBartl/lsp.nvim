@@ -63,7 +63,11 @@ function M.parse_severity(s)
   end
   local sev = M.to_severity(s)
   if sev == nil and s:lower() ~= "all" then
-    return nil, ("unknown severity '%s' (expected one of: %s)"):format(s, table.concat(M.SEVERITY_TOKENS, ", "))
+    return nil,
+      ("unknown severity '%s' (expected one of: %s)"):format(
+        s,
+        table.concat(M.SEVERITY_TOKENS, ", ")
+      )
   end
   return sev, nil
 end
