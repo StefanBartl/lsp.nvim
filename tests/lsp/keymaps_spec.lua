@@ -292,27 +292,37 @@ describe("count support (NEW-25)", function()
     assert.are.equal(-2, backward.count, "prev negates the count")
   end)
 
-  it("the Trouble path loops, because Trouble's next/prev take no count", function()
-    -- Worth stubbing rather than skipping: `trouble_move` is the one action
-    -- that cannot delegate the count, and with trouble.nvim absent every
+  it("]w/[w move exactly the given count, not count squared", function()
+    -- Worth stubbing rather than skipping: with trouble.nvim absent every
     -- assertion about it passes vacuously -- which is how a nil `steps` got
     -- past this file once already.
+    --
+    -- The stub matches trouble.nvim's real shape: `open()` returns a View
+    -- with `:wait()`/`:move()`, not a `next()`/`prev()` pair. Calling the
+    -- view's own `next`/`prev` actions was the bug -- they read `v:count1`
+    -- themselves, so looping them by a count already resolved from
+    -- `v:count1` moved `n * n` instead of `n`. See actions.lua's
+    -- `trouble_view_move` doc comment for the full story.
     local moved = 0
     package.loaded["trouble"] = {
       is_open = function()
         return true
       end,
-      next = function()
-        moved = moved + 1
-      end,
-      prev = function()
-        moved = moved - 1
+      open = function()
+        return {
+          wait = function(_, fn)
+            fn()
+          end,
+          move = function(_, opts)
+            moved = moved + (opts.down or 0) - (opts.up or 0)
+          end,
+        }
       end,
     }
     actions.trouble_diag_next(3)
-    assert.are.equal(3, moved, "next moved three entries")
+    assert.are.equal(3, moved, "next moved exactly three, not nine")
     actions.trouble_diag_prev(2)
-    assert.are.equal(1, moved, "prev moved two back")
+    assert.are.equal(1, moved, "prev moved exactly two back")
     package.loaded["trouble"] = nil
   end)
 
@@ -325,5 +335,87 @@ describe("count support (NEW-25)", function()
         name .. " is leader-prefixed, so no count is expected"
       )
     end
+  end)
+end)
+
+describe("diagnostics.ui: Trouble as the ]d/[d sink (roadmap 15.1)", function()
+  local actions = require("lsp.bindings.actions")
+
+  ---@param ui "auto"|"native"|"trouble"|nil
+  local function with_ui(ui)
+    package.loaded["lsp.config"] = nil
+    require("lsp.config").setup({ diagnostics = { ui = ui } })
+  end
+
+  after_each(function()
+    package.loaded["trouble"] = nil
+    package.loaded["lsp.config"] = nil
+    require("lsp.config").setup({})
+  end)
+
+  ---@return table opened # { mode = ..., focused = boolean }, moved (integer)
+  local function stub_trouble()
+    local state = { opened = nil, moved = 0 }
+    package.loaded["trouble"] = {
+      open = function(opts)
+        state.opened = opts
+        return {
+          wait = function(_, fn)
+            fn()
+          end,
+          move = function(_, mopts)
+            state.moved = state.moved + (mopts.down or 0) - (mopts.up or 0)
+          end,
+        }
+      end,
+    }
+    return state
+  end
+
+  it('ui = "native" never touches Trouble, even if it is installed', function()
+    with_ui("native")
+    local state = stub_trouble()
+    actions.diag_next(1)
+    assert.is_nil(state.opened, "native must not open Trouble")
+  end)
+
+  it('ui = "trouble" opens the diagnostics list and moves by the count', function()
+    with_ui("trouble")
+    local state = stub_trouble()
+    actions.diag_next(3)
+    assert.are.equal("diagnostics", state.opened.mode)
+    assert.are.equal(3, state.moved)
+  end)
+
+  it('ui = "auto" behaves like "trouble" once Trouble is actually installed', function()
+    with_ui("auto")
+    local state = stub_trouble()
+    actions.diag_prev(2)
+    assert.are.equal(-2, state.moved)
+  end)
+
+  it('ui = "auto" without Trouble installed falls back to the native jump', function()
+    with_ui("auto")
+    package.loaded["trouble"] = nil -- `require("trouble")` genuinely fails here
+
+    local seen
+    local orig = vim.diagnostic.jump
+    vim.diagnostic.jump = function(opts)
+      seen = opts
+    end
+    actions.diag_next(1)
+    vim.diagnostic.jump = orig
+
+    assert.is_not_nil(seen, "fell back to the native path")
+  end)
+
+  it("opens Trouble even when it was not already open -- that is the point", function()
+    -- Distinct from ]w/[w (trouble_diag_next/prev), which refuse to act on a
+    -- closed list. ]d/[d are meant to behave exactly like Trouble's own
+    -- next/prev when Trouble is the sink: panel and all.
+    with_ui("trouble")
+    local state = stub_trouble()
+    actions.diag_next(1)
+    assert.is_not_nil(state.opened, "]d opened the list on its own")
   end)
 end)

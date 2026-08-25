@@ -129,6 +129,29 @@ describe("lsp.config", function()
     end)
   end)
 
+  describe("diagnostics.ui", function()
+    for _, ui in ipairs({ "auto", "native", "trouble" }) do
+      it(("accepts %q"):format(ui), function()
+        local cfg = reload().setup({ diagnostics = { ui = ui } })
+        assert.are.equal(ui, cfg.diagnostics.ui)
+      end)
+    end
+
+    it("falls back to auto on an unknown value and says so", function()
+      local config = reload()
+      local cfg = config.setup({ diagnostics = { ui = "popup" } })
+      assert.are.equal("auto", cfg.diagnostics.ui)
+      assert.is_true(#config.warnings() > 0)
+    end)
+
+    it("defaults to auto without a warning", function()
+      local config = reload()
+      local cfg = config.setup({})
+      assert.are.equal("auto", cfg.diagnostics.ui)
+      assert.are.same({}, config.warnings())
+    end)
+  end)
+
   describe("sub-tables", function()
     -- Deep-merge fills the fields; this catches the `formatter = false` shape,
     -- where every field access downstream would error instead of degrading.

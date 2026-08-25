@@ -52,10 +52,20 @@ place; the plugin's own autocommand owns format-on-save, never conform's option.
 
 Diagnostics into the quickfix or location list, and navigation within either.
 `vim.diagnostic.config()` is applied *after* the servers are enabled, so a
-server config cannot overwrite it.
+server config cannot overwrite it -- everything in `diagnostics` except `ui`,
+which has nothing to do with `vim.diagnostic.config()` and is stripped before
+that call.
 
-- **Module:** `diagnostics/`, `core/diagnostics.lua`
-- **Config:** `diagnostics`
+`ui` picks where `]d`/`[d` send you: `"native"` always uses
+`vim.diagnostic.jump`; `"trouble"` opens (and focuses) Trouble's diagnostics
+list and moves inside it instead, the same way Trouble's own keymaps do;
+`"auto"` (the default) is `"trouble"` when Trouble is installed and
+`"native"` otherwise. `]w`/`[w` are unaffected either way -- they move inside
+an *already open* Trouble list and do nothing if there is none, which is a
+deliberately different question from "where does `]d` send me".
+
+- **Module:** `diagnostics/`, `core/diagnostics.lua`, `bindings/actions.lua`
+- **Config:** `diagnostics`, `diagnostics.ui`
 
 ## Workspace diagnostics
 

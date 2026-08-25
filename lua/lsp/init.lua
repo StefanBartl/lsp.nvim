@@ -300,7 +300,11 @@ local function bootstrap(cfg)
 
   -- After the servers are enabled, so a server config cannot overwrite it.
   step("diagnostic config", function()
-    vim.diagnostic.config(cfg.diagnostics)
+    -- `ui` picks ]d/[d's sink (lsp.bindings.actions); vim.diagnostic.config()
+    -- has no such option and would receive it verbatim otherwise.
+    local diag_opts = vim.tbl_extend("force", {}, cfg.diagnostics)
+    diag_opts.ui = nil
+    vim.diagnostic.config(diag_opts)
   end)
 
   if cfg.mason.ensure_install then

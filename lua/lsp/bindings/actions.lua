@@ -226,7 +226,43 @@ end
 -- ---------------------------------------------------------------- trouble
 
 ---@internal
---- Move inside an open Trouble diagnostics list without focusing it.
+--- Move `n` entries inside `view`, deferred until it has actually rendered.
+---
+--- Not `trouble.next(opts)`/`.prev(opts)`, Trouble's own public wrapper: that
+--- wrapper reads `vim.v.count1` itself, inside the action it runs. Looping it
+--- `n` times -- the previous shape of this function -- meant a real keypress
+--- like `3]w` moved 3 * 3 = 9 entries: the loop resolved `n` from `v:count1`,
+--- and then every iteration read the same still-unconsumed `v:count1` again.
+--- Calling `view:move()` directly bypasses that action entirely, so `n` --
+--- already resolved once by `steps()` -- is the only count in play.
+---
+--- `view:wait()` matters even when the view looks already open: Trouble
+--- mounts the window inside a promise callback
+--- (`view:refresh({opening=true}):next(...)`), not synchronously inside
+--- `trouble.open()`, so a `:move()` right after opening a cold view would run
+--- before `self.win.win` exists. `:wait()` is the same deferral
+--- `trouble.next()`/`.prev()` use internally (`M:action` -> `self:wait`); for
+--- a view that already rendered, its promise has already resolved and the
+--- callback runs right away.
+---@param view table # A `trouble.View`, from `trouble.open()`.
+---@param direction "next"|"prev"
+---@param n integer
+---@return nil
+local function trouble_view_move(view, direction, n)
+  local opts = { jump = true }
+  opts[direction == "next" and "down" or "up"] = n
+  view:wait(function()
+    view:move(opts)
+  end)
+end
+
+---@internal
+--- Move inside an open Trouble diagnostics list, without opening it.
+---
+--- Distinct from `trouble_jump` below: `]w`/`[w` are meant as "move within the
+--- list you already opened", so silence (via a notify, not an error) is the
+--- right response when there is none -- unlike `]d`/`[d`'s Trouble sink,
+--- which opens the list on purpose.
 ---@param direction "next"|"prev"
 ---@param count integer|nil # Explicit repeat; from a keypress, `v:count1`.
 ---@return nil
@@ -239,10 +275,9 @@ local function trouble_move(direction, count)
     require("lib.nvim.notify").create("[lsp.nvim]").info("Trouble diagnostics list is not open")
     return
   end
-  -- A loop, unlike the others: Trouble's next/prev take no count, and moving
-  -- one entry at a time is what "3]w" means anyway.
-  for _ = 1, steps(count) do
-    trouble[direction]({ mode = "diagnostics", skip_groups = true, jump = true })
+  local view = trouble.open({ mode = "diagnostics", refresh = false })
+  if view then
+    trouble_view_move(view, direction, steps(count))
   end
 end
 
@@ -260,6 +295,47 @@ function M.trouble_diag_prev(count)
   trouble_move("prev", count)
 end
 
+---@internal
+--- Whether `]d`/`[d` should route through Trouble instead of the native
+--- location list, per `diagnostics.ui` (`"auto"|"native"|"trouble"`,
+--- normalized by `lsp.config`).
+---
+--- `"trouble"` and `"auto"` resolve the same way at runtime: both need
+--- Trouble actually installed, and there is nothing else to prefer it over.
+--- The distinction is only for the config's own clarity -- "auto, whichever
+--- is available" versus "I want Trouble" -- and matches how the rest of this
+--- module degrades: quietly, never by breaking a keybinding whose plugin
+--- happens to be absent.
+---@return boolean
+local function diagnostics_use_trouble()
+  if cfg().diagnostics.ui == "native" then
+    return false
+  end
+  return pcall(require, "trouble")
+end
+
+---@internal
+--- `]d`/`[d`'s Trouble sink: open (and focus) the diagnostics list, then jump.
+---
+--- Unlike `trouble_move` above, opening is the point -- "Trouble als
+--- Default-Senke" (roadmap section 15.1) means `]d` behaves exactly like
+--- Trouble's own `next`, panel and all, not like a silent background move.
+---@param direction "next"|"prev"
+---@param count integer|nil
+---@return boolean handled
+local function trouble_jump(direction, count)
+  local ok, trouble = pcall(require, "trouble")
+  if not ok then
+    return false
+  end
+  local view = trouble.open({ mode = "diagnostics" })
+  if not view then
+    return false
+  end
+  trouble_view_move(view, direction, steps(count))
+  return true
+end
+
 -- ---------------------------------------------------------------- diagnostics
 
 --- Buffer diagnostics into the location list, and open it.
@@ -274,17 +350,25 @@ function M.diag_to_qflist()
   require("lsp.diagnostics.quickfix").to_qf({ open = true })
 end
 
---- Next diagnostic in the buffer's location list.
+--- Next diagnostic. Routes through Trouble when `diagnostics.ui` resolves to
+--- it (roadmap section 15.1); otherwise the native location list.
 ---@param count integer|nil # Explicit repeat; from a keypress, `v:count1`.
 ---@return nil
 function M.diag_next(count)
+  if diagnostics_use_trouble() and trouble_jump("next", count) then
+    return
+  end
   require("lsp.diagnostics.loclist").next_loc(nil, steps(count))
 end
 
---- Previous diagnostic in the buffer's location list.
+--- Previous diagnostic. Routes through Trouble when `diagnostics.ui` resolves
+--- to it (roadmap section 15.1); otherwise the native location list.
 ---@param count integer|nil # Explicit repeat; from a keypress, `v:count1`.
 ---@return nil
 function M.diag_prev(count)
+  if diagnostics_use_trouble() and trouble_jump("prev", count) then
+    return
+  end
   require("lsp.diagnostics.loclist").prev_loc(nil, steps(count))
 end
 

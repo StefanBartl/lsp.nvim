@@ -193,6 +193,19 @@ function M.setup(user_opts)
     cfg.completion.personal_names.labels = nil
   end
 
+  if
+    cfg.diagnostics.ui ~= "auto"
+    and cfg.diagnostics.ui ~= "native"
+    and cfg.diagnostics.ui ~= "trouble"
+  then
+    if cfg.diagnostics.ui ~= nil then
+      _warnings[#_warnings + 1] = ('diagnostics.ui: unknown value %q, using "auto"'):format(
+        tostring(cfg.diagnostics.ui)
+      )
+    end
+    cfg.diagnostics.ui = "auto"
+  end
+
   _active = cfg
   return cfg
 end

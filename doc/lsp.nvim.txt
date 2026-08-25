@@ -117,6 +117,7 @@ Defaults (excerpt -- the full table is `lua/lsp/config/DEFAULTS.lua`): >lua
         severity_sort = true,
         virtual_text = { spacing = 2, prefix = "●" },
         float = { border = "rounded", source = "if_many" },
+        ui = "auto",   -- "auto" | "native" | "trouble" -- ]d/[d's sink
       },
       formatter = { on_save = false, timeout_ms = 1500 },
       attach = { use_workspace_diagnostics = true, use_lazydev = true },

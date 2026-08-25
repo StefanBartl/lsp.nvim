@@ -51,6 +51,13 @@ local DEFAULTS = {
     severity_sort = true,
     virtual_text = { spacing = 2, prefix = "●" },
     float = { border = "rounded", source = "if_many" },
+    -- Where "]d"/"[d" send you. "trouble" and "auto" behave identically at
+    -- runtime (see lsp.bindings.actions.diagnostics_use_trouble); "auto" only
+    -- exists so a config can say "whichever is available" without naming
+    -- Trouble explicitly. Not passed to vim.diagnostic.config() -- lsp.init
+    -- strips this key first, since diagnostic.config() doesn't know it.
+    ---@type "auto"|"native"|"trouble"
+    ui = "auto",
   },
 
   formatter = {

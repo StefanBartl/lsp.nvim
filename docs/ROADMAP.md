@@ -11,9 +11,9 @@
 > Stand 2026-08-23: **alle fünf Migrationsphasen (§13) sind durch**, ebenso die
 > Einzelpunkte danach — Schritt 12, B8, B12, B14, B16–B19, die Doku-Seiten aus
 > §12, die Spec-Suite (124 Fälle) und Count-Support auf den Bewegungstasten.
-> Offen ist nur noch eine Entscheidung, die dem Autor gehört: §15.1 (Trouble
-> als Default-Senke — entschieden, noch nicht umgesetzt). `NEW-20` und §15.2
-> (Completion-Engine, jetzt `blink`) sind erledigt.
+> Alle drei Autor-Entscheidungen aus §15 sind erledigt: `NEW-20`, §15.1
+> (Trouble als `]d`/`[d`-Senke, seit 2026-08-24 gebaut) und §15.2
+> (Completion-Engine, jetzt `blink`). Kein offener Punkt mehr aus §15.
 
 # `lsp.nvim` — Konzept (Dachplugin)
 
@@ -52,12 +52,11 @@ Modulwurzel `wkddap`) und den anderen extrahierten `*.nvim`-Plugins
 > Doku-Seiten aus §12, eine Spec-Suite mit 124 Fällen und Count-Support auf den
 > Bewegungstasten (`NEW-25`).
 >
-> Es bleiben **zwei Entscheidungen, die dir gehören** — nicht mir: §15.1
-> (Trouble als Default-Senke für `]d`/`[d`) und §15.2 (cmp gegen blink — jetzt
-> echt umschaltbar über `vim.g.lsp_nvim.pack.completion`). `NEW-20`
-> (gen_map `--check` gegen eine bewusst nicht committete Map) ist erledigt:
-> das Gate ist am 2026-08-24 präzisiert worden, statt es pro Repo still
-> aufzulösen.
+§15 ist damit vollständig abgearbeitet. `NEW-20` (gen_map `--check` gegen
+> eine bewusst nicht committete Map) ist im Gate präzisiert; §15.2
+> (Completion-Engine) läuft seit 2026-08-24 auf `blink` als Default; §15.1
+> (Trouble als `]d`/`[d`-Senke) ist implementiert — Details unten unter
+> „Entschieden (2026-08-23, zweiter Durchgang)“.
 > Alles andere unter §15 „Offen“ hat sich durch das Gebaute erledigt.
 >
 > Die Migration hat sechs Bugs gefunden, die vorher **live in der Config**
@@ -1182,13 +1181,36 @@ Für `docs/ROADMAP.md` des neuen Plugins — nicht alles sofort umsetzen:
 
 ### Entschieden (2026-08-23, zweiter Durchgang)
 
-- **Trouble als Default-Senke für `]d`/`[d`**: ja. Alles andere wäre, das
-  halbe Plugin nachzubauen — Trouble bringt viel mit, und die meisten Nutzer
-  greifen ohnehin dazu. **Noch nicht umgesetzt**: `]d`/`[d` laufen aktuell immer
-  über `vim.diagnostic.jump`; Trouble bedient bislang nur die separaten
-  `]w`/`[w`-Tasten (`trouble_diag_next/prev`). Umsetzung: `diagnostics.ui =
-  "auto"` (Trouble, wenn geladen, sonst nativ) — offen für einen späteren
-  Schritt, bewusst nicht mit dieser Änderung mitgezogen.
+- **Trouble als Default-Senke für `]d`/`[d`: ja, implementiert 2026-08-24.**
+  Alles andere wäre, das halbe Plugin nachzubauen — Trouble bringt viel mit,
+  und die meisten Nutzer greifen ohnehin dazu. `diagnostics.ui`
+  (`"auto"|"native"|"trouble"`, Default `"auto"`) entscheidet; `"trouble"` und
+  `"auto"` verhalten sich zur Laufzeit identisch, solange Trouble installiert
+  ist. Nicht Teil von `vim.diagnostic.config()` — `lsp/init.lua` entfernt das
+  Feld, bevor es dorthin geht, sonst bekäme die native API einen Schlüssel,
+  den sie nicht kennt.
+
+  Bewusst mehr als eine Config-Zeile: `]d`/`[d` sollten sich exakt wie
+  Trouble's eigenes `next`/`prev` verhalten (Panel öffnet, Fokus wechselt) —
+  die naheliegende Umsetzung wäre gewesen, Trouble's öffentliche
+  `next(opts)`/`prev(opts)`-Wrapper zu rufen. Die lesen `vim.v.count1` aber
+  **selbst**, innerhalb der Action. Der bereits bestehende Code für `]w`/`[w`
+  (`trouble_move`) rief genau diese Wrapper in einer Schleife über
+  `steps(count)` auf — bei `3]w` wurde `steps` aus `v:count1` (=3) aufgelöst,
+  und jede der 3 Schleifen-Iterationen las dasselbe, noch nicht verbrauchte
+  `v:count1` erneut: netto 3×3=9 Bewegungen statt 3. Ein echter, bereits
+  ausgelieferter Bug, gefunden beim Nachlesen von Trouble's eigenem Quellcode
+  für dieses Feature — behoben, indem `view:move({down/up=n, jump=true})`
+  direkt gerufen wird (dieselbe Primitive, die Trouble's `next`/`prev`
+  intern nutzt), statt über den zählenden Wrapper zu gehen. `]w`/`[w` bleiben
+  in ihrer Semantik unverändert (bewegen nur innerhalb einer bereits offenen
+  Liste), sind aber vom selben Fix mitbetroffen.
+
+  `view:move()` braucht ein bereits gemountetes Fenster; Trouble mountet es
+  aber asynchron, in einem Promise-Callback (`view:refresh({opening=true})
+  :next(...)`), nicht synchron innerhalb von `trouble.open()`. Deshalb läuft
+  auch der eigene Move-Aufruf über `view:wait(fn)` — dieselbe Verzögerung, die
+  `trouble.next()`/`.prev()` intern selbst verwenden.
 - **Completion-Engine: `blink` ist seit 2026-08-24 der Plugin-Default**
   (`lua/lsp/config/pack.lua`), nach echtem Live-Test beider Engines. Beide
   Adapter existieren seit Phase 5 und sind seit 2026-08-23 über

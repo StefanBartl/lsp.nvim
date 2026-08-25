@@ -166,12 +166,13 @@ require("lsp").setup({
   -- `lsp.servers.webdev.<name>` as a fallback for dotless names.
   servers = { "lua_ls", "gopls", "bashls", "marksman", "html", "ts_ls" },
 
-  diagnostics = {                  -- passed straight to vim.diagnostic.config()
+  diagnostics = {
     update_in_insert = false,
     severity_sort = true,
     virtual_text = { spacing = 2, prefix = "●" },
     float = { border = "rounded", source = "if_many" },
-  },
+    ui = "auto",                   -- "auto" | "native" | "trouble" -- ]d/[d's sink
+  },                                -- (everything but `ui`) passed straight to vim.diagnostic.config()
 
   formatter = {
     on_save = false,               -- startup default; the runtime toggle owns it after
