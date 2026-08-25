@@ -1,7 +1,7 @@
 # Installation / integration notes
 
 2) Initialize from your Neovim config (example for init.lua or plugin config):
-  require("lps.tools.deprecated_help").setup({
+  require("lsp.tools.deprecated_help").setup({
      lua_ls = { keymap = "<leader>lh" }, -- optional: override mapping
    })
 

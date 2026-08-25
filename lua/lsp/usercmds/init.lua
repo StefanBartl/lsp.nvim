@@ -8,7 +8,7 @@ local usercmd = require("lib.nvim.usercmd")
 
 local M = {}
 
-local desc_tag = "[lps.usercmds] "
+local desc_tag = "[lsp.usercmds] "
 
 -- Lazy-loaded submodules
 local commands = {
