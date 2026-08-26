@@ -11,7 +11,7 @@
 --- in a config whose main machine runs Windows.)
 
 local api = vim.api
-local Autocmd = require("lib.nvim.autocmd")
+local Autocmd = require("lib.nvim.bindings.autocmd")
 
 local M = {}
 

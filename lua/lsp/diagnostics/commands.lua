@@ -4,7 +4,7 @@
 local util = require("lsp.diagnostics.util")
 local loclist = require("lsp.diagnostics.loclist")
 local quickfix = require("lsp.diagnostics.quickfix")
-local usercmd = require("lib.nvim.usercmd")
+local usercmd = require("lib.nvim.bindings.usercmd")
 local notify = require("lib.nvim.notify").create("[lsp.nvim]")
 
 local M = {}

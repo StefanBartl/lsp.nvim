@@ -211,7 +211,7 @@ the migration, not carried along 1:1:
 | B16 | `config_exists()` checked `lsp.config.get`, which does not exist — `vim.lsp.config` is a table with an `__index` resolver, not a module with a getter | `lsp/lspdoctor/health.lua` | ✅ **DONE (2026-08-23).** The guard therefore *always* triggered: `:LspDoctor health` reported "Config: ❌ No" for **every** server, running ones included. Found because I ran the check instead of reading it — in code the line looks plausible. Both accesses now go through a `config_for()` helper. |
 | B17 | `config.setup()` cleared `_warnings` **after** recording the "expected a table" warning | `lsp/config/init.lua` | ✅ **DONE (2026-08-23).** Exactly the one warning the caller needs most urgently — they passed no table — was discarded again immediately. Found by the first spec I wrote for this file. |
 | B18 | `("… '%s' …"):format()` without an argument, nested inside a second `format()` | `lsp/core/registry.lua:66` | ✅ **DONE (2026-08-23).** The expression **throws**, and nothing on that path is wrapped in `pcall`: **a single configured server without a module would have aborted the entire server setup** and taken `setup()` down with it. Never noticed because every name in `servers` happened to resolve — entering a server before its module exists would have been enough. |
-| B19 | `lib.nvim.autocmd.group` memorised augroup IDs and never checked them again | `lib.nvim` | ✅ **DONE (2026-08-23).** Whoever deletes the group behind the cache — `nvim_del_augroup_by_name`, the only way for a plugin to give up its autocommands — left a dead ID in it, and **every** further `create()` against that group failed with "Invalid 'group'" until Neovim restarts. Noticed because this very plugin calls `clear()` first and `group()` second. Fixed upstream instead of worked around here (LUA-02), with a spec. |
+| B19 | `lib.nvim.bindings.autocmd.group` memorised augroup IDs and never checked them again | `lib.nvim` | ✅ **DONE (2026-08-23).** Whoever deletes the group behind the cache — `nvim_del_augroup_by_name`, the only way for a plugin to give up its autocommands — left a dead ID in it, and **every** further `create()` against that group failed with "Invalid 'group'" until Neovim restarts. Noticed because this very plugin calls `clear()` first and `group()` second. Fixed upstream instead of worked around here (LUA-02), with a spec. |
 
 ---
 
@@ -603,7 +603,7 @@ opts = {
 
 Implementation: a **declarative table** `KEYMAPS = { <name> = { lhs, mode, rhs,
 desc, requires? } }` in `config/DEFAULTS.lua`; `bindings/keymaps.lua` iterates
-over it, applies the user overrides and registers via `lib.nvim.map`.
+over it, applies the user overrides and registers via `lib.nvim.bindings.keymap`.
 `requires = "trouble"` makes sure a keymap is only set when the adapter is
 available — including an automatic fallback to the core variant. Side effect:
 `docs/BINDINGS.md` can be **generated from that table** (no doc drift), and
@@ -632,7 +632,7 @@ Two points that nevertheless belong in `docs/BINDINGS.md`:
 ### 8.2 Usercmds — the `:Lsp` composer
 
 Requirement: one composite user command `:Cmd [options?]` with autocompletion
-via `lib.nvim.usercmd.composer`.
+via `lib.nvim.bindings.usercmd.composer`.
 
 ```
 :Lsp status                      :Lsp doctor [health|debug|quick|deep|all]
@@ -658,7 +658,7 @@ not belong in a global composer.
 
 `bindings/autocmds.lua` bundles: `LspAttach` wiring, the format-on-save group
 (`LspFormatOnSave`), diagnostics refresh, Astro autocmds. All via
-`lib.nvim.autocmd` + `lib.nvim.augroup`, every group deletable/reloadable
+`lib.nvim.bindings.autocmd` + `lib.nvim.augroup`, every group deletable/reloadable
 (central principles §4).
 
 ---
@@ -760,10 +760,10 @@ memo, tables, strings, error, json, …}`.
 | Currently in `lua/lsp/**` | Replace with | Note |
 |---|---|---|
 | `require("lib.nvim.notify").create(…)` | already in use ✅ | keep it consistent |
-| `vim.keymap.set` (`diagnostics/keymaps.lua`) | `lib.nvim.map` | currently inconsistent |
-| homegrown `nvim_create_user_command` (`usercmds/formatter.lua:5`) | `lib.nvim.usercmd` | partly already (`usercmd.create` in `diagnostics/commands.lua`) |
-| ~30 individual commands | `lib.nvim.usercmd.composer` | exists (`lua/lib/nvim/usercmd/composer`) → `:Lsp` composer, see §8.2 |
-| homegrown `nvim_create_autocmd` (`formatter/init.lua`) | `lib.nvim.autocmd` / `lib.nvim.augroup` | partly already |
+| `vim.keymap.set` (`diagnostics/keymaps.lua`) | `lib.nvim.bindings.keymap` | currently inconsistent |
+| homegrown `nvim_create_user_command` (`usercmds/formatter.lua:5`) | `lib.nvim.bindings.usercmd` | partly already (`usercmd.create` in `diagnostics/commands.lua`) |
+| ~30 individual commands | `lib.nvim.bindings.usercmd.composer` | exists (`lua/lib/nvim/bindings/usercmd/composer`) → `:Lsp` composer, see §8.2 |
+| homegrown `nvim_create_autocmd` (`formatter/init.lua`) | `lib.nvim.bindings.autocmd` / `lib.nvim.augroup` | partly already |
 | `core/root_scope.lua`, `servers/lua_ls/rootresolver.lua`, `servers/marksman/rootresolver.lua` | `lib.nvim.fs.find_root` / `polymorphic_rootresolver` | **dedup candidate B8**: three re-implementations of the same problem |
 | Library profile caching (`servers/lua_ls`, `lspdoctor`) | `lib.nvim.cache` | check whether it is `stdpath("cache")`-conformant |
 | Format-on-save timing, diagnostics refresh | `lib.nvim.debounce` / `debounce.buffer` | no debouncing today → performance candidate |

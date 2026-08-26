@@ -81,7 +81,7 @@ nicht zutreffend, mit Begründung.
       `resolve`-Hook bekommen, damit beide Root-Resolver dieses Plugins sich das
       Argument-Plumbing teilen statt es zu kopieren (B8). Beim selben Durchgang
       ist ein Bug **oben** behoben statt hier umgangen (LUA-02):
-      `lib.nvim.autocmd.group` cachte Augroup-IDs und prüfte sie nie wieder
+      `lib.nvim.bindings.autocmd.group` cachte Augroup-IDs und prüfte sie nie wieder
       (B19).
 - [x] `NEW-19` `documentation.nvim` als Dev-Dependency eingerichtet
       (`scripts/gen_map.lua`, CI-Checkout nach `.deps/`).
@@ -108,7 +108,7 @@ nicht zutreffend, mit Begründung.
       Gruppen werden aus den tatsächlich gebundenen Keymaps abgeleitet, nicht
       aus einer zweiten handgepflegten Liste.
 - [x] `NEW-23` Compound-Usercommand `:Lsp <subcommand>` über
-      `lib.nvim.usercmd.composer`, mit `<Tab>`-Completion.
+      `lib.nvim.bindings.usercmd.composer`, mit `<Tab>`-Completion.
   - [x] Range (`v`, `v-line`, `v-block`): geprüft, auch für die inzwischen
         vorhandenen Routen aus §8.2 — **keine** bekommt eine. `status`,
         `servers`, `info`, `health`, `doctor`, `log`, `root`, `workspace` und

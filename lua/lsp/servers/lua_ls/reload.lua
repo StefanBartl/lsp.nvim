@@ -3,8 +3,8 @@
 --- Use when @types are not detected automatically
 
 local notify = require("lib.nvim.notify").create("[lsp.servers.lua_ls.reload]")
-local usercmd = require("lib.nvim.usercmd")
-local Autocmd = require("lib.nvim.autocmd")
+local usercmd = require("lib.nvim.bindings.usercmd")
+local Autocmd = require("lib.nvim.bindings.autocmd")
 
 local M = {}
 

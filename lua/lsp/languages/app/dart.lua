@@ -5,8 +5,8 @@
 local M = {}
 
 local api = vim.api
-local Autocmd = require("lib.nvim.autocmd")
-local map = require("lib.nvim.map")
+local Autocmd = require("lib.nvim.bindings.autocmd")
+local map = require("lib.nvim.bindings.keymap")
 local notify = require("lib.nvim.notify").create("[lsp.languages.app.dart]")
 
 ---@return nil

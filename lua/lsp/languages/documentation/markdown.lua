@@ -4,9 +4,9 @@
 local api = vim.api
 local lsp = vim.lsp
 local desc_tag = "[lsp] "
-local Autocmd = require("lib.nvim.autocmd")
-local usercmd = require("lib.nvim.usercmd")
-local map = require("lib.nvim.map")
+local Autocmd = require("lib.nvim.bindings.autocmd")
+local usercmd = require("lib.nvim.bindings.usercmd")
+local map = require("lib.nvim.bindings.keymap")
 
 local M = {}
 

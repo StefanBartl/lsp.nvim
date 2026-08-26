@@ -3,7 +3,7 @@
 --- `vim.lsp.buf.format`), organize-imports-on-save, 2-space indent plus
 --- `{/* %s */}` commentstring, and frontmatter (`---`) syntax highlighting.
 
-local Autocmd = require("lib.nvim.autocmd")
+local Autocmd = require("lib.nvim.bindings.autocmd")
 
 local M = {}
 

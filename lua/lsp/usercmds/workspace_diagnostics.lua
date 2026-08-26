@@ -4,7 +4,7 @@
 --- on every LSP attach (see lsp.core.workspace_diagnostics for why this is
 --- toggleable rather than a fixed startup-only flag).
 
-local usercmd = require("lib.nvim.usercmd")
+local usercmd = require("lib.nvim.bindings.usercmd")
 local notify = require("lib.nvim.notify").create("[lsp.usercmds.workspace_diagnostics]")
 
 local M = {}

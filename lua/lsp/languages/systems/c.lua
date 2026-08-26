@@ -4,7 +4,7 @@
 --- with it yet.
 ---@class LangCQoL
 
-local Autocmd = require("lib.nvim.autocmd")
+local Autocmd = require("lib.nvim.bindings.autocmd")
 
 local M = {}
 

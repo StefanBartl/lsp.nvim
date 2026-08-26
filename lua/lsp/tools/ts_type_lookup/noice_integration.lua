@@ -8,8 +8,8 @@
 ---   'q' -> close the preview window
 
 local api = vim.api
-local Autocmd = require("lib.nvim.autocmd")
-local usercmd = require("lib.nvim.usercmd")
+local Autocmd = require("lib.nvim.bindings.autocmd")
+local usercmd = require("lib.nvim.bindings.usercmd")
 local M = {}
 
 --- Determine whether a buffer looks like a Noice floating buffer.

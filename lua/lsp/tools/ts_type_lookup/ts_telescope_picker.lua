@@ -27,7 +27,7 @@ end
 local lsp = vim.lsp
 local api = vim.api
 local fn = vim.fn
-local usercmd = require("lib.nvim.usercmd")
+local usercmd = require("lib.nvim.bindings.usercmd")
 
 local M = {}
 

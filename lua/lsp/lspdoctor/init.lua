@@ -25,8 +25,8 @@
 require("lsp.lspdoctor.@types")
 
 local notify = require("lib.nvim.notify").create("[lspdoctor]")
-local map = require("lib.nvim.map")
-local composer = require("lib.nvim.usercmd.composer")
+local map = require("lib.nvim.bindings.keymap")
+local composer = require("lib.nvim.bindings.usercmd.composer")
 
 local M = {}
 

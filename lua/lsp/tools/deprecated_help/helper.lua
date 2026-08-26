@@ -2,7 +2,7 @@
 --- Helper utilities used by other modules.
 --- Provides safe buffer/diagnostic helpers and small caches.
 
-local map = require("lib.nvim.map")
+local map = require("lib.nvim.bindings.keymap")
 
 local M = {}
 

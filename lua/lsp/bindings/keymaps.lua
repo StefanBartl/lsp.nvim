@@ -2,7 +2,7 @@
 ---@brief Registers the keymap catalogue, honoring the user's overrides.
 ---@description
 --- Reads `config/KEYMAPS.lua`, applies `keymaps.map` and registers what is
---- left through `lib.nvim.map`. No key is hardcoded here: adding a mapping
+--- left through `lib.nvim.bindings.keymap`. No key is hardcoded here: adding a mapping
 --- means adding a catalogue entry, which is what keeps `docs/BINDINGS.md`
 --- generatable and `:checkhealth lsp` able to list what is actually bound.
 ---
@@ -22,7 +22,7 @@
 ---@see lsp.bindings.actions
 ---@see lsp.bindings.which_key
 
-local map = require("lib.nvim.map")
+local map = require("lib.nvim.bindings.keymap")
 local KEYMAPS = require("lsp.config.KEYMAPS")
 
 local M = {}

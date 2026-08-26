@@ -5,7 +5,7 @@ local core = require("lsp.tools.eslint_prettier.core.find_root")
 local check = require("lsp.tools.eslint_prettier.core.check_config")
 local eslint_fix = require("lsp.tools.eslint_prettier.eslint.fix")
 local prettier_fmt = require("lsp.tools.eslint_prettier.prettier.format")
-local Autocmd = require("lib.nvim.autocmd")
+local Autocmd = require("lib.nvim.bindings.autocmd")
 
 local M = {}
 

@@ -4,7 +4,7 @@
 --- and `:AstroListComponents`/`FindUsage`.
 
 local notify = require("lib.nvim.notify").create("[lsp.languages.webdev.astro.commands]")
-local usercmd = require("lib.nvim.usercmd")
+local usercmd = require("lib.nvim.bindings.usercmd")
 
 local M = {}
 

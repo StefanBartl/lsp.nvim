@@ -3,7 +3,7 @@
 --- no-op -- the same stub shape as systems/{c,go,zig}.lua.
 ---@class LangLuaQoL
 
-local Autocmd = require("lib.nvim.autocmd")
+local Autocmd = require("lib.nvim.bindings.autocmd")
 
 local M = {}
 

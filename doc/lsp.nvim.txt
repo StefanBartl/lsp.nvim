@@ -44,7 +44,7 @@ which still carries its own `lua/lsp/**` shadows this plugin on the
 
   - Neovim 0.11 or newer.
   - lib.nvim (https://github.com/StefanBartl/lib.nvim), a HARD dependency:
-    the |:Lsp| command is built on `lib.nvim.usercmd.composer` and does not
+    the |:Lsp| command is built on `lib.nvim.bindings.usercmd.composer` and does not
     register without it. It is never optional, in the code or in the docs.
 
 ==============================================================================
@@ -257,7 +257,7 @@ Two properties of the bound keys are worth knowing:
 6. COMMANDS                                               *lsp.nvim-commands*
 
 One command with subcommands and <Tab> completion, built with
-`lib.nvim.usercmd.composer`. The migrated command family (|:LspDoctor|,
+`lib.nvim.bindings.usercmd.composer`. The migrated command family (|:LspDoctor|,
 :LspStatus, :LspLog, :LspInfo, :LspRecover, :LspStartHere, :LspStopHere,
 :LspRestartHere, :LspForceRestart, :LspFormat*, :LspWorkspaceDiagnostics*,
 :LspMdHints, :Diag*, :TypeDef*, :EslintFix) is registered as well; folding it

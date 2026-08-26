@@ -27,8 +27,8 @@
 ---@see lsp.bindings.actions
 ---@see lsp.init
 
-local composer = require("lib.nvim.usercmd.composer")
-local argtypes = require("lib.nvim.usercmd.composer.argtypes")
+local composer = require("lib.nvim.bindings.usercmd.composer")
+local argtypes = require("lib.nvim.bindings.usercmd.composer.argtypes")
 local scratch = require("lib.nvim.window.open_scratch_split")
 local notify = require("lib.nvim.notify").create("[Lsp]")
 local actions = require("lsp.bindings.actions")

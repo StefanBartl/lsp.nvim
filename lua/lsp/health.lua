@@ -41,12 +41,12 @@ local function check_environment()
     health.error("Neovim 0.11+ required, found " .. tostring(vim.version()))
   end
 
-  if has("lib.nvim.map") then
+  if has("lib.nvim.bindings.keymap") then
     health.ok("lib.nvim available")
   else
     health.error("lib.nvim missing", {
       "lsp.nvim depends on it hard: the `:Lsp` command is built on "
-        .. "lib.nvim.usercmd.composer and will not register without it.",
+        .. "lib.nvim.bindings.usercmd.composer and will not register without it.",
       'Install it: dependencies = { "StefanBartl/lib.nvim" }',
     })
   end

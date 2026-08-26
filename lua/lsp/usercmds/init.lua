@@ -3,8 +3,8 @@
 --- Delegates to specialized submodules for each command
 
 local notify = require("lib.nvim.notify").create("[lsp.usrcmds] ")
-local composer = require("lib.nvim.usercmd.composer")
-local usercmd = require("lib.nvim.usercmd")
+local composer = require("lib.nvim.bindings.usercmd.composer")
+local usercmd = require("lib.nvim.bindings.usercmd")
 
 local M = {}
 

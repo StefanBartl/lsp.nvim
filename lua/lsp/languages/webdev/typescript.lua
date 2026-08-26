@@ -7,7 +7,7 @@ local M = {}
 
 local lsp = vim.lsp
 local api = vim.api
-local Autocmd = require("lib.nvim.autocmd")
+local Autocmd = require("lib.nvim.bindings.autocmd")
 
 --- Check whether a client supports a given CodeActionKind.
 ---@param client LspMod.Client

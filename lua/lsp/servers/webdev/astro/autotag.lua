@@ -2,7 +2,7 @@
 --- Astro Auto-Close Tags via nvim-ts-autotag integration
 
 local notify = require("lib.nvim.notify").create("[lsp.languages.webdev.astro.autotag]")
-local map = require("lib.nvim.map")
+local map = require("lib.nvim.bindings.keymap")
 
 local M = {}
 

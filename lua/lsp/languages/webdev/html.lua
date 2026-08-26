@@ -1,7 +1,7 @@
 ---@module 'lsp.languages.webdev.html'
 --- HTML language enablement helpers for autocommands and small QoL.
 
-local Autocmd = require("lib.nvim.autocmd")
+local Autocmd = require("lib.nvim.bindings.autocmd")
 
 local M = {}
 

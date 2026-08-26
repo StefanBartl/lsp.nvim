@@ -19,7 +19,7 @@
 ---@see lsp.bindings.keymaps
 ---@see lsp.config.KEYMAPS
 
-local autocmd = require("lib.nvim.autocmd")
+local autocmd = require("lib.nvim.bindings.autocmd")
 local keymaps = require("lsp.bindings.keymaps")
 
 local M = {}

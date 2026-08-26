@@ -9,7 +9,7 @@
 
 local M = {}
 
-local map = require("lib.nvim.map")
+local map = require("lib.nvim.bindings.keymap")
 local schedule = vim.schedule
 local request_and_show = require("lsp.tools.lsp_signature.request_and_show")
 

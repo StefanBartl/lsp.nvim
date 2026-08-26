@@ -169,7 +169,7 @@ function M.setup(opts)
     end,
   })
 
-  require("lib.nvim.usercmd").create("CmpReloadWords", function()
+  require("lib.nvim.bindings.usercmd").create("CmpReloadWords", function()
     package.loaded["lsp.completion.personal_names.extra"] = nil
     items = nil
     notify.info(("Reloaded — %d word(s)."):format(#collect_labels()))

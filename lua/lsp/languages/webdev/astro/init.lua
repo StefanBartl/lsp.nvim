@@ -6,7 +6,7 @@
 local M = {}
 
 local bo = vim.bo
-local Autocmd = require("lib.nvim.autocmd")
+local Autocmd = require("lib.nvim.bindings.autocmd")
 
 ---@return nil
 function M.enable()

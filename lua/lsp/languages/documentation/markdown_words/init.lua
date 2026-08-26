@@ -18,9 +18,9 @@
 
 local M = {}
 
-local Autocmd = require("lib.nvim.autocmd")
+local Autocmd = require("lib.nvim.bindings.autocmd")
 local notify = require("lib.nvim.notify").create("[lsp.languages.documentation.markdown_words]")
-local usercmd = require("lib.nvim.usercmd")
+local usercmd = require("lib.nvim.bindings.usercmd")
 local debounce = require("lib.nvim.debounce")
 local register = require("lsp.completion.register")
 local usage = require("lsp.completion.usage")

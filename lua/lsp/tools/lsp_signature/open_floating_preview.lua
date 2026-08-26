@@ -3,7 +3,7 @@
 -- Accept opts.orig_fname / orig_line / orig_col and use them to set buffer name and a compact title.
 local api = vim.api
 local fn = vim.fn
-local Autocmd = require("lib.nvim.autocmd")
+local Autocmd = require("lib.nvim.bindings.autocmd")
 
 ---@param lines string[]
 ---@param opts table|nil
