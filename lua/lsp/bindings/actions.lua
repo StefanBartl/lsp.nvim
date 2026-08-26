@@ -267,6 +267,16 @@ end
 ---@param count integer|nil # Explicit repeat; from a keypress, `v:count1`.
 ---@return nil
 local function trouble_move(direction, count)
+  -- Asked before requiring, and that ordering is the point: if Trouble has
+  -- never been loaded, no list of its can be open, so the answer is already
+  -- known. Going through `require` first would load the whole plugin only to
+  -- be told there is nothing to move in -- which is what made `lazy = false`
+  -- look necessary for these two keymaps in the first place.
+  if not package.loaded["trouble"] then
+    require("lib.nvim.notify").create("[lsp.nvim]").info("Trouble diagnostics list is not open")
+    return
+  end
+
   local ok, trouble = pcall(require, "trouble")
   if not ok then
     return

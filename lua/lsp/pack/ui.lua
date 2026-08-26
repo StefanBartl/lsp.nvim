@@ -26,10 +26,19 @@ return {
     enabled = pack.enabled("trouble.nvim", "ui"),
     dependencies = { "nvim-tree/nvim-web-devicons" },
     version = "*",
-    -- Not lazy: the keymap catalogue binds `<cmd>Trouble …<cr>` globally, and
-    -- `]w`/`[w` ask an already-open list to move. Loading on `cmd = "Trouble"`
-    -- would cover the former and not the latter.
-    lazy = false,
+    -- On demand. The catalogue's `<cmd>Trouble …<cr>` keymaps are covered by
+    -- `cmd`, and everything else that reaches Trouble does so through
+    -- `pcall(require, "trouble")`, which lazy's require hook turns into a load.
+    --
+    -- This used to be `lazy = false` for `]w`/`[w`, on the grounds that those
+    -- move within an *already-open* list and so would not trigger a `cmd`.
+    -- True, but they never needed the plugin loaded to answer correctly:
+    -- `bindings.actions`'s `trouble_move` now asks `package.loaded["trouble"]`
+    -- first, and if Trouble was never loaded there is no list of its open --
+    -- the same notify, without the plugin. Eager, this cost ~79ms plus the
+    -- ~71ms of nvim-web-devicons it pulls in, on every start, for a
+    -- diagnostics panel most starts never open.
+    cmd = "Trouble",
     config = function()
       require("lsp.integrations.trouble").configure()
     end,
