@@ -1,10 +1,18 @@
 ---@module 'lsp.bindings.keymaps'
 ---@brief Registers the keymap catalogue, honoring the user's overrides.
 ---@description
---- Reads `config/KEYMAPS.lua`, applies `keymaps.map` and registers what is
---- left through `lib.nvim.bindings.keymap`. No key is hardcoded here: adding a mapping
---- means adding a catalogue entry, which is what keeps `docs/BINDINGS.md`
---- generatable and `:checkhealth lsp` able to list what is actually bound.
+--- Reads `config/KEYMAPS.lua` and hands the catalogue to
+--- `lib.nvim.bindings.keymap`'s registry, which applies `keymaps.map` and
+--- binds what is left. No key is hardcoded here: adding a mapping means adding
+--- a catalogue entry, which is what keeps `docs/BINDINGS.md` generatable and
+--- `:checkhealth lsp` able to list what is actually bound.
+---
+--- The catalogue predates that registry and had grown the same shape
+--- independently -- named entries, per-action override, `false` to disable, a
+--- list handed back for docs. Moving onto the shared one keeps all of that and
+--- adds what a local copy could not: a mistyped name in `keymaps.map` is now
+--- *reported* rather than silently binding nothing, and the surface joins the
+--- one list `keymap.registered()` answers for every plugin here.
 ---
 --- Every action is overridable and every action is switchable off (NEW-21):
 --- a string in `keymaps.map` replaces the lhs, `false` drops the mapping, and
@@ -22,7 +30,7 @@
 ---@see lsp.bindings.actions
 ---@see lsp.bindings.which_key
 
-local map = require("lib.nvim.bindings.keymap")
+local keymap = require("lib.nvim.bindings.keymap")
 local KEYMAPS = require("lsp.config.KEYMAPS")
 
 local M = {}
@@ -31,32 +39,51 @@ local M = {}
 ---@param cfg LspNvim.Config
 ---@return LspNvim.KeymapSpec[] registered # sorted by catalogue name.
 function M.setup(cfg)
-  ---@type LspNvim.KeymapSpec[]
-  local registered = {}
-
-  if not cfg.keymaps.enable then
-    return registered
-  end
-
-  local names = KEYMAPS.presets[cfg.keymaps.preset] or {}
-  local overrides = cfg.keymaps.map
-
   -- Sorted so registration order -- and thus docs/BINDINGS.md and the health
   -- report -- is stable across runs rather than following table iteration.
-  names = vim.deepcopy(names)
+  local names = vim.tbl_keys(KEYMAPS.entries)
   table.sort(names)
 
-  for _, name in ipairs(names) do
-    local spec = KEYMAPS.entries[name]
-    local override = overrides[name]
+  local in_preset = {}
+  for _, name in ipairs(KEYMAPS.presets[cfg.keymaps.preset] or {}) do
+    in_preset[name] = true
+  end
 
-    if spec ~= nil and override ~= false then
-      local lhs = (type(override) == "string") and override or spec.lhs
-      map(spec.mode, lhs, spec.rhs, { silent = true, desc = "[LSP] " .. spec.desc })
-      registered[#registered + 1] = vim.tbl_extend("force", spec, { lhs = lhs, name = name })
+  ---@type table<string, Lib.Keymap.Action>
+  local actions = {}
+  for name, spec in pairs(KEYMAPS.entries) do
+    actions[name] = {
+      default = spec.lhs,
+      mode = spec.mode,
+      rhs = spec.rhs,
+      desc = spec.desc,
+      opts = { silent = true },
+    }
+  end
+
+  -- Entries outside the selected preset are forced off rather than left out:
+  -- `:checkhealth lsp` and the generated bindings page ask what EXISTS, and
+  -- "in the catalogue, not in this preset" is a different answer from "no such
+  -- entry".
+  local user = vim.deepcopy(cfg.keymaps.map or {})
+  for _, name in ipairs(names) do
+    if not in_preset[name] and user[name] == nil then
+      user[name] = false
     end
   end
 
+  local bound = keymap.register("LSP", { order = names, actions = actions }, user, {
+    bind = cfg.keymaps.enable ~= false,
+  })
+
+  ---@type LspNvim.KeymapSpec[]
+  local registered = {}
+  for _, e in ipairs(bound) do
+    if e.bound then
+      registered[#registered + 1] =
+        vim.tbl_extend("force", KEYMAPS.entries[e.name], { lhs = e.lhs, name = e.name })
+    end
+  end
   return registered
 end
 
@@ -89,10 +116,14 @@ function M.rebind_buffer_local(cfg, name, bufnr)
   end
 
   local lhs = (type(override) == "string") and override or spec.lhs
-  map(spec.mode, lhs, spec.rhs, {
+  -- The one-off setter, not the registry: this re-binds a single entry that is
+  -- already declared, to shadow a buffer-local default Neovim installs itself.
+  -- Registering it again would replace the plugin's whole record with one
+  -- action.
+  keymap(spec.mode, lhs, spec.rhs, {
     buffer = bufnr,
     silent = true,
-    desc = "[LSP] " .. spec.desc,
+    desc = "LSP: " .. spec.desc,
   })
   return true
 end
