@@ -88,9 +88,17 @@ return {
           },
         },
       },
+      -- No `prebuilt_binaries.force_version` here on purpose. Pinning it to a
+      -- tag the Lua side has outgrown is how you get
+      -- "Failed to create frecency database directory: ... (os error 183)" on
+      -- every completion: v1.4.0's binary still expects the old LMDB *directory*
+      -- as its db path, while blink >= 1.5 hands it the `frecency.dat` *file*,
+      -- so its create_dir_all() trips over an existing regular file.
+      -- Left unset, the downloader fetches the binary for whatever tag
+      -- `version = "1.*"` resolved to, which is the only pairing that is ever
+      -- correct.
       fuzzy = {
         implementation = "prefer_rust",
-        prebuilt_binaries = { force_version = "v1.4.0" },
       },
       signature = { enabled = true },
     },
