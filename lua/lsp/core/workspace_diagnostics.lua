@@ -77,10 +77,17 @@ local M = {}
 --- keeps; the plugin still filters the result against each client's
 --- `config.filetypes`, so this only has to be a cheap pre-filter that avoids
 --- running `vim.filetype.match` over the whole tree.
----@type { max_files: integer, extensions: table<string, boolean>, delay_ms: integer }
+---@type { max_files: integer, extensions: table<string, boolean>, delay_ms: integer, chunk_size: integer, chunk_delay_ms: integer }
 local opts = {
   max_files = 800,
   delay_ms = 1500,
+  -- How many files one `send_did_open` tick reads before yielding, and how
+  -- long it waits between ticks. The pair is the throughput/responsiveness
+  -- dial: bigger chunks and a shorter delay populate faster and stall the
+  -- editor more. Tunable because "how much stall is acceptable" is a property
+  -- of the machine, not of the plugin.
+  chunk_size = 25,
+  chunk_delay_ms = 10,
 }
 
 --- filetype -> file extensions, for the few cases where they differ. Any
@@ -127,7 +134,7 @@ local function client_extensions(client)
   return set
 end
 
----@param o { max_files?: integer, delay_ms?: integer }
+---@param o { max_files?: integer, delay_ms?: integer, chunk_size?: integer, chunk_delay_ms?: integer }
 ---@return nil
 function M.configure(o)
   o = o or {}
@@ -136,6 +143,12 @@ function M.configure(o)
   end
   if type(o.delay_ms) == "number" then
     opts.delay_ms = o.delay_ms
+  end
+  if type(o.chunk_size) == "number" and o.chunk_size > 0 then
+    opts.chunk_size = o.chunk_size
+  end
+  if type(o.chunk_delay_ms) == "number" and o.chunk_delay_ms >= 0 then
+    opts.chunk_delay_ms = o.chunk_delay_ms
   end
 end
 
@@ -263,12 +276,9 @@ local function collect_files_async(ext_set, cb)
   end)
 end
 
---- How many files one `send_did_open` tick reads before yielding. The plugin
---- used one `vim.defer_fn` per file (~1700 callbacks here); a single
---- synchronous loop would instead stall proportionally to the workspace.
---- Chunking bounds both.
-local CHUNK_SIZE = 25
-local CHUNK_DELAY_MS = 10
+-- The chunk tunables live in `opts` above: the plugin used one `vim.defer_fn`
+-- per file (~1700 callbacks here), while a single synchronous loop would
+-- stall proportionally to the workspace. Chunking bounds both.
 
 --- Clients already populated this session. Replaces the plugin's own
 --- `_loaded_clients`, which we no longer go through.
@@ -330,7 +340,7 @@ local function send_did_open(client, bufnr, files, force)
       return
     end
 
-    local budget = CHUNK_SIZE
+    local budget = opts.chunk_size
     while index <= #files and budget > 0 do
       local path = files[index]
       index = index + 1
@@ -359,7 +369,7 @@ local function send_did_open(client, bufnr, files, force)
     end
 
     if index <= #files then
-      vim.defer_fn(send_chunk, CHUNK_DELAY_MS)
+      vim.defer_fn(send_chunk, opts.chunk_delay_ms)
     end
   end
 
