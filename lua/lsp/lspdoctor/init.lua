@@ -20,13 +20,14 @@
 ---   q     -> close buffer
 ---   y     -> yank entire buffer to clipboard
 ---   gw    -> write to timestamped file in cache
----   <CR>  -> jump to section under cursor (if applicable)
+---   ?     -> show this keymap cheatsheet
 
 require("lsp.lspdoctor.@types")
 
 local notify = require("lib.nvim.notify").create("[lspdoctor]")
 local map = require("lib.nvim.bindings.keymap")
 local composer = require("lib.nvim.bindings.usercmd.composer")
+local kit = require("lib.nvim.ui.kit")
 
 local M = {}
 
@@ -60,6 +61,44 @@ local inspect = require("lsp.lspdoctor.inspect")
 
 -- Utils -----------------------------------------------------------------------
 
+local SCRATCH_KEYMAPS = {
+  { keys = { "q" }, desc = "Close buffer" },
+  { keys = { "y" }, desc = "Yank entire buffer to clipboard" },
+  { keys = { "gw" }, desc = "Write report to a timestamped file in cache" },
+  { keys = { "?" }, desc = "Show this keymap cheatsheet" },
+}
+
+---@internal
+---Read-only cheatsheet of every key bound on the LSP Doctor scratch buffer.
+---@return nil
+local function show_help()
+  local widest = 0
+  for _, entry in ipairs(SCRATCH_KEYMAPS) do
+    widest = math.max(widest, #table.concat(entry.keys, ", "))
+  end
+
+  local lines = { "", " LSP Doctor Report keys", "" }
+  local function row(lhs, desc)
+    lines[#lines + 1] = ("  %-" .. widest .. "s   %s"):format(lhs, desc)
+  end
+  for _, entry in ipairs(SCRATCH_KEYMAPS) do
+    row(table.concat(entry.keys, ", "), entry.desc)
+  end
+  lines[#lines + 1] = ""
+
+  local width = 40
+  for _, l in ipairs(lines) do
+    width = math.max(width, vim.fn.strdisplaywidth(l))
+  end
+  kit.viewer({
+    lines = lines,
+    title = "LSP Doctor Keys",
+    filetype = "lsp-doctor-help",
+    width = math.min(width + 2, math.floor(vim.o.columns * 0.9)),
+    height = math.min(#lines, math.floor(vim.o.lines * 0.8)),
+  })
+end
+
 ---@param lines string[]
 ---@return integer bufnr
 local function render_to_scratch(lines)
@@ -84,6 +123,7 @@ local function render_to_scratch(lines)
     api.nvim_command("silent keepalt keepjumps write! " .. fn.fnameescape(path))
     notify.info("Wrote report to: " .. path)
   end, opts)
+  map("n", "?", show_help, opts)
 
   return scratch
 end
