@@ -12,7 +12,7 @@
 ---                 attempts made, last error, what to run next.
 --- - resolve:      Where does the filetype -> server chain break? Five steps,
 ---                 from "which servers should this filetype get" down to what
----                 `:LspStart` would offer.
+---                 `:Lsp start` would offer.
 --- - buffer:       What is going on in this buffer right now? Clients,
 ---                 diagnostic counts, provider conflicts, offset encodings,
 ---                 formatter. Lists capped at `list_limit`.

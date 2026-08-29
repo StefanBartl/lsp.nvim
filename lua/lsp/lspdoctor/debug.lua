@@ -71,7 +71,7 @@ local function get_running_clients(bufnr)
   return names
 end
 
---- Get completion candidates (what would be shown in :LspStart completion)
+--- Get completion candidates (what `:Lsp start` would offer)
 ---@param expected string[]
 ---@param running string[]
 ---@param configured string[]
@@ -178,7 +178,7 @@ function M.info(bufnr)
   table.insert(lines, "")
 
   -- Completion candidates
-  table.insert(lines, "### 5. Completion would show for :LspStart")
+  table.insert(lines, "### 5. Completion would show for `:Lsp start`")
   if #completion > 0 then
     for _, name in ipairs(completion) do
       table.insert(lines, string.format("   • `%s`", name))
@@ -202,7 +202,7 @@ function M.info(bufnr)
     table.insert(lines, "   Configs exist but registry is empty")
   elseif #expected > 0 and #running == 0 then
     table.insert(lines, "⚠️  **Warning**: Servers expected but none running")
-    table.insert(lines, "   Try: `:LspStart` or check autostart configuration")
+    table.insert(lines, "   Try: `:Lsp start` or check autostart configuration")
   elseif #running > 0 then
     table.insert(lines, "✅ **OK**: LSP clients running normally")
   end

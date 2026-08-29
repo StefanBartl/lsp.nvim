@@ -269,7 +269,7 @@ function M.check(bufnr)
         elseif attempts > 0 then
           table.insert(lines, "  💡 **Action**: Start failed - check `:LspLog` or `:messages`")
         else
-          table.insert(lines, "  💡 **Action**: Not started - use `:LspStart " .. name .. "`")
+          table.insert(lines, "  💡 **Action**: Not started - use `:Lsp start " .. name .. "`")
         end
       end
     end
