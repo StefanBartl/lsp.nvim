@@ -9,8 +9,15 @@ local M = {}
 local app_langs = { "csharp", "java", "dart" }
 ---@type Lsp.Languages.ConfiguredLangs.Literal.Doc[]
 local documentation_langs = { "markdown" }
+-- "shell" is deliberately not in this list. Its module was a byte-for-byte
+-- copy of `lsp.servers.bashls` -- same `vim.lsp.config("bashls", ...)`, same
+-- `vim.lsp.enable`, same `vim.fn.exepath("shellcheck")` -- and this loop calls
+-- `enable()` with no arguments, so it registered bashls *without* capabilities
+-- moments before the registry registered it properly. Server configuration
+-- belongs to `lsp.servers.*`; a language module is for filetype QoL, which
+-- shell had none of.
 ---@type Lsp.Languages.ConfiguredLangs.Literal.Scripting[]
-local scripting_langs = { "lua", "shell" }
+local scripting_langs = { "lua" }
 ---@type Lsp.Languages.ConfiguredLangs.Literal.Systems[]
 local system_langs = { "c", "go", "zig" }
 ---@type Lsp.Languages.ConfiguredLangs.Literal.Web[]

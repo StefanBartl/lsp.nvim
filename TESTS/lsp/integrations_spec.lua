@@ -221,4 +221,85 @@ describe("lsp.integrations", function()
       end
     end)
   end)
+
+  -- The blink adapter is the one that used to pay for its contribution with a
+  -- plugin load. It mirrors blink's capability table instead, which is only
+  -- safe as long as something checks the mirror -- that is what the last case
+  -- here is for.
+  describe("blink", function()
+    ---@return table
+    local function adapter()
+      package.loaded["lsp.integrations.blink"] = nil
+      return require("lsp.integrations.blink")
+    end
+
+    it("contributes without loading blink.cmp", function()
+      local was = package.loaded["blink.cmp"]
+      package.loaded["blink.cmp"] = nil
+
+      local caps = adapter().capabilities(vim.lsp.protocol.make_client_capabilities())
+
+      assert.is_nil(
+        package.loaded["blink.cmp"],
+        "capabilities() must not pull blink.cmp into a startup"
+      )
+      assert.are.equal(1, caps.textDocument.completion.insertTextMode)
+      assert.are.same(
+        { valueSet = { 1 } },
+        caps.textDocument.completion.completionItem.insertTextModeSupport
+      )
+      assert.is_true(caps.textDocument.completion.completionItem.labelDetailsSupport)
+
+      package.loaded["blink.cmp"] = was
+    end)
+
+    it("lets an earlier contributor win, like blink's own override argument", function()
+      local was = package.loaded["blink.cmp"]
+      package.loaded["blink.cmp"] = nil
+
+      local base = vim.lsp.protocol.make_client_capabilities()
+      base.textDocument = base.textDocument or {}
+      base.textDocument.completion = base.textDocument.completion or {}
+      base.textDocument.completion.insertTextMode = 2
+
+      local caps = adapter().capabilities(base)
+      assert.are.equal(2, caps.textDocument.completion.insertTextMode)
+
+      package.loaded["blink.cmp"] = was
+    end)
+
+    it("prefers the real blink when it is already loaded", function()
+      local was = package.loaded["blink.cmp"]
+      local marker = { snippetSupport = false, _from_blink = true }
+      package.loaded["blink.cmp"] = {
+        get_lsp_capabilities = function(override)
+          return vim.tbl_deep_extend(
+            "force",
+            { textDocument = { completion = { completionItem = marker } } },
+            override or {}
+          )
+        end,
+      }
+
+      local caps = adapter().capabilities({})
+      assert.is_true(caps.textDocument.completion.completionItem._from_blink)
+
+      package.loaded["blink.cmp"] = was
+    end)
+
+    -- Drift guard. Skipped where blink is not installed (CI, a bare checkout),
+    -- because "blink is absent" is not evidence that the mirror is wrong -- but
+    -- wherever it *is* installed, a divergence has to fail loudly rather than
+    -- show up months later as "completion is a bit worse".
+    it("mirrors blink.cmp's own capability table", function()
+      local ok, blink = pcall(require, "blink.cmp")
+      if not (ok and type(blink) == "table" and type(blink.get_lsp_capabilities) == "function") then
+        pending("blink.cmp not installed in this environment")
+        return
+      end
+
+      local mirrored = vim.tbl_deep_extend("force", {}, adapter()._CAPS)
+      assert.are.same(blink.get_lsp_capabilities({}, false), mirrored)
+    end)
+  end)
 end)

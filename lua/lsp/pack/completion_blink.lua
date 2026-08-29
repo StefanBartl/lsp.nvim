@@ -32,6 +32,16 @@ return {
     enabled = pack.completion() == "blink" and pack.enabled("blink.cmp"),
     -- Pinned to v1.x so the prebuilt fuzzy binaries match the Lua side.
     version = "1.*",
+    -- The two events blink can possibly be needed at, and it needs to be told:
+    -- the spec carries no `cmd`/`ft`/`keys`, so under a manager configured with
+    -- `defaults.lazy = true` it had no trigger at all. It was alive only
+    -- because `lsp.integrations.blink` used to `require("blink.cmp")` while
+    -- building capabilities -- an LSP detail keeping the completion engine
+    -- afloat by accident, which is also why that require cost every startup
+    -- 42-90ms. Now that the adapter no longer loads it, this is what does.
+    -- CmdlineEnter is not optional: blink's cmdline completion is on by
+    -- default in 1.x and InsertEnter never fires for `:`.
+    event = { "InsertEnter", "CmdlineEnter" },
     opts = {
       -- `<CR>` or `<C-y>`, from the pack option. Set as a whole preset rather
       -- than a single binding: the two differ in more than the key, and a
