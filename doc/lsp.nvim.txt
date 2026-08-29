@@ -327,9 +327,21 @@ multi-line, and meant to be read and copied from.
     :checkhealth lsp
 <
 Five sections: the environment (Neovim version, lib.nvim), what setup()
-registered including every warning it worked around, servers configured versus
-set up versus attached, the ecosystem around the plugin, and a pointer to
-|:LspDoctor| for per-buffer diagnosis.
+registered including every warning it worked around, the servers, the ecosystem
+around the plugin, and a pointer to |:LspDoctor| for per-buffer diagnosis.
+
+The servers section reads left to right along four numbers: installed (what
+Mason has on disk, whatever `servers` says), configured, set up, and attached
+-- both in total and in the buffer you were in when you opened the report. That
+last one is the alternate buffer, not the current one: Neovim creates the
+`health://` buffer and makes it current before running a single check, so
+reading the current buffer would report on the report.
+
+An installed server that nothing attaches to costs nothing. The section warns
+about exactly one thing: a server whose cost scales with attached buffers
+(`ts_ls`, `pyright`, `jdtls`, `omnisharp`) held open across many of them. Never
+on a count alone -- five buffers on `ts_ls` is a working set, and warning about
+that would train you to skip the section.
 
 Severity follows dependency hardness: something the plugin cannot work without
 is an error, something it uses when present is information. That is why

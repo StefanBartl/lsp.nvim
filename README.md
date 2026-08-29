@@ -244,10 +244,17 @@ An out-of-range value degrades to the documented default and shows up in
 ```
 
 Five sections: the environment, what `setup()` registered (including every
-warning it had to work around), servers configured versus set up versus
-attached, the ecosystem around the plugin, and a pointer to `:LspDoctor` for
-per-buffer diagnosis. The gap between "configured", "set up" and "attached" is
-usually the answer when a server "does not work".
+warning it had to work around), the servers, the ecosystem around the plugin,
+and a pointer to `:LspDoctor` for per-buffer diagnosis.
+
+The servers section runs along four numbers — installed (what Mason has on
+disk, whatever `servers` says), configured, set up, attached — plus which of
+the running clients serve the buffer you came from. The gap between any two of
+them is usually the answer when a server "does not work", and the last two are
+also the cost picture: an installed server that is attached to nothing costs
+nothing. The section warns about exactly one thing, a server whose cost scales
+with attached buffers (`ts_ls`, `pyright`, `jdtls`, `omnisharp`) held open
+across many of them — never on a count alone.
 
 ## Architecture
 
