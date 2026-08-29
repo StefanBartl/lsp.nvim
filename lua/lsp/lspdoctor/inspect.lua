@@ -211,7 +211,7 @@ end
 
 -- Report generation -----------------------------------------------------------
 
----@param mode '"quick"'|'"deep"'
+---@param mode '"buffer"'|'"capabilities"'
 ---@param bufnr integer
 ---@return string[] lines, table report
 local function generate_report(mode, bufnr)
@@ -226,7 +226,7 @@ local function generate_report(mode, bufnr)
   if #names == 0 then
     table.insert(lines, "No LSP client attached")
   else
-    local display = mode == "quick" and take(names, Opts.list_limit or 10) or names
+    local display = mode == "buffer" and take(names, Opts.list_limit or 10) or names
     for _, n in ipairs(display) do
       table.insert(lines, string.format("- `%s`", n))
     end
@@ -317,7 +317,7 @@ local function generate_report(mode, bufnr)
   table.insert(lines, "")
 
   -- Deep mode extras
-  if mode == "deep" then
+  if mode == "capabilities" then
     -- Workspace
     if Opts.show_workspace and #names > 0 then
       for _, n in ipairs(names) do
@@ -407,14 +407,14 @@ end
 
 ---@param bufnr integer
 ---@return string[] lines, table report
-function M.quick(bufnr)
-  return generate_report("quick", bufnr)
+function M.buffer(bufnr)
+  return generate_report("buffer", bufnr)
 end
 
 ---@param bufnr integer
 ---@return string[] lines, table report
-function M.deep(bufnr)
-  return generate_report("deep", bufnr)
+function M.capabilities(bufnr)
+  return generate_report("capabilities", bufnr)
 end
 
 return M

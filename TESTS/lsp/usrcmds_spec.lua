@@ -89,7 +89,33 @@ describe("lsp.bindings.usrcmds", function()
     end)
 
     it("doctor", function()
-      completes("Lsp doctor ", { "health", "debug", "quick", "deep", "all" })
+      completes("Lsp doctor ", { "startup", "resolve", "buffer", "capabilities", "all" })
+    end)
+
+    -- The legacy spellings are accepted but deliberately NOT offered: an enum
+    -- is also the discovery surface, and offering nine names for five reports
+    -- would undo the rename. Accepting them is what keeps an existing mapping
+    -- working.
+    it("doctor does not offer the report names it replaced", function()
+      local got = complete("Lsp doctor ")
+      for _, legacy in ipairs({ "health", "debug", "quick", "deep" }) do
+        assert.is_false(has(got, legacy), "Lsp doctor must not offer " .. legacy)
+      end
+    end)
+
+    it("doctor still accepts the report names it replaced", function()
+      local doctor = require("lsp.lspdoctor")
+      for legacy, current in pairs(doctor.LEGACY_MODES) do
+        assert.are.equal("function", type(doctor[legacy]), legacy .. " is callable")
+        assert.are.equal("function", type(doctor[current]), current .. " is callable")
+      end
+      -- The map is the single source both `:LspDoctor` and `:Lsp doctor`
+      -- resolve through, so a name missing here is a name that silently stops
+      -- working.
+      assert.are.same(
+        { debug = "resolve", deep = "capabilities", health = "startup", quick = "buffer" },
+        doctor.LEGACY_MODES
+      )
     end)
 
     it("log level", function()

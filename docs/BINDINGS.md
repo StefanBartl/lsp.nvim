@@ -151,7 +151,7 @@ unless `usrcmds.enable = false`.
 | `:Lsp servers` | — | Servers set up, and the clients currently attached |
 | `:Lsp info` | — | Detailed LSP information for the current buffer |
 | `:Lsp health` | — | Run `:checkhealth lsp` |
-| `:Lsp doctor` | `{health\|debug\|quick\|deep\|all}` | Per-buffer diagnosis (default `health`) |
+| `:Lsp doctor` | `{startup\|resolve\|buffer\|capabilities\|all}` | Per-buffer diagnosis (default `startup`) |
 | `:Lsp start` | `[server]` | Start servers here (auto-detect, or one by name) |
 | `:Lsp stop` | `[server]` | Stop clients here (all, or one by name) |
 | `:Lsp restart` | `[server]` | Restart clients here (all, or one by name) |

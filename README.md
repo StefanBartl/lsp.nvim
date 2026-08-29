@@ -139,7 +139,7 @@ One verb with subcommands and `<Tab>` completion. Full cheatsheet:
 | Command | Effect |
 | ------- | ------ |
 | `:Lsp status` / `servers` / `info` / `health` | What is set up, what is attached, what is wrong |
-| `:Lsp doctor [mode]` | Per-buffer diagnosis (`health`, `debug`, `quick`, `deep`, `all`) |
+| `:Lsp doctor [mode]` | Per-buffer diagnosis (`startup`, `resolve`, `buffer`, `capabilities`, `all`) |
 | `:Lsp start` / `stop` / `restart` `[server]` | Lifecycle for this buffer's clients |
 | `:Lsp force-restart {server}` | Restart one server with a full cleanup first |
 | `:Lsp recover` | Auto-recover servers that should be running here |

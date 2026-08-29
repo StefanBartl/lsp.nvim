@@ -21,7 +21,7 @@
 ---@field lines string[]
 
 ---@class Lsp.Doctor.Report
----@field mode '"quick"'|'"deep"'
+---@field mode '"buffer"'|'"capabilities"'
 ---@field ok boolean
 ---@field summary string
 ---@field sections Lsp.Doctor.Section[]

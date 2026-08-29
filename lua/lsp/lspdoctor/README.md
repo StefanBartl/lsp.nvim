@@ -4,6 +4,23 @@ Small, dependency-free helper to inspect Neovim’s LSP state for the current bu
 
 Linux/macOS focused. Neovim 0.9+ (0.10+ recommended).
 
+> **Parts of this file predate the migration into `lsp.nvim` and are wrong.**
+> Verified on 2026-08-29 against the source. The *Commands* section below has
+> been corrected; the **API** and **Usage Examples** sections have not, and
+> should not be trusted until they are:
+>
+> - the module is `lsp.lspdoctor`, not `usrcmds.lspdoctor`;
+> - `run(mode, bufnr)` and `export(mode, bufnr)` do not exist — the reports are
+>   `startup`, `resolve`, `buffer`, `capabilities` and `all`, each its own
+>   function, each taking `(bufnr, use_scratch)`;
+> - there is no `:LspDoctor export` subcommand — `!` opens the scratch buffer,
+>   and it never selected a report;
+> - `Lsp.Doctor.Report.mode` is `"buffer"`/`"capabilities"`, not
+>   `"quick"`/`"deep"`.
+>
+> `docs/BINDINGS.md`, `doc/lsp.nvim.txt` and the repository README are current
+> and are the ones to read meanwhile.
+
 ---
 
 ## Table of content
@@ -41,7 +58,7 @@ Linux/macOS focused. Neovim 0.9+ (0.10+ recommended).
   * Semantic Tokens request probe with short timeout
   * External tools check (rg, fd, jq, eslint, prettier, stylua, lua-language-server)
 * Export renderer that writes the report to a scratch buffer (read-only) with helpful mappings
-* Health-style summary via `:LspDoctor health`
+* Health-style summary via `:LspDoctor startup`
 * Print vs. notify output (configurable)
 
 ---
@@ -87,16 +104,26 @@ Example with Lazy.nvim using a local module:
 ## Commands
 
 ```
-:LspDoctor          quick report (message area)
-:LspDoctor!         deep report (message area)
-:LspDoctor export   quick report → scratch buffer (read-only)
-:LspDoctor! export  deep report → scratch buffer (read-only)
-:LspDoctor health   health-style summary (message area)
+:LspDoctor                all five reports combined (message area)
+:LspDoctor startup        is the server running, and if not, why
+:LspDoctor resolve        where the filetype → server chain breaks
+:LspDoctor buffer         what is going on in this buffer right now
+:LspDoctor capabilities   what the servers here can do, plus workspaces
+:LspDoctor all            all four, explicitly
+:LspDoctor! [report]      the same, into a scratch buffer instead
 ```
+
+The names say which question the report answers. Until 2026-08-29 they were
+`health`, `debug`, `quick` and `deep` — names that described how much output to
+expect rather than what was in it, and `health` collided with `:checkhealth
+lsp` and `:Lsp health`, which report on the *plugin* rather than on this
+buffer's servers. **The old spellings still work**, as command arguments and as
+functions; they are simply no longer offered in completion.
 
 Notes:
 
-* `!` (bang) selects “deep” mode.
+* `!` (bang) opens the report in a scratch buffer. It does **not** select a
+  report — that is what the argument is for.
 * `export` opens a scratch buffer at the bottom with helpful keymaps:
 
   * `q` close buffer
@@ -111,8 +138,8 @@ Minimal usage in a running session:
 
 ```vim
 :LspDoctor
-:LspDoctor! export
-:LspDoctor health
+:LspDoctor! capabilities
+:LspDoctor startup
 ```
 
 Programmatic usage:
@@ -222,7 +249,7 @@ The buffer filetype defaults to `markdown` and can be changed via `scratch_filet
 
 ## Health-style output
 
-`LspDoctor health` prints a compact, `:checkhealth`-like summary to the message area. It does not depend on or hook into Neovim’s health providers; it only mimics the style for convenience.
+`:LspDoctor startup` prints a compact, `:checkhealth`-like summary to the message area — per server: running, configured, executable found, attempts, last error, and what to run next. It does not depend on or hook into Neovim’s health providers; it only mimics the style for convenience. For the *plugin's* health rather than this buffer's servers, use `:checkhealth lsp`.
 
 ---
 

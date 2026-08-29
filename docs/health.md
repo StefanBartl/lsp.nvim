@@ -29,7 +29,7 @@ Four numbers, and the gap between any two of them is usually the answer.
   `lsp.servers.<name>` module, or that module's setup threw. The reason is in
   the warnings above it.
 - **Set up but not attached** — expected until you open a matching file. If it
-  stays that way, `:Lsp doctor health` adds the missing piece: whether the
+  stays that way, `:Lsp doctor startup` adds the missing piece: whether the
   server's executable actually resolves.
 - **Attached, but not here** — the per-buffer line names which of the running
   clients serve the file you were in when you opened the report. A server can
@@ -76,7 +76,8 @@ describes itself.
 ## Two things it deliberately does not do
 
 It does not repeat `:LspDoctor`'s per-buffer report — capabilities, workspace
-folders, provider conflicts belong there and are shown by `:Lsp doctor deep`.
+folders, provider conflicts belong there and are shown by
+`:Lsp doctor capabilities`.
 
 It does not list the third-party plugins from a table of its own. The list comes
 from the adapter registry, because a list written down twice eventually

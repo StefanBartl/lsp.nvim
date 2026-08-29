@@ -246,6 +246,13 @@ end
 function M.setup()
   register_server_argtype()
   register_filetype_argtype()
+  -- `LSP_DOCTOR_MODE` is owned by `lsp.lspdoctor` -- the module that owns the
+  -- reports owns their names. It has to exist before the verb below is
+  -- composed, and the bootstrap does not reach lspdoctor until after the
+  -- bindings layer, so it is registered from here as well.
+  pcall(function()
+    require("lsp.lspdoctor").register_mode_argtype()
+  end)
 
   local ok = pcall(composer.verb, "Lsp", {
     desc = "lsp.nvim: control and inspect the LSP setup",
@@ -282,20 +289,21 @@ function M.setup()
       {
         path = { "doctor" },
         args = {
-          {
-            name = "mode",
-            type = "STRING",
-            enum = { "health", "debug", "quick", "deep", "all" },
-            optional = true,
-          },
+          -- Shares `:LspDoctor`'s argument type rather than repeating an enum,
+          -- so the two cannot offer different report names. The type also
+          -- accepts the legacy spellings without offering them.
+          { name = "mode", type = "LSP_DOCTOR_MODE", optional = true },
         },
         desc = "Per-buffer diagnosis (same as :LspDoctor)",
         run = function(ctx)
           local doctor = require("lsp.lspdoctor")
-          local mode = ctx.args.mode or "health"
+          -- `startup`, not `all`: this route opens a scratch split, and the
+          -- combined report is long. The question one arrives with is almost
+          -- always "why is my server not running".
+          local mode = doctor.LEGACY_MODES[ctx.args.mode] or ctx.args.mode or "startup"
           local fn = doctor[mode]
           if type(fn) ~= "function" then
-            notify.warn(("unknown doctor mode %q"):format(mode))
+            notify.warn(("unknown doctor report %q"):format(tostring(mode)))
             return
           end
           fn(0, true)

@@ -11,6 +11,16 @@ The full table — every route, every argument, every legacy alias — is in
 :Lsp format | diag | workspace | root | hints | log
 ```
 
+`:Lsp doctor` takes the name of the question you have, not a verbosity level:
+
+```
+:Lsp doctor startup       -- is the server running, and if not, why
+:Lsp doctor resolve       -- where the filetype -> server chain breaks
+:Lsp doctor buffer        -- what is going on in this buffer right now
+:Lsp doctor capabilities  -- what the servers here can do, plus workspaces
+:Lsp doctor all           -- all four
+```
+
 Built with lib.nvim's user-command composer, so subcommands and every closed
 argument set complete with `<Tab>`. `[server]` completes from the **live** set —
 attached clients first, then everything in `servers` — rather than a list frozen
@@ -38,7 +48,7 @@ apart. [BINDINGS.md](BINDINGS.md) maps each one to its route.
 ## Two exceptions
 
 `:LspDoctor` keeps its own verb: it is a diagnostic tool with its own renderer
-and five modes, not an LSP control command. It stays registered even with the
+and five reports, not an LSP control command. The four reports were called `health`, `debug`, `quick` and `deep` until 2026-08-29. Those spellings still work everywhere they used to; they are simply no longer offered in completion. It stays registered even with the
 aliases off, and is reachable as `:Lsp doctor` as well.
 
 `:LspMdHints` is marksman-specific. Server commands do not belong in a global
@@ -50,8 +60,9 @@ the module that owns them.
 
 | Symptom | Start here |
 | ------- | ---------- |
-| A server is not running | `:Lsp doctor health` — configured vs. running vs. executable found |
-| It runs but behaves oddly | `:Lsp doctor deep` — capabilities, workspace, provider conflicts |
+| A server is not running | `:Lsp doctor startup` — configured vs. running vs. executable found |
+| It runs but behaves oddly | `:Lsp doctor capabilities` — capabilities, workspace, provider conflicts |
+| It is not even attempted here | `:Lsp doctor resolve` — where the filetype → server chain breaks |
 | Nothing is set up at all | `:Lsp status` — what `setup()` registered, and its warnings |
 | Formatting picks the wrong tool | `:Lsp format which` |
 | The server is spamming errors | `:Lsp log level warn`, then `:Lsp log open` |

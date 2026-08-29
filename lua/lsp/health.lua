@@ -7,7 +7,7 @@
 --- disagree.
 ---
 --- Roadmap section 11 makes this a thin second interface onto `lspdoctor`'s
---- core. That is what the last section is: `:LspDoctor health` answers "is this
+--- core. That is what the last section is: `:LspDoctor startup` answers "is this
 --- buffer's LSP healthy", this answers "is the plugin healthy" and points at
 --- the other for the per-buffer detail. Neither reimplements the other.
 ---
@@ -428,7 +428,7 @@ local function check_doctor()
   health.start("Per-buffer diagnosis")
 
   if has("lsp.lspdoctor") then
-    health.ok("`:LspDoctor health|debug|quick|deep|all` available")
+    health.ok("`:LspDoctor startup|resolve|buffer|capabilities|all` available")
     health.info("This report covers the plugin; :LspDoctor covers the current buffer.")
   else
     health.warn("lsp.lspdoctor did not load")

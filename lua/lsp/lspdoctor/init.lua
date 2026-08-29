@@ -1,20 +1,37 @@
 ---@module 'lsp.lspdoctor'
 ---@brief Comprehensive LSP diagnostics and health checking system
 ---@description
---- LSP Doctor provides multiple diagnostic modes for inspecting LSP state:
---- - health: Server health checks (running, configured, errors)
---- - debug: Configuration and registration debugging
---- - quick: Quick overview of current LSP state
---- - deep: Detailed LSP capabilities and configuration
---- - all: Combined output of all modes
+--- Four reports, each answering one question. The names say which question,
+--- because the previous ones said how much output to expect instead:
+--- `quick`/`deep` described volume rather than content -- nothing in "deep"
+--- hinted that it is where the capabilities live, which is what one opens it
+--- for -- and `health` collided with |:checkhealth-lsp| and `:Lsp health`,
+--- which report on the *plugin*, not on this buffer's servers.
+---
+--- - startup:      Is the server running, and if not, why? Executable found,
+---                 attempts made, last error, what to run next.
+--- - resolve:      Where does the filetype -> server chain break? Five steps,
+---                 from "which servers should this filetype get" down to what
+---                 `:LspStart` would offer.
+--- - buffer:       What is going on in this buffer right now? Clients,
+---                 diagnostic counts, provider conflicts, offset encodings,
+---                 formatter. Lists capped at `list_limit`.
+--- - capabilities: What can the servers here actually do? The `buffer` report
+---                 uncapped, plus root_dir/workspace folders and the full
+---                 capability set per client.
+--- - all:          All four.
 ---
 --- Commands:
----   :LspDoctor          -> all modes combined
----   :LspDoctor health   -> server health check
----   :LspDoctor debug    -> debug configuration issues
----   :LspDoctor quick    -> quick LSP overview
----   :LspDoctor deep     -> detailed LSP inspection
----   :LspDoctor! [mode]  -> open in scratch buffer instead of printing
+---   :LspDoctor               -> all four combined
+---   :LspDoctor startup       -> why a server is (not) running
+---   :LspDoctor resolve       -> filetype to server resolution chain
+---   :LspDoctor buffer        -> what is going on in this buffer
+---   :LspDoctor capabilities  -> per-client capabilities and workspace
+---   :LspDoctor! [mode]       -> open in scratch buffer instead of printing
+---
+--- The old names (`health`, `debug`, `quick`, `deep`) still work, as command
+--- arguments and as functions -- renaming a command someone has in a mapping
+--- is not worth a broken mapping. They are not offered in completion.
 ---
 --- Keymaps in scratch buffer:
 ---   q     -> close buffer
@@ -27,6 +44,7 @@ require("lsp.lspdoctor.@types")
 local notify = require("lib.nvim.notify").create("[lspdoctor]")
 local map = require("lib.nvim.bindings.keymap")
 local composer = require("lib.nvim.bindings.usercmd.composer")
+local argtypes = require("lib.nvim.bindings.usercmd.composer.argtypes")
 local kit = require("lib.nvim.ui.kit")
 
 local M = {}
@@ -166,48 +184,72 @@ function M.setup(opts)
   inspect.setup(Opts)
 end
 
----Run health check
+---Why a server is, or is not, running for this buffer.
 ---@param bufnr integer|nil
 ---@param use_scratch boolean|nil
 ---@return table results
-function M.health(bufnr, use_scratch)
+function M.startup(bufnr, use_scratch)
   bufnr = bufnr or 0
   local lines, results = health.check(bufnr)
   render_output(lines, use_scratch or false)
   return results
 end
 
----Run debug info
+---Where the filetype to server resolution chain breaks.
 ---@param bufnr integer|nil
 ---@param use_scratch boolean|nil
 ---@return table info
-function M.debug(bufnr, use_scratch)
+function M.resolve(bufnr, use_scratch)
   bufnr = bufnr or 0
   local lines, info = debug.info(bufnr)
   render_output(lines, use_scratch or false)
   return info
 end
 
----Run quick inspection
+---What is going on in this buffer right now.
 ---@param bufnr integer|nil
 ---@param use_scratch boolean|nil
 ---@return table report
-function M.quick(bufnr, use_scratch)
+function M.buffer(bufnr, use_scratch)
   bufnr = bufnr or 0
-  local lines, report = inspect.quick(bufnr)
+  local lines, report = inspect.buffer(bufnr)
   render_output(lines, use_scratch or false)
   return report
 end
 
----Run deep inspection
+---What the servers attached here can actually do, plus their workspaces.
 ---@param bufnr integer|nil
 ---@param use_scratch boolean|nil
 ---@return table report
-function M.deep(bufnr, use_scratch)
+function M.capabilities(bufnr, use_scratch)
   bufnr = bufnr or 0
-  local lines, report = inspect.deep(bufnr)
+  local lines, report = inspect.capabilities(bufnr)
   render_output(lines, use_scratch or false)
   return report
+end
+
+--- The names these reports used to have, mapped to the ones they have now.
+---
+--- Kept because a rename that breaks a mapping someone already made is a worse
+--- outcome than a name that reads badly. They resolve at the call site, so
+--- `require("lsp.lspdoctor").deep(0)` and `:LspDoctor deep` both keep working;
+--- they are simply not offered in completion, so nobody learns them anew.
+--- The reports, in the order one reaches for them when something is wrong.
+---@type string[]
+M.MODES = { "startup", "resolve", "buffer", "capabilities", "all" }
+
+---@type table<string, string>
+M.LEGACY_MODES = {
+  health = "startup",
+  debug = "resolve",
+  quick = "buffer",
+  deep = "capabilities",
+}
+
+for legacy, current in pairs(M.LEGACY_MODES) do
+  M[legacy] = function(bufnr, use_scratch)
+    return M[current](bufnr, use_scratch)
+  end
 end
 
 ---Run all checks combined
@@ -257,7 +299,41 @@ end
 ---the composer's own enum validation replaces the hand-written "Unknown
 ---mode" warning.
 ---@return nil
+--- Argument type for a report name.
+---
+--- It exists because an `enum` is both the accepted set *and* the offered set,
+--- and here those have to differ: the four current names are what should be
+--- discoverable, the four legacy ones have to keep working without being
+--- taught to anyone new. The composer rejects an off-enum value before `run`
+--- is ever reached, so "accepted but not offered" is not something an enum can
+--- express -- verified, not assumed.
+---
+--- Same mechanism `lsp.bindings.usrcmds` uses for `LSP_SERVER`, and registered
+--- under a name only this plugin uses, because `argtypes.register` is a shared
+--- registry.
+--- Registered from two places: here, and `lsp.bindings.usrcmds`, which needs
+--- the type to exist when it composes `:Lsp doctor` -- and the bindings layer
+--- is set up before the bootstrap reaches this module. Registering twice is
+--- harmless (same spec, last one wins); not registering before the compose
+--- would make the composer refuse the whole `:Lsp` verb.
+---@return nil
+function M.register_mode_argtype()
+  argtypes.register("LSP_DOCTOR_MODE", {
+    validate = function(raw)
+      local canonical = M.LEGACY_MODES[raw] or raw
+      if canonical == "all" or type(M[canonical]) == "function" then
+        return true, canonical, nil
+      end
+      return false, nil, ("unknown report %q -- try %s"):format(raw, table.concat(M.MODES, ", "))
+    end,
+    complete = function(arg_lead)
+      return argtypes.prefix(M.MODES, arg_lead)
+    end,
+  })
+end
+
 function M.enable_usercmd()
+  M.register_mode_argtype()
   composer.verb("LspDoctor", {
     bang = true,
     desc = "[LSP Doctor] Comprehensive LSP diagnostics (add ! for scratch buffer)",
@@ -267,24 +343,16 @@ function M.enable_usercmd()
         args = {
           {
             name = "mode",
-            type = "STRING",
-            enum = { "health", "debug", "quick", "deep", "all" },
+            type = "LSP_DOCTOR_MODE",
             optional = true,
           },
         },
         run = function(ctx)
-          local mode = ctx.args.mode or "all"
+          local mode = M.LEGACY_MODES[ctx.args.mode] or ctx.args.mode or "all"
           local use_scratch = ctx.bang
-          if mode == "all" then
-            M.all(0, use_scratch)
-          elseif mode == "health" then
-            M.health(0, use_scratch)
-          elseif mode == "debug" then
-            M.debug(0, use_scratch)
-          elseif mode == "quick" then
-            M.quick(0, use_scratch)
-          elseif mode == "deep" then
-            M.deep(0, use_scratch)
+          local run = M[mode]
+          if type(run) == "function" then
+            run(0, use_scratch)
           end
         end,
       },
