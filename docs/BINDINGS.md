@@ -5,9 +5,11 @@ documentation only; the source of truth is `lua/lsp/config/KEYMAPS.lua` (the
 keymap catalogue) and `lua/lsp/bindings/` (commands, autocommands). A change
 there must be reflected here.
 
-The LSP core has moved in (migration phase 2), so the command family below is
-real. The keymap catalogue is still empty and `bindings/autocmds.lua` registers
-no autocommand; both are migration phase 3.
+All five migration phases are through: the command family, the keymap
+catalogue and the autocommands below are all real. The keymap tables are
+generated from the catalogue and checked by CI, so they cannot go stale; the
+prose around them can, and this paragraph is the one that did — it claimed an
+empty catalogue while the generated table below it listed 44 entries.
 
 ## Keymaps
 
@@ -159,6 +161,7 @@ unless `usrcmds.enable = false`.
 | `:Lsp diag` | `{qf\|loc\|next\|prev} [qf\|loc]` | Diagnostics into a list, or move within one |
 | `:Lsp workspace` | `[on\|off\|toggle\|status\|now]` | Workspace-wide diagnostics on attach (default `status`) |
 | `:Lsp root` | `[pick\|show]` | Root scope: pick between cwd / git root / path (default `pick`) |
+| `:Lsp hints` | `[toggle\|on\|off\|status\|clear] [filetype]` | Inlay hints, globally or for one filetype (default `toggle`) |
 | `:Lsp log open` | — | Open Neovim's LSP log file in a split |
 | `:Lsp log level` | `{trace\|debug\|info\|warn\|error\|off}` | Set the LSP log level |
 
@@ -206,8 +209,20 @@ multi-line and meant to be read and copied from.
 
 ## Autocommands
 
-None yet. `lua/lsp/bindings/autocmds.lua` owns the augroup name `lsp_nvim` and
-a `clear()`, so the group is reloadable from the first handler onward.
+Two augroups belong to the binding layer proper; the rest of the plugin's
+autocommands belong to the subsystems that own them.
+
+| augroup | event | what it does |
+| ------- | ----- | ------------ |
+| `lsp_nvim` | `LspAttach` | Re-binds the catalogue's `rename` and `goto_type_definition_gr` buffer-locally, because Neovim sets its own `gr*` maps buffer-locally on attach and those would otherwise shadow the catalogue's. Registered only when `keymaps.enable` is on; `bindings/autocmds.lua` owns the name and a `clear()`. |
+| `lsp_nvim_inlay_hints` | `LspAttach` | Applies the resolved inlay-hint state to a newly attached buffer. Deliberately a separate group: `lsp_nvim` is cleared when `keymaps.enable = false`, and hints are not a keymap concern. `core/inlay_hints.lua` owns it. |
+
+Beyond these, `formatter/`, `languages/`, `tools/` and `servers/` each register
+their own groups (format-on-save, per-filetype setup, the signature popup's
+per-window group, lua_ls's root recompute). They are not listed here because
+they are not bindings — the complete inventory lives in the config's
+`docs/NOTES/PersonelPlugins/BINDINGS/Autocmds/lsp.nvim.md`, and a second copy
+here would be a second thing to keep in sync.
 
 Planned (phases 2 and 3): `LspAttach` wiring, the format-on-save group, and the
 diagnostics refresh — all under the single group above.
