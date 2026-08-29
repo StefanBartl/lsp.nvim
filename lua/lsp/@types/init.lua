@@ -29,9 +29,9 @@ require("lsp.@types.vim_lsp")
 ---| '"none"'    # bind nothing; the catalogue stays available for manual use
 
 ---@class LspNvim.KeymapsOpts
----@field enable boolean # Master switch. false = the plugin binds no keys at all.
----@field preset LspNvim.KeymapPreset # Catalogue entry to bind.
----@field map table<string, string|false> # Per-action override: a string replaces the lhs, false disables that action. An absent key keeps the preset's lhs.
+---@field enable? boolean # Master switch. false = the plugin binds no keys at all.
+---@field preset? LspNvim.KeymapPreset # Catalogue entry to bind.
+---@field map? table<string, string|false> # Per-action override: a string replaces the lhs, false disables that action. An absent key keeps the preset's lhs.
 
 ---@class LspNvim.UsrcmdsOpts
 ---@field enable boolean # Register the `:Lsp` verb on setup.
@@ -80,19 +80,19 @@ require("lsp.@types.vim_lsp")
 ---@class LspNvim.Config
 --- The resolved configuration: DEFAULTS with the user's options merged over
 --- them, normalized so every field below is guaranteed present and valid.
----@field servers string[] # Server names to set up and enable.
----@field diagnostics table # Passed straight to `vim.diagnostic.config()`.
----@field formatter LspNvim.FormatterOpts
----@field attach LspNvim.AttachOpts
----@field mason LspNvim.MasonOpts
----@field lspdoctor table # Options forwarded to `lsp.lspdoctor.setup()`.
----@field tools LspNvim.ToolsOpts
----@field languages LspNvim.LanguagesOpts
----@field rename LspNvim.RenameOpts
----@field keymaps LspNvim.KeymapsOpts
----@field usrcmds LspNvim.UsrcmdsOpts
----@field which_key LspNvim.WhichKeyOpts
----@field menu LspNvim.MenuOpts
+---@field servers? string[] # Server names to set up and enable.
+---@field diagnostics? table # Passed straight to `vim.diagnostic.config()`.
+---@field formatter? LspNvim.FormatterOpts
+---@field attach? LspNvim.AttachOpts
+---@field mason? LspNvim.MasonOpts
+---@field lspdoctor? table # Options forwarded to `lsp.lspdoctor.setup()`.
+---@field tools? LspNvim.ToolsOpts
+---@field languages? LspNvim.LanguagesOpts
+---@field rename? LspNvim.RenameOpts
+---@field keymaps? LspNvim.KeymapsOpts
+---@field usrcmds? LspNvim.UsrcmdsOpts
+---@field which_key? LspNvim.WhichKeyOpts
+---@field menu? LspNvim.MenuOpts
 
 -- #####################################################################
 -- config/KEYMAPS.lua, bindings/keymaps.lua

@@ -41,7 +41,10 @@ local function start_lsp(name, bufnr)
     return false
   end
 
-  -- Start AND attach to buffer
+  -- Start AND attach to buffer. The `missing-fields` suppression is the same
+  -- case as in servers/lua_ls/reload.lua: the resolved server table is built
+  -- elsewhere, LuaLS checks it against vim.lsp.start's meta regardless.
+  ---@diagnostic disable-next-line: missing-fields
   local ok, client_id = pcall(lsp.start, server_config, { bufnr = bufnr })
   return ok and client_id ~= nil
 end

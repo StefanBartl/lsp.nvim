@@ -28,6 +28,9 @@ function M.setup()
   -- Auto-organize imports on save
   Autocmd.create("BufWritePre", function(_)
     vim.lsp.buf.code_action({
+      -- Neovim's meta declares `diagnostics` required on lsp.CodeActionContext,
+      -- but vim.lsp.buf.code_action fills it from the current position.
+      ---@diagnostic disable-next-line: missing-fields
       context = { only = { "source.organizeImports.astro" } },
       apply = true,
     })

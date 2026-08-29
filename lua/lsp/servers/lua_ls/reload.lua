@@ -29,6 +29,10 @@ local function start_lua_ls(bufnr)
     return false
   end
 
+  -- The server table is assembled by `lsp.servers.*`, not written here;
+  -- LuaLS matches it against vim.lsp.start's own meta, which wants `cmd`
+  -- even when the resolved config supplies it dynamically.
+  ---@diagnostic disable-next-line: missing-fields
   local ok, client_id = pcall(vim.lsp.start, server_config, { bufnr = bufnr })
   return ok and client_id ~= nil
 end
