@@ -5,7 +5,7 @@
 --- lazy.nvim evaluates `import` while it is still *collecting* specs, long
 --- before `require("lsp").setup(opts)` exists to be read -- so *whether* a
 --- plugin is installed cannot come from `opts`, only *how* it is configured
---- can. `docs/ROADMAP.md` section 6.2 has the split. Set it before
+--- can. Set it before
 --- `require("lazy").setup()`: >lua
 ---     vim.g.lsp_nvim = {
 ---       pack = {

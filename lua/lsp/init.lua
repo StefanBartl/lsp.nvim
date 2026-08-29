@@ -4,7 +4,6 @@
 --- Umbrella plugin for the whole LSP setup: server registry, attach handling,
 --- capabilities, the formatter and workspace-diagnostics toggles, diagnostics,
 --- the per-language and per-server modules, the extra tools, and `:LspDoctor`.
---- `docs/ROADMAP.md` carries the design and the remaining migration phases.
 ---
 --- `setup()` does two things in order: it resolves the configuration and binds
 --- what the plugin claims (keymaps, `:Lsp`, autocommands), then it bootstraps

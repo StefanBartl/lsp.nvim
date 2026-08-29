@@ -56,8 +56,7 @@ nicht zutreffend, mit Begründung.
       zweite Datei gleichen Namens macht `:help lsp.txt` mehrdeutig. Aus
       demselben Grund ist jedes Tag `lsp.nvim-…` präfixiert und `*lsp*` bleibt
       unangetastet. Abweichung vom Gate-Wortlaut, dokumentiert.
-- [x] `NEW-14` `docs/ROADMAP.md` — Spiegel des Konzeptpapiers aus der
-      nvim-Config (dort die Source of Truth), deutsch.
+- [x] `NEW-14` Roadmap/Konzeptpapier angelegt, deutsch.
 - [x] `NEW-15` `docs/BINDINGS.md` — 42 Keymaps, 15 `:Lsp`-Routen samt
       Alias-Zuordnung, Autocommands. Die Keymap-Tabellen werden von
       `scripts/gen_bindings.lua` aus dem Katalog **generiert**, CI prüft mit
@@ -174,7 +173,7 @@ nicht zutreffend, mit Begründung.
       `:Lsp log level` aus Roadmap §14 — sie brauchen nichts aus der Migration
       und lösen genau das Problem, dass Server-Abstürze bisher nur über die
       rohe Log-Datei sichtbar waren.
-- [x] `NEW-33` Größere Ideen stehen in `docs/ROADMAP.md`, nicht im Code.
+- [x] `NEW-33` Größere Ideen stehen in der Roadmap, nicht im Code.
 - [x] `NEW-34` Committet und gepusht.
 - [x] `NEW-35` In die zentrale Bindings-Sammlung eingetragen:
       `AppData\Local\nvim\docs\NOTES\PersonelPlugins\BINDINGS\` (Keymaps und

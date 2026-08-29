@@ -60,7 +60,7 @@ local opts = require("documentation.config").build(root, {
   repo_url = "https://github.com/StefanBartl/lsp.nvim",
   branch = "main",
 
-  -- The layer rule the whole umbrella design rests on (docs/ROADMAP.md §3):
+  -- The layer rule the whole umbrella design rests on:
   -- the core must not reach into the integrations. `core/attach.lua` never
   -- requires `lazydev` itself; the adapter does. Without a check this is only
   -- a sentence in the roadmap, and the first `pcall(require, "trouble")` in a

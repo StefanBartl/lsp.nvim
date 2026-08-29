@@ -3,7 +3,7 @@
 ---@description
 --- One adapter per plugin, each owning that plugin's `require`. The core does
 --- not reach into this layer and this layer does not reach into `pack/`:
---- `docs/ROADMAP.md` section 3 puts the boundary there so the core stays
+--- the boundary sits there so the core stays
 --- testable without a plugin manager and so swapping a completion engine is a
 --- one-file change. `scripts/gen_map.lua` declares the rule as a layer check.
 ---

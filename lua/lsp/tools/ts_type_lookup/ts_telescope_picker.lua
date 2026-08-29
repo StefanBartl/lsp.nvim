@@ -8,7 +8,7 @@ local notify = require("lib.nvim.notify").create("[lsp.tools.ts_type_lookup.ts_t
 -- module is pulled in during LSP setup, so a top-level `require("telescope")`
 -- defeated telescope's own `cmd = "Telescope"` lazy-loading and dragged it --
 -- plus telescope-github.nvim and pdfport.nvim -- into every startup, ~117ms
--- for a picker nobody has invoked yet. See docs/ROADMAP/PERF-Startup-Analyse.md.
+-- for a picker nobody has invoked yet.
 ---@return { pickers: table, finders: table, conf: table, previewers: table }|nil
 local function telescope_modules()
   local ok = pcall(require, "telescope")

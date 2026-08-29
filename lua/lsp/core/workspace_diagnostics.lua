@@ -33,7 +33,7 @@
 ---      `vim.fn.readfile()` of the whole file to build a `didOpen`.
 ---
 --- Measured effect: a 300-420ms stall right after `LspAttach`, plus a long
---- tail of 1700+ deferred callbacks. See docs/ROADMAP/PERF-Startup-Analyse.md.
+--- tail of 1700+ deferred callbacks.
 ---
 --- So `schedule_populate()` below replaces the plugin's file discovery with
 --- `lib.nvim.fs.collect_recursive.files_async` (no subprocess, prunes ignored

@@ -1,8 +1,7 @@
 ---@module 'lsp.core.mason_node'
 ---@brief Resolve a Mason-installed Node language server to a direct `node <entry>` command.
 ---@description
---- Fixes a hanging quit on Windows, diagnosed in
---- docs/ROADMAP/QuitCrash_NVIM.md and confirmed by measurement.
+--- Fixes a hanging quit on Windows, diagnosed and confirmed by measurement.
 ---
 --- ## The problem
 ---

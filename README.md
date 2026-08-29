@@ -19,9 +19,9 @@
 
 > **Status: alpha.** The core is here: servers, capabilities, attach handling,
 > formatter, diagnostics, the per-language and per-server modules, the extra
-> tools and `:LspDoctor` all live in this plugin now. Still outstanding are the
-> keymap consolidation (phase 3) and the integration and pack layers (phases 4
-> and 5) - see [docs/ROADMAP.md](docs/ROADMAP.md).
+> tools and `:LspDoctor` all live in this plugin now.
+> All five migration phases are through, including the keymap consolidation
+> and the integration and pack layers.
 
 `lsp.nvim` is the umbrella for everything LSP-related in a Neovim config: the
 server registry, attach handling, capabilities, the formatter and
@@ -297,10 +297,3 @@ in the layer that decides *whether* it is installed.
 | [health.md](docs/health.md) | Reading `:checkhealth lsp` |
 
 `:h lsp.nvim` has the same material as a vimdoc.
-
-## Roadmap
-
-[docs/ROADMAP.md](docs/ROADMAP.md) — the full concept: the current state of the
-subsystem being extracted, the three-layer architecture, the pack system, the
-binding consolidation, a six-phase migration plan, and the bugs found while
-surveying the code that is to be moved. Written in German.

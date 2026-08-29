@@ -215,7 +215,7 @@ An out-of-range value never raises. It degrades to the documented default and
 is recorded as a warning, visible in |:Lsp status| and |:checkhealth-lsp| -- a
 typo in a config should cost a feature, not a startup.
 
-`completion`, `rename` and `integrations` from `docs/ROADMAP.md` section 9 are
+`completion`, `rename` and `integrations` are
 still absent: nothing reads them yet, and a default nothing reads is a promise
 the plugin does not keep. They arrive with the integration layer (phase 4).
 
@@ -327,8 +327,7 @@ The adapters own every third-party `require`. They are not called by the core;
 they hand capability contributors and attach hooks to `lsp/init.lua`, which
 passes them in as plain functions. That is why `core/attach.lua` no longer
 knows lazydev or NvChad exist, and why |lsp.nvim.setup()| is the only place
-that composes the two layers. See `docs/ROADMAP.md` section 5 for the full
-tree.
+that composes the two layers.
 
 ==============================================================================
 9. STATUS AND ROADMAP                                       *lsp.nvim-status*
@@ -337,14 +336,8 @@ All five migration phases are done. The core lives here, configures the
 servers, owns every LSP keymap, reaches third-party plugins only through the
 adapters in `integrations/`, and installs and configures them from `pack/`.
 
-What remains is smaller and listed in `docs/ROADMAP.md`: folding the ~30
-`:Lsp*` commands into `:Lsp` routes as aliases (section 8.2), deduplicating the
-three root resolvers against `lib.nvim.fs` (finding B8), and wiring the doctor's
-health options, which it currently accepts and ignores (finding B12).
+What remains is smaller: folding the ~30 `:Lsp*` commands into `:Lsp` routes
+as aliases.
 
-`docs/ROADMAP.md` in the repository carries the full concept -- the survey of
-the subsystem being extracted, the three-layer design, the pack system, the
-binding consolidation, a six-phase migration plan, and the bugs found while
-surveying the code that is to be moved. It is written in German.
 
 vim:tw=78:ts=8:ft=help:norl:

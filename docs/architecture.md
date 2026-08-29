@@ -135,5 +135,3 @@ lua/lsp/
   pack/               LazySpec export
 ```
 
-The full design, and the migration that produced it, is in
-[ROADMAP.md](ROADMAP.md).

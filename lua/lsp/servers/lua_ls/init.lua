@@ -59,7 +59,7 @@ function M.setup(shared, opts)
       -- client -- `client.config.settings.Lua.workspace.library` was nil, so
       -- lua_ls had no Neovim runtime types at all, and `LUA_LS_PROFILE` had
       -- no effect (which is the real reason the `minimal` A/B in
-      -- docs/ROADMAP/PERF-Startup-Analyse.md changed nothing).
+      -- the startup A/B changed nothing).
       ---@param _params table
       ---@param config table
       before_init = function(_params, config)
