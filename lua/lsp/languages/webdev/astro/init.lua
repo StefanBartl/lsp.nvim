@@ -18,13 +18,23 @@ function M.enable()
   require("lsp.languages.webdev.astro.usercmds").setup()
   require("lsp.languages.webdev.astro.autocmds").setup()
 
-  -- Auto-tag setup (versuche zuerst nvim-ts-autotag)
+  -- Auto-Tag: nvim-ts-autotag wenn es da und konfiguriert ist, sonst der
+  -- handgeschriebene Fallback -- und die Frage wird erst beim ersten
+  -- Astro-Buffer gestellt. Sie zu stellen laedt das Plugin, und von hier aus
+  -- zog das die Treesitter-Seite in *jeden* Startup (gemessen: ~25ms der
+  -- `lsp`-Phase), fuer einen Filetype, den die meisten Sessions nie sehen.
+  -- Die Antwort ist memoisiert; konfiguriert wird nichts (siehe autotag.lua).
   local autotag = require("lsp.servers.webdev.astro.autotag")
-  local autotag_ok = autotag.setup()
+  ---@type boolean|nil
+  local autotag_ok = nil
 
   -- FIXED: Don't call vim.lsp.start() - let vim.lsp.enable() handle it
   Autocmd.create("FileType", function(args)
     require("lsp.languages.webdev.astro.keymaps").attach()
+
+    if autotag_ok == nil then
+      autotag_ok = autotag.available()
+    end
 
     -- Without nvim-ts-autotag, fall back to the hand-rolled implementation.
     if not autotag_ok then

@@ -1,14 +1,59 @@
 ---@module 'lsp.servers.webdev.astro.autotag'
---- Astro Auto-Close Tags via nvim-ts-autotag integration
+--- Astro auto-close tags: is nvim-ts-autotag usable in this session, and the
+--- hand-rolled fallback for when it is not.
+---
+--- **This module does not configure nvim-ts-autotag, on purpose.** The plugin
+--- has exactly one, global `setup()`, so configuring it from here means
+--- deciding `enable_close`, `enable_rename` and `enable_close_on_slash` for
+--- every filetype in the editor -- HTML, TSX, Svelte, Vue -- from inside an
+--- Astro module. That is not Astro's call. Whoever installs the plugin owns
+--- its options; this only asks whether it is there and wired up.
+---
+--- It used to call `setup()` with a full options table. Under lazy.nvim that
+--- was dead code: the host's own `config` runs during the very `require` that
+--- loads the plugin, and `nvim-ts-autotag.config.plugin.setup()` returns early
+--- once `did_setup()` is true -- so the second call did nothing, and Astro's
+--- `per_filetype.astro` never took effect either. Under a host that installs
+--- the plugin *without* configuring it, the same call did the opposite and
+--- silently became the global configuration. Both are gone now; what the
+--- plugin does is what its owner asked for.
+---
+--- (The `skip_tags` key that call passed was never read by the plugin at all.
+--- Skip patterns are per-filetype `skip_tag_pattern` entries in
+--- `nvim-ts-autotag.config.init`, not a `setup()` option.)
 
 local notify = require("lib.nvim.notify").create("[lsp.languages.webdev.astro.autotag]")
 local map = require("lib.nvim.bindings.keymap")
 
 local M = {}
 
----@return boolean success
-function M.setup()
-  local ok, autotag = pcall(require, "nvim-ts-autotag")
+---@internal
+--- Has anyone called `nvim-ts-autotag`'s `setup()`? Without it the plugin
+--- registers no autocommands and attaches to no buffer, so "installed" is not
+--- the same as "working".
+---
+--- Reads an internal module, deliberately tolerantly: an unknown layout is
+--- treated as "assume it is fine" rather than as a reason to drop to the
+--- fallback, because a renamed internal is not evidence that the plugin is
+--- unconfigured.
+---@return boolean
+local function configured_by_host()
+  local ok, plugin = pcall(require, "nvim-ts-autotag.config.plugin")
+  if not (ok and type(plugin) == "table" and type(plugin.did_setup) == "function") then
+    return true
+  end
+  return plugin.did_setup() == true
+end
+
+--- Can nvim-ts-autotag handle auto-closing here?
+---
+--- `false` means the caller should install `setup_manual_autoclose` for the
+--- buffer instead. Loading the plugin is a side effect of asking, and a wanted
+--- one: this runs from the first Astro buffer, which is exactly when it should
+--- be up.
+---@return boolean active
+function M.available()
+  local ok = pcall(require, "nvim-ts-autotag")
   if not ok then
     notify.warn(
       "[Astro] nvim-ts-autotag not found. Install for better auto-close support:\n"
@@ -17,44 +62,15 @@ function M.setup()
     return false
   end
 
-  -- Configure nvim-ts-autotag for Astro.
-  autotag.setup({
-    opts = {
-      -- Enable closing tags for Astro files
-      enable_close = true,
-      enable_rename = true,
-      enable_close_on_slash = true,
-    },
-    -- Astro-spezifische Filetype-Einstellungen
-    per_filetype = {
-      astro = {
-        enable_close = true,
-        enable_rename = true,
-        enable_close_on_slash = true,
-      },
-    },
-    -- Optional: Skip tags that should not auto-close
-    skip_tags = {
-      "area",
-      "base",
-      "br",
-      "col",
-      "command",
-      "embed",
-      "hr",
-      "img",
-      "slot",
-      "input",
-      "keygen",
-      "link",
-      "meta",
-      "param",
-      "source",
-      "track",
-      "wbr",
-      "menuitem",
-    },
-  })
+  if not configured_by_host() then
+    notify.warn(
+      "[Astro] nvim-ts-autotag is installed but never set up, so it attaches to\n"
+        .. "no buffer. Call require('nvim-ts-autotag').setup{} from its own spec;\n"
+        .. "Astro will not do it for you, because that setup is global.\n"
+        .. "Using the hand-rolled fallback for now."
+    )
+    return false
+  end
 
   return true
 end

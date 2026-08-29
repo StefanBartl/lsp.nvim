@@ -40,6 +40,60 @@ never allowed to take the rest of the setup with it.
 The same rule applies inside the core: one server module that throws costs that
 server, not the other seven.
 
+## An adapter must not load its plugin during `setup()`
+
+`setup()` runs inside Neovim's startup, and under a lazy plugin manager a
+`require` **is** the load trigger. So an adapter that reaches for its plugin
+while capabilities are being built does not just read a table -- it pulls that
+plugin, its config validation and its keymaps into every startup, before the
+first paint.
+
+That is what `integrations/blink.lua` used to do, and it cost 42-90ms of every
+startup for a capability table that is a compile-time constant. Worse, it was
+also the *only* thing loading blink.cmp: the spec carried no `event`, so the
+completion engine was alive purely as a side effect of an LSP detail, and
+"optimising" the capability call away would have silently switched completion
+off.
+
+The rule that came out of it:
+
+- `capabilities()` and the attach hooks read `package.loaded[...]` and never
+  `require`. Where a value is genuinely needed before the plugin exists, the
+  adapter mirrors it and a spec test compares the mirror against the real thing
+  whenever the plugin *is* installed (`TESTS/lsp/integrations_spec.lua`).
+- `available()` may `require` -- it is only ever read by `:checkhealth lsp`,
+  which the user asked for.
+- Every plugin in `pack/` carries its own lazy trigger. Being loaded by someone
+  else's `require` is not a trigger, it is a coincidence.
+
+The same reasoning applies to work a server config does at registration time:
+`servers/bashls.lua` resolves the shellcheck path in `before_init`, not while
+registering, because a failing `vim.fn.exepath()` on Windows walks every PATH
+entry against every PATHEXT suffix and caches nothing.
+
+## And it must not configure it either
+
+A plugin with a single global `setup()` has exactly one owner: whoever installs
+it. A language module that calls that `setup()` is not configuring its language,
+it is configuring the editor -- `servers/webdev/astro/autotag.lua` used to hand
+nvim-ts-autotag a full options table, which decides `enable_close_on_slash` for
+HTML, TSX, Svelte and Vue from inside an Astro file.
+
+What made that hard to see is that the outcome depended on load order, and both
+outcomes were wrong:
+
+- Under lazy.nvim the host's `config` runs during the very `require` that loads
+  the plugin, and upstream's `setup()` returns early once `did_setup()` is true.
+  So the call did **nothing** -- including the `per_filetype.astro` entry it
+  actually wanted.
+- Under a host that installs the plugin without configuring it, the same call
+  ran first and **became** the global configuration.
+
+It asks now (`available()`) instead of telling, and falls back to its own
+hand-rolled implementation when the answer is no. Reporting "installed" is not
+enough for that answer: a plugin nobody called `setup()` on registers no
+autocommands and attaches to no buffer, so `available()` checks that too.
+
 ## The pack holds specs, not logic
 
 Every `config` in `pack/` is a single call into the matching adapter. What a
