@@ -174,7 +174,8 @@ require("lsp").setup({
     virtual_text = { spacing = 2, prefix = "●" },
     float = { border = "rounded", source = "if_many" },
     ui = "auto",                   -- "auto" | "native" | "trouble" -- ]d/[d's sink
-  },                                -- (everything but `ui`) passed straight to vim.diagnostic.config()
+    debounce_ms = 150,             -- publishDiagnostics throttle, leading-edge; 0 = off
+  },                                -- the rest passed straight to vim.diagnostic.config()
 
   formatter = {
     on_save = false,               -- startup default; the runtime toggle owns it after

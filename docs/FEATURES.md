@@ -64,8 +64,16 @@ list and moves inside it instead, the same way Trouble's own keymaps do;
 an *already open* Trouble list and do nothing if there is none, which is a
 deliberately different question from "where does `]d` send me".
 
-- **Module:** `diagnostics/`, `core/diagnostics.lua`, `bindings/actions.lua`
-- **Config:** `diagnostics`, `diagnostics.ui`
+Every `textDocument/publishDiagnostics` push is deduplicated and then
+throttled. The throttle is leading-edge and per `(client, file)`: the first
+push of a burst renders immediately, the ones arriving inside the window are
+collapsed down to the newest, and the coalescing never merges — a diagnostics
+list replaces a file's diagnostics wholesale, so merging two would resurrect
+entries the server had just cleared. `debounce_ms = 0` turns it off.
+
+- **Module:** `diagnostics/`, `core/diagnostics.lua`, `core/handlers.lua`,
+  `core/filter.lua`, `bindings/actions.lua`
+- **Config:** `diagnostics`, `diagnostics.ui`, `diagnostics.debounce_ms`
 
 ## Inlay hints
 

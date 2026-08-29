@@ -235,7 +235,7 @@ local function bootstrap(cfg)
   end
 
   step("handlers", function()
-    require("lsp.core.handlers").setup()
+    require("lsp.core.handlers").setup({ debounce_ms = cfg.diagnostics.debounce_ms })
   end)
   step("core diagnostics", function()
     require("lsp.core.diagnostics").setup()
@@ -304,10 +304,12 @@ local function bootstrap(cfg)
 
   -- After the servers are enabled, so a server config cannot overwrite it.
   step("diagnostic config", function()
-    -- `ui` picks ]d/[d's sink (lsp.bindings.actions); vim.diagnostic.config()
-    -- has no such option and would receive it verbatim otherwise.
+    -- `ui` picks ]d/[d's sink (lsp.bindings.actions) and `debounce_ms` sizes
+    -- the publish throttle (lsp.core.handlers); vim.diagnostic.config() has
+    -- neither option and would receive them verbatim otherwise.
     local diag_opts = vim.tbl_extend("force", {}, cfg.diagnostics)
     diag_opts.ui = nil
+    diag_opts.debounce_ms = nil
     vim.diagnostic.config(diag_opts)
   end)
 

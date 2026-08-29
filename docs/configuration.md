@@ -62,6 +62,29 @@ drift from the bound one. [BINDINGS.md](BINDINGS.md) has the full catalogue and
 the two left-hand sides worth knowing about (`ls*`'s `timeoutlen` cost, and the
 `gr*` collision with Neovim's own buffer-local defaults).
 
+## diagnostics.debounce_ms
+
+A chatty language server publishes diagnostics several times per keystroke
+pause. `ts_ls` is the reference case: every push re-renders virtual text,
+re-sorts by severity and re-runs whatever listens on `DiagnosticChanged`, and
+the payloads in between are transient — superseded a few milliseconds later.
+
+The window is **leading-edge**, and that is the whole design decision. A pure
+trailing debounce would delay the first diagnostics of every burst by the full
+interval, which is exactly the push a user is waiting for: the one right after
+they stop typing. Instead the first push goes through immediately and only what
+arrives inside the window is coalesced. Nothing a user waits for gets slower;
+the redraw storm disappears.
+
+Coalescing keeps the **newest** payload and never merges. A diagnostics list is
+a complete replacement for a file, not a delta — merging two would put back
+entries the server had just cleared.
+
+The window is per `(client, file)`. Per client alone would let a noisy buffer
+throttle a quiet one; per file alone would let two servers on the same file
+cancel each other out. `debounce_ms = 0` turns the throttle off and restores
+plain dedup-and-forward.
+
 ## inlay_hints
 
 A global default plus a per-filetype override map:

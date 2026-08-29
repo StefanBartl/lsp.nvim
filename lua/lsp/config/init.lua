@@ -218,6 +218,21 @@ function M.setup(user_opts)
     cfg.inlay_hints.enable = DEFAULTS.inlay_hints.enable
   end
 
+  -- A negative or non-numeric window would reach `uv.timer:start()` and raise
+  -- there, inside a handler, on every push -- far from the setup() call that
+  -- caused it.
+  local debounce = cfg.diagnostics.debounce_ms
+  if type(debounce) ~= "number" or debounce < 0 then
+    if debounce ~= nil then
+      _warnings[#_warnings + 1] = ("diagnostics.debounce_ms: expected a non-negative number, using %d"):format(
+        DEFAULTS.diagnostics.debounce_ms
+      )
+    end
+    cfg.diagnostics.debounce_ms = DEFAULTS.diagnostics.debounce_ms
+  else
+    cfg.diagnostics.debounce_ms = math.floor(debounce)
+  end
+
   if
     cfg.diagnostics.ui ~= "auto"
     and cfg.diagnostics.ui ~= "native"

@@ -118,6 +118,7 @@ Defaults (excerpt -- the full table is `lua/lsp/config/DEFAULTS.lua`): >lua
         virtual_text = { spacing = 2, prefix = "●" },
         float = { border = "rounded", source = "if_many" },
         ui = "auto",   -- "auto" | "native" | "trouble" -- ]d/[d's sink
+        debounce_ms = 150,  -- publishDiagnostics throttle; 0 = off
       },
       formatter = { on_save = false, timeout_ms = 1500 },
       inlay_hints = { enable = false, filetypes = {} },
@@ -151,7 +152,24 @@ servers               (string[])  Server names to set up and enable. Each
                                   typo should produce.
 diagnostics           (table)     Passed straight to |vim.diagnostic.config()|
                                   after the servers are enabled, so a server
-                                  config cannot overwrite it.
+                                  config cannot overwrite it -- except `ui`
+                                  and `debounce_ms`, which are this plugin's
+                                  own and are stripped before that call.
+diagnostics.debounce_ms (integer) Throttle window for
+                                  `textDocument/publishDiagnostics`, in
+                                  milliseconds. A chatty server (`ts_ls` is
+                                  the reference case) publishes several times
+                                  per keystroke pause and every push
+                                  re-renders. The window is leading-edge: the
+                                  first push of a burst goes through
+                                  immediately and only the ones inside the
+                                  window are collapsed to the newest, so the
+                                  push a user waits for is never the one
+                                  delayed. Coalescing keeps the newest payload
+                                  and never merges -- a diagnostics list
+                                  replaces a file's diagnostics wholesale, so
+                                  a merge would resurrect entries the server
+                                  had just cleared. `0` turns the throttle off.
 formatter.on_save     (boolean)   Format on write at startup. The runtime
                                   toggle (|:LspFormatToggle|) owns it from
                                   there; this is only the starting position.

@@ -58,6 +58,14 @@ local DEFAULTS = {
     -- strips this key first, since diagnostic.config() doesn't know it.
     ---@type "auto"|"native"|"trouble"
     ui = "auto",
+    -- Throttle window for `textDocument/publishDiagnostics`, in milliseconds.
+    -- Leading-edge: the first push of a burst renders immediately and only the
+    -- ones arriving inside the window are collapsed to the newest, so nothing
+    -- a user waits for gets slower. 150ms is below the point where a redraw
+    -- reads as a reaction; `0` turns the throttle off entirely. Like `ui`,
+    -- this is stripped before `vim.diagnostic.config()` -- it does not know
+    -- the key (lsp.init).
+    debounce_ms = 150,
   },
 
   -- Neovim's native inlay hints (0.10+). Off by default and per-filetype
