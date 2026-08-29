@@ -10,7 +10,7 @@
 ---@field show_workspace? boolean Include workspace folders and root_dir checks (default: true)
 ---@field show_tools? boolean Check for common external tools (default: true)
 ---@field show_conflicts? boolean Detect potential provider conflicts (formatting, diagnostics) (default: true)
----@field formatter_priority? string[] Preferred order of formatting providers (default: {})
+---@field formatter_priority? string[] Order in which the report ranks LSP clients that can format. Report only -- it does not choose what formats a buffer (see lsp.formatter). Namespaced under `lspdoctor` for that reason. (default: {})
 ---@field semantic_tokens_timeout? integer Timeout (ms) for semantic tokens probe (default: 300)
 ---@field scratch_filetype? string Filetype for scratch export buffer (default: 'markdown')
 ---@field scratch_threshold? number

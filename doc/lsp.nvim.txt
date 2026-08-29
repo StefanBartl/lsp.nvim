@@ -199,6 +199,18 @@ mason.ensure_install  (boolean)   Install missing LSP/linter/formatter
 mason.overrides       (table)     Per-category force-on/off, keyed `lsp`,
                                   `dap`, `linters`, `formatters`.
 lspdoctor             (table)     Forwarded to `lsp.lspdoctor.setup()`.
+lspdoctor.formatter_priority (string[])
+                                  Order in which |:LspDoctor|'s report ranks
+                                  the LSP clients that could format the
+                                  buffer. **Report only** -- it chooses
+                                  nothing, which is why it sits under
+                                  `lspdoctor` and not under `formatter`. What
+                                  actually formats is conform's chain for the
+                                  filetype, with LSP as the fallback conform
+                                  falls back to; on every filetype conform
+                                  covers, no LSP client formats at all. The
+                                  report names conform's answer first and this
+                                  ranking second.
 tools.<name>.enable   (boolean)   Master switch per extra tool:
                                   eslint_prettier, lsp_signature,
                                   ts_type_lookup, deprecated_help.

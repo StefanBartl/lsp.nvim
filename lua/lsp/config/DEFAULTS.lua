@@ -120,8 +120,14 @@ local DEFAULTS = {
   lspdoctor = {
     use_notify = false,
     list_limit = 8,
-    -- `null-ls` is inert here: it is not installed. Kept because which
-    -- formatter wins a conflict is a decision, not a leftover.
+    -- Order in which `:LspDoctor`'s report ranks the LSP clients that could
+    -- format this buffer. **Report only**, which is why it lives under
+    -- `lspdoctor` and not under `formatter`: what actually formats a buffer is
+    -- conform's chain for the filetype, with LSP as the fallback conform falls
+    -- back to (see lsp.formatter). On every filetype conform covers, no LSP
+    -- client formats at all, whatever this list says.
+    -- `null-ls` is inert here twice over: it is not installed, and the list
+    -- decides nothing. Kept because the preference is still worth recording.
     formatter_priority = { "null-ls", "eslint", "lua_ls" },
     semantic_tokens_timeout = 300,
     scratch_filetype = "markdown",

@@ -62,6 +62,27 @@ drift from the bound one. [BINDINGS.md](BINDINGS.md) has the full catalogue and
 the two left-hand sides worth knowing about (`ls*`'s `timeoutlen` cost, and the
 `gr*` collision with Neovim's own buffer-local defaults).
 
+## lspdoctor.formatter_priority does not choose a formatter
+
+It ranks a line in a report. That is all it has ever done, and the namespace
+says so — it sits under `lspdoctor`, not under `formatter`.
+
+What actually formats a buffer is `lsp.formatter`: conform's chain for the
+filetype, with LSP as the fallback conform falls back *to*. On every filetype
+conform covers (`lua`, `ts`, `js`, `json`, `css`, `html`, `cs`, `markdown`,
+`sh`) no LSP client formats at all, whatever this list says.
+
+The report used to hide that. On a Lua buffer it printed `Winner: **lua_ls**`
+while `stylua` was doing the work — a diagnostic tool naming the wrong culprit,
+which is the one thing a diagnostic tool must not do. It now prints what conform
+answers for the buffer first, and the ranked LSP clients second, marked as the
+report-only line it is.
+
+Enforcing the list instead would mean moving the key out of `lspdoctor.*`,
+because an option that changes behaviour has no business in a reporting
+namespace — and it would change nothing observable until a filetype has two
+formatting LSP clients and no conform formatter.
+
 ## diagnostics.debounce_ms
 
 A chatty language server publishes diagnostics several times per keystroke

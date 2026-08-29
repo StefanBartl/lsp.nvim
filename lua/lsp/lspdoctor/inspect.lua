@@ -142,6 +142,48 @@ local function detect_conflicts(clients_by_name)
   return conflicts
 end
 
+---What conform would actually run on this buffer, asked of conform itself.
+---
+---`list_formatters_to_run` is conform's own answer and accounts for
+---`stop_after_first` and its LSP-fallback logic, so this cannot drift from
+---what a `:LspFormat` would do. Reimplementing the decision here would be a
+---second opinion, and a report whose second opinion disagrees with reality is
+---worse than one that says nothing.
+---@param bufnr integer
+---@return string[]|nil names # nil when conform is not installed.
+---@return boolean lsp_after # Whether conform hands off to an LSP client too.
+local function conform_chain(bufnr)
+  local ok, conform = pcall(require, "conform")
+  if not (ok and type(conform.list_formatters_to_run) == "function") then
+    return nil, false
+  end
+
+  local ok_call, formatters, lsp = pcall(conform.list_formatters_to_run, bufnr)
+  if not ok_call or type(formatters) ~= "table" then
+    return nil, false
+  end
+
+  ---@type string[]
+  local names = {}
+  for _, f in ipairs(formatters) do
+    names[#names + 1] = f.name
+  end
+  return names, lsp == true
+end
+
+---Which LSP client this report would name as the preferred formatter.
+---
+---**This decides nothing.** `lspdoctor.formatter_priority` orders this report
+---and only this report -- it is namespaced under `lspdoctor` for exactly that
+---reason. What actually formats a buffer is `lsp.formatter`: conform's chain
+---for the filetype, with LSP as the fallback conform falls back *to*. On every
+---filetype conform covers (lua, ts, js, json, css, html, cs, markdown, sh) no
+---LSP client formats at all, whatever this function returns.
+---
+---The report says so out loud below. It used to print `Winner: **eslint**` on
+---a TypeScript buffer that `prettierd` was formatting -- a diagnostic tool
+---naming the wrong culprit, which is the one thing a diagnostic tool must not
+---do.
 ---@param clients_by_name table<string, LspMod.Client>
 ---@return string|nil winner, string[] candidates, string reason
 local function pick_formatter(clients_by_name)
@@ -236,12 +278,42 @@ local function generate_report(mode, bufnr)
     table.insert(lines, "")
   end
 
-  -- Formatter
+  -- Formatter: what actually runs first, then what this report merely ranks.
   local winner, all, reason = pick_formatter(clients_by_name)
-  table.insert(lines, "### Formatter Policy")
-  table.insert(lines, "Candidates: " .. (#all == 0 and "*(none)*" or table.concat(all, ", ")))
-  table.insert(lines, "Winner: **" .. (winner or "(none)") .. "**")
-  table.insert(lines, "Policy: " .. reason)
+  table.insert(lines, "### Formatter")
+
+  local chain, lsp_after = conform_chain(bufnr)
+  if chain == nil then
+    table.insert(lines, "Runs: *(conform.nvim not installed -- LSP formatting only)*")
+  elseif #chain == 0 then
+    table.insert(
+      lines,
+      ("Runs: %s"):format(
+        lsp_after and "the LSP client below (no conform formatter for this filetype)"
+          or "*(nothing -- no conform formatter and no LSP formatting provider)*"
+      )
+    )
+  else
+    table.insert(
+      lines,
+      ("Runs: **%s** (conform)%s"):format(
+        table.concat(chain, " -> "),
+        lsp_after and ", then the LSP client below" or ""
+      )
+    )
+  end
+
+  table.insert(lines, "")
+  table.insert(
+    lines,
+    "LSP clients able to format: " .. (#all == 0 and "*(none)*" or table.concat(all, ", "))
+  )
+  table.insert(lines, ("Preferred among them: **%s** (%s)"):format(winner or "(none)", reason))
+  table.insert(
+    lines,
+    "*Report only.* `lspdoctor.formatter_priority` ranks this line and nothing "
+      .. "else -- it does not choose what formats the buffer. The `Runs:` line above does."
+  )
   table.insert(lines, "")
 
   -- Deep mode extras
