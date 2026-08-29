@@ -31,6 +31,7 @@
 ---@see lsp.core.attach
 
 local notify = require("lib.nvim.notify").create("[lsp.core.inlay_hints]")
+local autocmd = require("lib.nvim.bindings.autocmd")
 
 local api = vim.api
 
@@ -123,19 +124,22 @@ function M.setup(opts)
     return
   end
 
-  api.nvim_create_autocmd("LspAttach", {
-    group = api.nvim_create_augroup(M.GROUP, { clear = true }),
+  -- Through lib.nvim rather than `vim.api.nvim_create_autocmd`, which is what
+  -- every other autocommand in this plugin does -- see
+  -- docs/NOTES/PersonelPlugins/BINDINGS/Autocmds/lsp.nvim.md, which states it
+  -- as an invariant of the plugin.
+  autocmd.create("LspAttach", function(args)
+    -- Deferred: `server_capabilities` is in place by the time LspAttach
+    -- fires, but the buffer's filetype may not be settled on the very first
+    -- attach of a session, and the filetype is what resolves the override.
+    vim.schedule(function()
+      if api.nvim_buf_is_valid(args.buf) then
+        apply_to(args.buf)
+      end
+    end)
+  end, {
+    group = autocmd.group(M.GROUP, true),
     desc = "lsp.nvim: apply the inlay-hint toggle to newly attached buffers",
-    callback = function(args)
-      -- Deferred: `server_capabilities` is in place by the time LspAttach
-      -- fires, but the buffer's filetype may not be settled on the very first
-      -- attach of a session, and the filetype is what resolves the override.
-      vim.schedule(function()
-        if api.nvim_buf_is_valid(args.buf) then
-          apply_to(args.buf)
-        end
-      end)
-    end,
   })
   registered = true
 
