@@ -62,6 +62,29 @@ drift from the bound one. [BINDINGS.md](BINDINGS.md) has the full catalogue and
 the two left-hand sides worth knowing about (`ls*`'s `timeoutlen` cost, and the
 `gr*` collision with Neovim's own buffer-local defaults).
 
+## inlay_hints
+
+A global default plus a per-filetype override map:
+
+```lua
+inlay_hints = {
+  enable = false,
+  filetypes = { lua = true, markdown = false },
+},
+```
+
+The map is not a list, and that is the whole design. Inlay hints are worth
+having in a typed language and noise in a dynamic one, so a single global
+switch was never going to be enough — but two levels only work if "no opinion"
+and "explicitly off" are different things. An absent key inherits `enable`;
+`false` overrides it. A list (`filetypes = { "lua" }`) type-checks as a table,
+resolves every lookup to `nil`, and would override nothing at all — so it is
+rejected with a warning instead.
+
+`<leader>th`, `<leader>tH` and `:Lsp hints` move the same state at runtime, and
+the toggle applies to every loaded buffer immediately rather than at the next
+attach.
+
 ## rename.provider
 
 One rename action behind both bound keys, with the backend as an option:

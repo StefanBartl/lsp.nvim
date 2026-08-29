@@ -177,6 +177,58 @@ function M.workspace_now()
   notify.info(("populated workspace diagnostics for %d client(s)"):format(count_or_err))
 end
 
+-- ---------------------------------------------------------------- inlay hints
+
+---@internal
+--- The runtime toggle for Neovim's native inlay hints.
+---@return table|nil
+local function hints()
+  local ok, mod = pcall(require, "lsp.core.inlay_hints")
+  return ok and mod or nil
+end
+
+--- Toggle inlay hints globally.
+---@return nil
+function M.hints_toggle()
+  local ih = hints()
+  if ih then
+    ih.toggle(nil)
+  end
+end
+
+--- Toggle inlay hints for the current buffer's filetype only.
+---@return nil
+function M.hints_toggle_filetype()
+  local ih = hints()
+  if ih == nil then
+    return
+  end
+  local ft = vim.bo[0].filetype
+  if ft == "" then
+    require("lib.nvim.notify").create("[lsp.nvim]").warn("this buffer has no filetype")
+    return
+  end
+  ih.toggle(ft)
+end
+
+--- Turn inlay hints on globally.
+---@return nil
+function M.hints_on()
+  local ih = hints()
+  if ih then
+    ih.set(true, nil)
+  end
+end
+
+--- Turn inlay hints off globally.
+---@return nil
+function M.hints_off()
+  local ih = hints()
+  if ih then
+    ih.set(false, nil)
+  end
+end
+
 -- ---------------------------------------------------------------- rename
 
 --- Rename the symbol under the cursor.

@@ -47,6 +47,10 @@ require("lsp.@types.vim_lsp")
 ---@field on_save? boolean # Format on write at startup; the runtime toggle owns it afterwards.
 ---@field timeout_ms? integer # Upper bound for one format request.
 
+---@class LspNvim.InlayHintsOpts
+---@field enable? boolean # Global default for `vim.lsp.inlay_hint`; the runtime toggle owns it afterwards.
+---@field filetypes? table<string, boolean> # Per-filetype override. An absent key inherits `enable`; `false` is an explicit off.
+
 ---@class LspNvim.AttachOpts
 ---@field use_workspace_diagnostics? boolean # Populate workspace diagnostics on attach (the module's own size gate still applies).
 ---@field use_lazydev? boolean # Wire lazydev into lua_ls attaches.
@@ -83,6 +87,7 @@ require("lsp.@types.vim_lsp")
 ---@field servers? string[] # Server names to set up and enable.
 ---@field diagnostics? table # Passed straight to `vim.diagnostic.config()`.
 ---@field formatter? LspNvim.FormatterOpts
+---@field inlay_hints? LspNvim.InlayHintsOpts
 ---@field attach? LspNvim.AttachOpts
 ---@field mason? LspNvim.MasonOpts
 ---@field lspdoctor? table # Options forwarded to `lsp.lspdoctor.setup()`.

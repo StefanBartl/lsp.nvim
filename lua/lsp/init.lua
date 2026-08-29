@@ -240,6 +240,11 @@ local function bootstrap(cfg)
   step("core diagnostics", function()
     require("lsp.core.diagnostics").setup()
   end)
+  -- Before the servers, so the LspAttach handler is in place for the first
+  -- attach rather than one buffer late.
+  step("inlay hints", function()
+    require("lsp.core.inlay_hints").setup(cfg.inlay_hints)
+  end)
 
   local caps = build_capabilities()
   local attach = build_attach(cfg)

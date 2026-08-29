@@ -171,6 +171,7 @@ function M.setup(user_opts)
     "rename",
     "diagnostics",
     "formatter",
+    "inlay_hints",
     "attach",
     "mason",
     "lspdoctor",
@@ -191,6 +192,30 @@ function M.setup(user_opts)
   if labels ~= nil and type(labels) ~= "function" then
     _warnings[#_warnings + 1] = "completion.personal_names.labels: expected a function, ignoring"
     cfg.completion.personal_names.labels = nil
+  end
+
+  -- The override map is the one config value a typo turns into a silent
+  -- no-op: a stray `filetypes = { "lua" }` (a list, not a map) would resolve
+  -- every lookup to nil and simply never override anything.
+  if type(cfg.inlay_hints.filetypes) ~= "table" then
+    if cfg.inlay_hints.filetypes ~= nil then
+      _warnings[#_warnings + 1] =
+        "inlay_hints.filetypes: expected a filetype -> boolean map, ignoring"
+    end
+    cfg.inlay_hints.filetypes = {}
+  else
+    for ft, value in pairs(cfg.inlay_hints.filetypes) do
+      if type(ft) ~= "string" or type(value) ~= "boolean" then
+        _warnings[#_warnings + 1] = ("inlay_hints.filetypes: ignoring entry %s = %s (want string = boolean)"):format(
+          vim.inspect(ft),
+          vim.inspect(value)
+        )
+        cfg.inlay_hints.filetypes[ft] = nil
+      end
+    end
+  end
+  if type(cfg.inlay_hints.enable) ~= "boolean" then
+    cfg.inlay_hints.enable = DEFAULTS.inlay_hints.enable
   end
 
   if

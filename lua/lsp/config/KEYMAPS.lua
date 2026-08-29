@@ -128,6 +128,23 @@ local entries = {
     desc = "Format via the language server directly",
   },
 
+  -- ------------------------------------------------------------ inlay hints
+  -- `<leader>th` is the global switch; the per-filetype one sits on the
+  -- shifted key rather than a third prefix, because "the same toggle, narrower
+  -- scope" is exactly what a shift usually means here.
+  hints_toggle = {
+    lhs = "<leader>th",
+    mode = "n",
+    rhs = actions.hints_toggle,
+    desc = "Toggle inlay hints (global)",
+  },
+  hints_toggle_filetype = {
+    lhs = "<leader>tH",
+    mode = "n",
+    rhs = actions.hints_toggle_filetype,
+    desc = "Toggle inlay hints for this filetype",
+  },
+
   -- ------------------------------------------------------------ diagnostics
   diag_to_qflist = {
     lhs = "<leader>wq",
@@ -341,6 +358,8 @@ local presets = {
     "rename_leader",
     "format_toggle",
     "format_buffer",
+    "hints_toggle",
+    "hints_toggle_filetype",
     "format_lsp",
     "diag_to_qflist",
     "diag_to_loclist",

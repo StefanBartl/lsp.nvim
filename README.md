@@ -146,6 +146,7 @@ One verb with subcommands and `<Tab>` completion. Full cheatsheet:
 | `:Lsp format [action]` | Format once, or control format-on-save |
 | `:Lsp diag {qf\|loc\|next\|prev} [qf\|loc]` | Diagnostics into a list, or move within one |
 | `:Lsp workspace [action]` | Workspace-wide diagnostics on attach |
+| `:Lsp hints [action] [filetype]` | Inlay hints: globally, or for one filetype |
 | `:Lsp root [pick\|show]` | Root scope: cwd / git root / file path |
 | `:Lsp log open` / `level {level}` | Open the LSP log, or set its level |
 
@@ -178,6 +179,11 @@ require("lsp").setup({
   formatter = {
     on_save = false,               -- startup default; the runtime toggle owns it after
     timeout_ms = 1500,
+  },
+
+  inlay_hints = {
+    enable = false,                -- global startup default; the runtime toggle owns it after
+    filetypes = {},                -- per-filetype override; absent inherits, false overrides
   },
 
   attach = {
@@ -259,7 +265,7 @@ lua/lsp/
     usrcmds.lua       -- the `:Lsp` verb
     autocmds.lua      -- augroup owner (no handlers yet)
     which_key.lua     -- group labels, soft dependency
-  core/               -- registry, attach, capabilities, handlers, diagnostics
+  core/               -- registry, attach, capabilities, handlers, diagnostics, inlay hints
   servers/            -- one module per language server
   languages/          -- filetype-specific quality-of-life setup
   formatter/          -- on-save toggle, conform strategy, view preservation

@@ -81,6 +81,49 @@ local function register_server_argtype()
   })
 end
 
+--- Argument type for a filetype, completed from what is actually open plus
+--- whatever already carries an inlay-hint override. Neovim's own
+--- `getcompletion(_, "filetype")` would list every filetype it knows, which is
+--- several hundred entries and almost none of them relevant to a buffer that
+--- is open right now.
+---@return nil
+local function register_filetype_argtype()
+  argtypes.register("LSP_FILETYPE", {
+    validate = function(raw)
+      return true, raw, nil
+    end,
+    complete = function(arg_lead)
+      ---@type table<string, true>
+      local seen = {}
+      ---@type string[]
+      local names = {}
+
+      local ok, hints = pcall(require, "lsp.core.inlay_hints")
+      if ok then
+        for _, ft in ipairs(hints.overridden()) do
+          if not seen[ft] then
+            seen[ft] = true
+            names[#names + 1] = ft
+          end
+        end
+      end
+
+      for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+        if vim.api.nvim_buf_is_loaded(bufnr) then
+          local ft = vim.bo[bufnr].filetype
+          if ft ~= "" and not seen[ft] then
+            seen[ft] = true
+            names[#names + 1] = ft
+          end
+        end
+      end
+
+      table.sort(names)
+      return argtypes.prefix(names, arg_lead)
+    end,
+  })
+end
+
 ---@internal
 --- Show a report in its own scratch split.
 ---@param lines string[]
@@ -202,6 +245,7 @@ end
 ---@return boolean registered # false when the composer refused the spec.
 function M.setup()
   register_server_argtype()
+  register_filetype_argtype()
 
   local ok = pcall(composer.verb, "Lsp", {
     desc = "lsp.nvim: control and inspect the LSP setup",
@@ -327,6 +371,47 @@ function M.setup()
             status = actions.format_status,
             which = actions.format_which,
           }, ctx.args.action, "once")
+        end,
+      },
+
+      -- ---------------------------------------------------------- inlay hints
+      {
+        path = { "hints" },
+        args = {
+          {
+            name = "action",
+            type = "STRING",
+            enum = { "toggle", "on", "off", "status", "clear" },
+            optional = true,
+          },
+          { name = "filetype", type = "LSP_FILETYPE", optional = true },
+        },
+        desc = "Inlay hints: control globally, or for one filetype",
+        run = function(ctx)
+          local hints = require("lsp.core.inlay_hints")
+          local action = ctx.args.action or "toggle"
+          local ft = ctx.args.filetype
+
+          if action == "status" then
+            report(hints.status())
+            return
+          end
+          if action == "clear" then
+            -- The one action that has no global meaning: dropping "the global
+            -- override" would be dropping the setting itself.
+            if ft == nil then
+              notify.warn("`:Lsp hints clear` needs a filetype")
+              return
+            end
+            hints.clear(ft)
+            return
+          end
+
+          if action == "toggle" then
+            hints.toggle(ft)
+          else
+            hints.set(action == "on", ft)
+          end
         end,
       },
 

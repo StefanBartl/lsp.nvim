@@ -60,6 +60,16 @@ local DEFAULTS = {
     ui = "auto",
   },
 
+  -- Neovim's native inlay hints (0.10+). Off by default and per-filetype
+  -- overridable: hints are useful in a typed language and noise in a dynamic
+  -- one, so a single global switch was never going to be enough. An absent
+  -- filetype key inherits `enable`; `false` is an explicit "off here".
+  inlay_hints = {
+    enable = false,
+    ---@type table<string, boolean>
+    filetypes = {},
+  },
+
   formatter = {
     -- Off at startup; the runtime toggle (`:LspFormatToggle`, `<leader>tft`)
     -- owns it from there.

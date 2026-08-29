@@ -8,13 +8,20 @@ The full table — every route, every argument, every legacy alias — is in
 ```
 :Lsp status | servers | info | health | doctor
 :Lsp start | stop | restart | force-restart | recover
-:Lsp format | diag | workspace | root | log
+:Lsp format | diag | workspace | root | hints | log
 ```
 
 Built with lib.nvim's user-command composer, so subcommands and every closed
 argument set complete with `<Tab>`. `[server]` completes from the **live** set —
 attached clients first, then everything in `servers` — rather than a list frozen
 when the verb was registered.
+
+`:Lsp hints` carries the one argument pair worth spelling out:
+`[toggle|on|off|status|clear] [filetype]`. With no filetype it moves the global
+default; with one it writes an override for that filetype only, and `clear`
+gives the filetype back to the global. `status` reports both levels plus which
+loaded buffers actually have a client advertising `inlayHintProvider` — the
+distinction between "switched on" and "will show something".
 
 None of the routes takes a range: they act on the current buffer or on global
 state, neither of which a line range narrows.

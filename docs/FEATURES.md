@@ -67,6 +67,24 @@ deliberately different question from "where does `]d` send me".
 - **Module:** `diagnostics/`, `core/diagnostics.lua`, `bindings/actions.lua`
 - **Config:** `diagnostics`, `diagnostics.ui`
 
+## Inlay hints
+
+Neovim ships `vim.lsp.inlay_hint` natively but ships it off and per buffer, so
+"hints on for Go, off for Lua" is something every config builds itself. This is
+that switch: a global default plus a per-filetype override map, applied to every
+loaded buffer at once and to later ones through an `LspAttach` handler.
+
+An absent filetype key inherits the global; `false` overrides it. The two are
+deliberately different states — a list where the map belongs would override
+nothing, so it is rejected with a warning rather than accepted silently. Only
+clients advertising `inlayHintProvider` are asked, which is also what `status`
+reports: switched on and will-show-something are separate questions.
+
+- **Module:** `core/inlay_hints.lua`
+- **Config:** `inlay_hints.enable`, `inlay_hints.filetypes`
+- **Commands:** `:Lsp hints [toggle|on|off|status|clear] [filetype]`
+- **Keys:** `<leader>th` (global), `<leader>tH` (this filetype)
+
 ## Workspace diagnostics
 
 A runtime toggle for populating diagnostics workspace-wide on every attach,

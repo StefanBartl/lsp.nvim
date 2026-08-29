@@ -51,7 +51,7 @@ Three things worth knowing about the left-hand sides:
 
 <!-- BEGIN GENERATED KEYMAPS -->
 
-The `default` preset binds all 42 entries below. `minimal` binds the 26
+The `default` preset binds all 44 entries below. `minimal` binds the 28
 marked in the last column; `none` binds nothing.
 
 | action | lhs | mode | needs | minimal | description |
@@ -72,6 +72,8 @@ marked in the last column; `none` binds nothing.
 | `goto_references` | `lsr` | n | — | — | List references |
 | `goto_type_definition` | `lst` | n | — | — | Go to type definition |
 | `goto_type_definition_gr` | `grt` | n | — | — | Go to type definition (g-prefix variant) |
+| `hints_toggle` | `<leader>th` | n | — | yes | Toggle inlay hints (global) |
+| `hints_toggle_filetype` | `<leader>tH` | n | — | yes | Toggle inlay hints for this filetype |
 | `loc_next` | `]l` | n | — | yes | Next location-list entry |
 | `loc_prev` | `[l` | n | — | yes | Prev location-list entry |
 | `marksman_hints` | `<leader>lb` | n | — | yes | Toggle Marksman markdown hints |

@@ -120,6 +120,7 @@ Defaults (excerpt -- the full table is `lua/lsp/config/DEFAULTS.lua`): >lua
         ui = "auto",   -- "auto" | "native" | "trouble" -- ]d/[d's sink
       },
       formatter = { on_save = false, timeout_ms = 1500 },
+      inlay_hints = { enable = false, filetypes = {} },
       attach = { use_workspace_diagnostics = true, use_lazydev = true },
       mason = { ensure_install = false, overrides = { ... } },
       lspdoctor = { use_notify = false, list_limit = 8, ... },
@@ -155,6 +156,18 @@ formatter.on_save     (boolean)   Format on write at startup. The runtime
                                   toggle (|:LspFormatToggle|) owns it from
                                   there; this is only the starting position.
 formatter.timeout_ms  (integer)   Upper bound for one format request.
+inlay_hints.enable    (boolean)   Global startup default for Neovim's native
+                                  inlay hints (|vim.lsp.inlay_hint|). The
+                                  runtime toggle (|:Lsp| hints, `<leader>th`)
+                                  owns it from there.
+inlay_hints.filetypes (table<string, boolean>)
+                                  Per-filetype override of that default. An
+                                  absent key inherits `enable`; `false` is an
+                                  explicit "off here". Absent and `false` are
+                                  deliberately different -- that is why this is
+                                  a map and not a list, and a list is rejected
+                                  with a warning rather than silently
+                                  overriding nothing.
 attach.use_workspace_diagnostics (boolean)
                                   Populate workspace-wide diagnostics on
                                   attach. On by default: the module measures
