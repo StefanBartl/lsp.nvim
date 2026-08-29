@@ -34,39 +34,39 @@ require("lsp.@types.vim_lsp")
 ---@field map? table<string, string|false> # Per-action override: a string replaces the lhs, false disables that action. An absent key keeps the preset's lhs.
 
 ---@class LspNvim.UsrcmdsOpts
----@field enable boolean # Register the `:Lsp` verb on setup.
----@field legacy_aliases boolean # Also register the flat `:Lsp*`/`:Diag*` commands as aliases onto the same functions.
+---@field enable? boolean # Register the `:Lsp` verb on setup.
+---@field legacy_aliases? boolean # Also register the flat `:Lsp*`/`:Diag*` commands as aliases onto the same functions.
 
 ---@class LspNvim.WhichKeyOpts
----@field enable boolean # Label the bound key prefixes as which-key groups.
+---@field enable? boolean # Label the bound key prefixes as which-key groups.
 
 ---@class LspNvim.MenuOpts
----@field enable boolean # Provide nvzone/menu entries via `lsp.integrations.menu`. No nvzone/menu dependency itself; this only gates whether `M.items()`/`M.submenu()` return entries.
+---@field enable? boolean # Provide nvzone/menu entries via `lsp.integrations.menu`. No nvzone/menu dependency itself; this only gates whether `M.items()`/`M.submenu()` return entries.
 
 ---@class LspNvim.FormatterOpts
----@field on_save boolean # Format on write at startup; the runtime toggle owns it afterwards.
----@field timeout_ms integer # Upper bound for one format request.
+---@field on_save? boolean # Format on write at startup; the runtime toggle owns it afterwards.
+---@field timeout_ms? integer # Upper bound for one format request.
 
 ---@class LspNvim.AttachOpts
----@field use_workspace_diagnostics boolean # Populate workspace diagnostics on attach (the module's own size gate still applies).
----@field use_lazydev boolean # Wire lazydev into lua_ls attaches.
+---@field use_workspace_diagnostics? boolean # Populate workspace diagnostics on attach (the module's own size gate still applies).
+---@field use_lazydev? boolean # Wire lazydev into lua_ls attaches.
 
 ---@class LspNvim.MasonOpts
----@field ensure_install boolean # Install missing packages on setup.
----@field overrides table<string, table<string, boolean>> # Per-category force-on/off, keyed lsp/dap/linters/formatters.
+---@field ensure_install? boolean # Install missing packages on setup.
+---@field overrides? table<string, table<string, boolean>> # Per-category force-on/off, keyed lsp/dap/linters/formatters.
 
 ---@class LspNvim.ToolOpts
----@field enable boolean # Master switch for this tool.
+---@field enable? boolean # Master switch for this tool.
 ---@field filetypes string[]|nil # Filetypes it attaches to, where the tool takes a list.
 
 ---@class LspNvim.ToolsOpts
----@field eslint_prettier LspNvim.ToolOpts
----@field lsp_signature LspNvim.ToolOpts
----@field ts_type_lookup LspNvim.ToolOpts
----@field deprecated_help LspNvim.ToolOpts
+---@field eslint_prettier? LspNvim.ToolOpts
+---@field lsp_signature? LspNvim.ToolOpts
+---@field ts_type_lookup? LspNvim.ToolOpts
+---@field deprecated_help? LspNvim.ToolOpts
 
 ---@class LspNvim.LanguagesOpts
----@field enable boolean # Apply the filetype-specific setup under `lsp/languages/**`.
+---@field enable? boolean # Apply the filetype-specific setup under `lsp/languages/**`.
 
 ---@alias LspNvim.RenameProvider
 --- Which backend the rename action uses. Both bound rename keys go through it.
@@ -75,7 +75,7 @@ require("lsp.@types.vim_lsp")
 ---| '"native"'     # always `vim.lsp.buf.rename`
 
 ---@class LspNvim.RenameOpts
----@field provider LspNvim.RenameProvider
+---@field provider? LspNvim.RenameProvider
 
 ---@class LspNvim.Config
 --- The resolved configuration: DEFAULTS with the user's options merged over
