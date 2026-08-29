@@ -267,30 +267,30 @@ function M.all(bufnr, use_scratch)
 
   -- Health check
   local health_lines, health_results = health.check(bufnr)
-  table.insert(all_lines, "## Health Check")
+  table.insert(all_lines, "## Startup")
   table.insert(all_lines, "")
   vim.list_extend(all_lines, health_lines)
   table.insert(all_lines, "")
 
   -- Debug info
   local debug_lines, debug_info = debug.info(bufnr)
-  table.insert(all_lines, "## Debug Info")
+  table.insert(all_lines, "## Resolve")
   table.insert(all_lines, "")
   vim.list_extend(all_lines, debug_lines)
   table.insert(all_lines, "")
 
   -- Deep inspection
-  local inspect_lines, inspect_report = inspect.deep(bufnr)
-  table.insert(all_lines, "## Detailed Inspection")
+  local inspect_lines, inspect_report = inspect.capabilities(bufnr)
+  table.insert(all_lines, "## Buffer and capabilities")
   table.insert(all_lines, "")
   vim.list_extend(all_lines, inspect_lines)
 
   render_output(all_lines, use_scratch or false)
 
   return {
-    health = health_results,
-    debug = debug_info,
-    inspect = inspect_report,
+    startup = health_results,
+    resolve = debug_info,
+    capabilities = inspect_report,
   }
 end
 
