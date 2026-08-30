@@ -53,7 +53,7 @@ Three things worth knowing about the left-hand sides:
 
 <!-- BEGIN GENERATED KEYMAPS -->
 
-The `default` preset binds all 45 entries below. `minimal` binds the 29
+The `default` preset binds all 47 entries below. `minimal` binds the 31
 marked in the last column; `none` binds nothing.
 
 | action | lhs | mode | needs | minimal | description |
@@ -76,6 +76,8 @@ marked in the last column; `none` binds nothing.
 | `goto_type_definition_gr` | `grt` | n | — | — | Go to type definition (g-prefix variant) |
 | `hints_toggle` | `<leader>th` | n | — | yes | Toggle inlay hints (global) |
 | `hints_toggle_filetype` | `<leader>tH` | n | — | yes | Toggle inlay hints for this filetype |
+| `lightbulb_toggle` | `<leader>tl` | n | — | yes | Toggle the code-action indicator (global) |
+| `lightbulb_toggle_filetype` | `<leader>tL` | n | — | yes | Toggle the code-action indicator for this filetype |
 | `loc_next` | `]l` | n | — | yes | Next location-list entry |
 | `loc_prev` | `[l` | n | — | yes | Prev location-list entry |
 | `marksman_hints` | `<leader>lb` | n | — | yes | Toggle Marksman markdown hints |
@@ -163,6 +165,7 @@ unless `usrcmds.enable = false`.
 | `:Lsp workspace` | `[on\|off\|toggle\|status\|now]` | Workspace-wide diagnostics on attach (default `status`) |
 | `:Lsp root` | `[pick\|show\|add\|remove\|list]` | Roots and workspace folders (default `show`) |
 | `:Lsp hints` | `[toggle\|on\|off\|status\|clear] [filetype]` | Inlay hints, globally or for one filetype (default `toggle`) |
+| `:Lsp lightbulb` | `[toggle\|on\|off\|status\|clear] [filetype]` | Code-action indicator, globally or for one filetype (default `toggle`) |
 | `:Lsp log open` | — | Open Neovim's LSP log file in a split |
 | `:Lsp log level` | `{trace\|debug\|info\|warn\|error\|off}` | Set the LSP log level |
 
@@ -210,13 +213,14 @@ multi-line and meant to be read and copied from.
 
 ## Autocommands
 
-Two augroups belong to the binding layer proper; the rest of the plugin's
+Three augroups belong to the binding layer proper; the rest of the plugin's
 autocommands belong to the subsystems that own them.
 
 | augroup | event | what it does |
 | ------- | ----- | ------------ |
 | `lsp_nvim` | `LspAttach` | Re-binds the catalogue's `rename` and `goto_type_definition_gr` buffer-locally, because Neovim sets its own `gr*` maps buffer-locally on attach and those would otherwise shadow the catalogue's. Registered only when `keymaps.enable` is on; `bindings/autocmds.lua` owns the name and a `clear()`. |
 | `lsp_nvim_inlay_hints` | `LspAttach` | Applies the resolved inlay-hint state to a newly attached buffer. Deliberately a separate group: `lsp_nvim` is cleared when `keymaps.enable = false`, and hints are not a keymap concern. `core/inlay_hints.lua` owns it. |
+| `lsp_nvim_lightbulb` | `CursorMoved`, `BufEnter`, `InsertLeave`, `DiagnosticChanged`, `InsertEnter`, `LspAttach` | Re-asks `textDocument/codeAction` for the cursor position and marks the line when something comes back, debounced; `InsertEnter` clears it undebounced, because hiding is never what needs rate limiting. Separate group for the same reason as the inlay-hint one. `core/lightbulb.lua` owns it. |
 
 Beyond these, `formatter/`, `languages/`, `tools/` and `servers/` each register
 their own groups (format-on-save, per-filetype setup, the signature popup's

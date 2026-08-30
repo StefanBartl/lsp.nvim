@@ -42,6 +42,9 @@ local M = {}
 --- * `diagnostics`  -- how noisy this codebase is while you type.
 --- * `formatter`    -- whether writing a file here should format it.
 --- * `inlay_hints`  -- worth having in a typed repo, noise in a dynamic one.
+--- * `lightbulb`    -- how generous this stack's servers are with code
+---                     actions, which is what decides whether the indicator
+---                     carries information or is simply always lit.
 --- * `attach`       -- whether a workspace-wide scan is affordable here.
 --- * `workspace`    -- what counts as a project root inside this tree.
 --- * `tools`        -- which extra tools this stack benefits from.
@@ -65,6 +68,7 @@ M.ALLOWED = {
   diagnostics = true,
   formatter = true,
   inlay_hints = true,
+  lightbulb = true,
   attach = true,
   workspace = true,
   tools = true,

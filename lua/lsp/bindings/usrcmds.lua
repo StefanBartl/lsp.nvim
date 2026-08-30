@@ -98,12 +98,18 @@ local function register_filetype_argtype()
       ---@type string[]
       local names = {}
 
-      local ok, hints = pcall(require, "lsp.core.inlay_hints")
-      if ok then
-        for _, ft in ipairs(hints.overridden()) do
-          if not seen[ft] then
-            seen[ft] = true
-            names[#names + 1] = ft
+      -- Both features that carry per-filetype overrides, because both share
+      -- this argument type: an override for a filetype no buffer currently
+      -- uses is otherwise uncompletable, and clearing it is exactly what the
+      -- `clear` action is for.
+      for _, module in ipairs({ "lsp.core.inlay_hints", "lsp.core.lightbulb" }) do
+        local ok, mod = pcall(require, module)
+        if ok then
+          for _, ft in ipairs(mod.overridden()) do
+            if not seen[ft] then
+              seen[ft] = true
+              names[#names + 1] = ft
+            end
           end
         end
       end
@@ -422,6 +428,47 @@ function M.setup()
             hints.toggle(ft)
           else
             hints.set(action == "on", ft)
+          end
+        end,
+      },
+
+      -- ------------------------------------------------- code-action indicator
+      {
+        path = { "lightbulb" },
+        args = {
+          {
+            name = "action",
+            type = "STRING",
+            enum = { "toggle", "on", "off", "status", "clear" },
+            optional = true,
+          },
+          { name = "filetype", type = "LSP_FILETYPE", optional = true },
+        },
+        desc = "Code-action indicator: control globally, or for one filetype",
+        run = function(ctx)
+          local lightbulb = require("lsp.core.lightbulb")
+          local action = ctx.args.action or "toggle"
+          local ft = ctx.args.filetype
+
+          if action == "status" then
+            report(lightbulb.status())
+            return
+          end
+          if action == "clear" then
+            -- As with `:Lsp hints clear`: dropping "the global override" would
+            -- be dropping the setting itself, so this one needs a filetype.
+            if ft == nil then
+              notify.warn("`:Lsp lightbulb clear` needs a filetype")
+              return
+            end
+            lightbulb.clear(ft)
+            return
+          end
+
+          if action == "toggle" then
+            lightbulb.toggle(ft)
+          else
+            lightbulb.set(action == "on", ft)
           end
         end,
       },

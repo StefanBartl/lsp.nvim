@@ -80,7 +80,7 @@ local function check_plugin()
   if layers.project ~= nil then
     health.info(("project override: %s"):format(layers.project), {
       "Merged over your setup() options. Allowed keys: servers, diagnostics, "
-        .. "formatter, inlay_hints, attach, workspace, tools, languages.",
+        .. "formatter, inlay_hints, lightbulb, attach, workspace, tools, languages.",
     })
   end
 

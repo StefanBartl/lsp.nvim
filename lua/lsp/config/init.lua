@@ -313,6 +313,46 @@ local function normalize_table(cfg, key)
 end
 
 ---@internal
+--- Force a `filetype -> boolean` override map into shape.
+---
+--- This map is the one config value a typo turns into a silent no-op: a stray
+--- `filetypes = { "lua" }` (a list, not a map) would resolve every lookup to
+--- nil and simply never override anything. Shared by `inlay_hints` and
+--- `lightbulb`, which is not an accident -- the two features resolve their
+--- overrides by the same rule, so they have to reject the same mistakes.
+---@param cfg LspNvim.Config
+---@param key string # The option table holding the map.
+---@return nil
+local function normalize_filetype_map(cfg, key)
+  local opts = cfg[key]
+  if type(opts.filetypes) ~= "table" then
+    if opts.filetypes ~= nil then
+      warn(
+        ("%s.filetypes: expected a filetype -> boolean map, ignoring"):format(key),
+        key,
+        "filetypes"
+      )
+    end
+    opts.filetypes = {}
+    return
+  end
+  for ft, value in pairs(opts.filetypes) do
+    if type(ft) ~= "string" or type(value) ~= "boolean" then
+      warn(
+        ("%s.filetypes: ignoring entry %s = %s (want string = boolean)"):format(
+          key,
+          vim.inspect(ft),
+          vim.inspect(value)
+        ),
+        key,
+        "filetypes"
+      )
+      opts.filetypes[ft] = nil
+    end
+  end
+end
+
+---@internal
 --- Resolve the profile name and record it. Unknown names degrade to
 --- `"default"` rather than to no options at all -- a typo in a profile name
 --- must not silently strip the plugin down.
@@ -402,6 +442,7 @@ function M.setup(user_opts)
     "diagnostics",
     "formatter",
     "inlay_hints",
+    "lightbulb",
     "attach",
     "mason",
     "lspdoctor",
@@ -426,35 +467,53 @@ function M.setup(user_opts)
     cfg.completion.personal_names.labels = nil
   end
 
-  -- The override map is the one config value a typo turns into a silent
-  -- no-op: a stray `filetypes = { "lua" }` (a list, not a map) would resolve
-  -- every lookup to nil and simply never override anything.
-  if type(cfg.inlay_hints.filetypes) ~= "table" then
-    if cfg.inlay_hints.filetypes ~= nil then
-      warn(
-        "inlay_hints.filetypes: expected a filetype -> boolean map, ignoring",
-        "inlay_hints",
-        "filetypes"
-      )
-    end
-    cfg.inlay_hints.filetypes = {}
-  else
-    for ft, value in pairs(cfg.inlay_hints.filetypes) do
-      if type(ft) ~= "string" or type(value) ~= "boolean" then
-        warn(
-          ("inlay_hints.filetypes: ignoring entry %s = %s (want string = boolean)"):format(
-            vim.inspect(ft),
-            vim.inspect(value)
-          ),
-          "inlay_hints",
-          "filetypes"
-        )
-        cfg.inlay_hints.filetypes[ft] = nil
-      end
-    end
-  end
+  normalize_filetype_map(cfg, "inlay_hints")
   if type(cfg.inlay_hints.enable) ~= "boolean" then
     cfg.inlay_hints.enable = DEFAULTS.inlay_hints.enable
+  end
+
+  normalize_filetype_map(cfg, "lightbulb")
+  if type(cfg.lightbulb.enable) ~= "boolean" then
+    cfg.lightbulb.enable = DEFAULTS.lightbulb.enable
+  end
+  -- A non-list here would leave `kinds` iterating nothing, which reads as
+  -- "unfiltered" -- the opposite of what someone writing an allowlist means.
+  if type(cfg.lightbulb.kinds) ~= "table" or not vim.islist(cfg.lightbulb.kinds) then
+    if cfg.lightbulb.kinds ~= nil then
+      warn(
+        "lightbulb.kinds: expected a list of CodeActionKind prefixes, using defaults",
+        "lightbulb",
+        "kinds"
+      )
+    end
+    cfg.lightbulb.kinds = vim.deepcopy(DEFAULTS.lightbulb.kinds)
+  end
+  if cfg.lightbulb.render ~= "sign" and cfg.lightbulb.render ~= "virtual_text" then
+    if cfg.lightbulb.render ~= nil then
+      warn(
+        ('lightbulb.render: unknown value %q, using "sign"'):format(tostring(cfg.lightbulb.render)),
+        "lightbulb",
+        "render"
+      )
+    end
+    cfg.lightbulb.render = DEFAULTS.lightbulb.render
+  end
+  -- Same reasoning as `diagnostics.debounce_ms`: a bad window reaches
+  -- `uv.timer:start()` and raises there, on every cursor movement, far from
+  -- the setup() call that caused it.
+  if type(cfg.lightbulb.debounce_ms) ~= "number" or cfg.lightbulb.debounce_ms < 0 then
+    if cfg.lightbulb.debounce_ms ~= nil then
+      warn(
+        ("lightbulb.debounce_ms: expected a non-negative number, using %d"):format(
+          DEFAULTS.lightbulb.debounce_ms
+        ),
+        "lightbulb",
+        "debounce_ms"
+      )
+    end
+    cfg.lightbulb.debounce_ms = DEFAULTS.lightbulb.debounce_ms
+  else
+    cfg.lightbulb.debounce_ms = math.floor(cfg.lightbulb.debounce_ms)
   end
 
   -- A negative or non-numeric window would reach `uv.timer:start()` and raise

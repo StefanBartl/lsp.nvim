@@ -8,7 +8,7 @@ The full table — every route, every argument, every legacy alias — is in
 ```
 :Lsp status | servers | info | health | doctor
 :Lsp start | stop | restart | force-restart | recover
-:Lsp format | diag | workspace | root | hints | log
+:Lsp format | diag | workspace | root | hints | lightbulb | log
 ```
 
 `:Lsp doctor` takes the name of the question you have, not a verbosity level:
@@ -32,6 +32,12 @@ default; with one it writes an override for that filetype only, and `clear`
 gives the filetype back to the global. `status` reports both levels plus which
 loaded buffers actually have a client advertising `inlayHintProvider` — the
 distinction between "switched on" and "will show something".
+
+`:Lsp lightbulb` takes the same argument pair for the code-action indicator,
+and means the same thing by it. Its `status` answers the question that decides
+whether the indicator is worth having here: which clients in this buffer
+advertise `codeActionProvider`, which CodeActionKinds are on the allowlist, and
+whether a mark is on screen right now.
 
 `:Lsp root` carries two mechanisms, deliberately under one word:
 

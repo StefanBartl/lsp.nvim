@@ -145,6 +145,22 @@ local entries = {
     desc = "Toggle inlay hints for this filetype",
   },
 
+  -- --------------------------------------------------- code-action indicator
+  -- Same global/shifted-for-filetype pairing as the inlay-hint toggles above,
+  -- for the same reason: it is the same kind of switch.
+  lightbulb_toggle = {
+    lhs = "<leader>tl",
+    mode = "n",
+    rhs = actions.lightbulb_toggle,
+    desc = "Toggle the code-action indicator (global)",
+  },
+  lightbulb_toggle_filetype = {
+    lhs = "<leader>tL",
+    mode = "n",
+    rhs = actions.lightbulb_toggle_filetype,
+    desc = "Toggle the code-action indicator for this filetype",
+  },
+
   -- ------------------------------------------------------------ diagnostics
   diag_to_qflist = {
     lhs = "<leader>wq",
@@ -369,6 +385,8 @@ local presets = {
     "format_buffer",
     "hints_toggle",
     "hints_toggle_filetype",
+    "lightbulb_toggle",
+    "lightbulb_toggle_filetype",
     "format_lsp",
     "diag_to_qflist",
     "diag_to_loclist",

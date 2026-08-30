@@ -245,6 +245,11 @@ local function bootstrap(cfg)
   step("inlay hints", function()
     require("lsp.core.inlay_hints").setup(cfg.inlay_hints)
   end)
+  -- Same reason as inlay hints: its LspAttach handler has to be registered
+  -- before the first attach, not one buffer after it.
+  step("code-action lightbulb", function()
+    require("lsp.core.lightbulb").setup(cfg.lightbulb)
+  end)
 
   local caps = build_capabilities()
   local attach = build_attach(cfg)

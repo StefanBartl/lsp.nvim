@@ -142,6 +142,12 @@ Defaults (excerpt -- the full table is `lua/lsp/config/DEFAULTS.lua`): >lua
         containers = { "packages", "apps", "services", ... },
       },
       inlay_hints = { enable = false, filetypes = {} },
+      lightbulb = {   -- the code-action indicator
+        enable = true, filetypes = {},
+        kinds = { "quickfix", "source" },  -- {} = unfiltered
+        render = "sign",  -- or "virtual_text"
+        debounce_ms = 150, priority = 20,
+      },
       attach = { use_workspace_diagnostics = true, use_lazydev = true },
       mason = { ensure_install = false, overrides = { ... } },
       lspdoctor = { use_notify = false, list_limit = 8, ... },
@@ -189,9 +195,10 @@ project.file          (string)    Its name. Found once, at setup() time, by
                                   repository must not be enough to run its
                                   code, and JSON cannot express a function.
                                   Only `servers`, `diagnostics`, `formatter`,
-                                  `inlay_hints`, `attach`, `workspace`,
-                                  `tools` and `languages` are accepted -- the
-                                  keys the repository knows the answer to.
+                                  `inlay_hints`, `lightbulb`, `attach`,
+                                  `workspace`, `tools` and `languages` are
+                                  accepted -- the keys the repository knows the
+                                  answer to.
                                   Keymaps, `:Lsp` registration and `mason` are
                                   yours; anything else in the file is dropped
                                   with a warning. |:Lsp| status and
@@ -265,6 +272,41 @@ inlay_hints.filetypes (table<string, boolean>)
                                   a map and not a list, and a list is rejected
                                   with a warning rather than silently
                                   overriding nothing.
+lightbulb.enable      (boolean)   Global startup default for the code-action
+                                  indicator: a mark in the line when
+                                  `textDocument/codeAction` has something to
+                                  offer there. The runtime toggle (|:Lsp|
+                                  lightbulb, `<leader>tl`) owns it from there.
+lightbulb.filetypes   (table<string, boolean>)
+                                  Per-filetype override, resolved exactly as
+                                  `inlay_hints.filetypes` is.
+lightbulb.kinds       (string[])  CodeActionKind prefixes that light the
+                                  indicator; a kind matches exactly or as a
+                                  dotted child. This is why `enable` can
+                                  default to on: unfiltered, the indicator is
+                                  lit permanently under servers that offer
+                                  refactors everywhere, and one that is always
+                                  on carries no information. An action with no
+                                  `kind` always counts -- `kind` is optional in
+                                  the protocol. `{}` turns the filter off.
+lightbulb.render      ("sign"|"virtual_text")
+                                  Where it draws. Both obvious places are
+                                  taken -- the sign column carries diagnostic
+                                  signs, `virtual_text` sits at end of line --
+                                  so `sign` borrows the sign column on the
+                                  cursor line only, above the diagnostic signs,
+                                  and `virtual_text` draws at the window edge.
+lightbulb.text        (string)    The indicator itself. Truncated to two
+                                  display cells when rendered as a sign.
+lightbulb.debounce_ms (integer)   Window between the last cursor movement and
+                                  the request -- what the feature costs. One
+                                  request per cursor position, sent only to
+                                  clients advertising `codeActionProvider`,
+                                  and never in insert mode.
+lightbulb.priority    (integer)   Extmark priority. Above |vim.diagnostic|'s
+                                  sign priority (10) by default, which is the
+                                  point: on a line that has both, the
+                                  actionable mark is the one worth seeing.
 attach.use_workspace_diagnostics (boolean)
                                   Populate workspace-wide diagnostics on
                                   attach. On by default: the module measures
@@ -362,7 +404,7 @@ means adding a catalogue entry; nothing is hardcoded at the binding site.
 `scripts/gen_bindings.lua`, which CI checks, so the list cannot drift from the
 code.
 
-The `default` preset binds 45 entries; `minimal` binds the 29 that have no
+The `default` preset binds 47 entries; `minimal` binds the 31 that have no
 Neovim 0.11 equivalent (it drops `grn`, `grt` and `]d`/`[d`, and the prefixless
 `ls*` family); `none` binds nothing.
 
@@ -450,6 +492,19 @@ into `:Lsp` routes with thin aliases is roadmap section 8.2.
                     or that never asked for `changeNotifications`, is skipped
                     rather than sent a notification it did not ask for.
                     `:Lsp root show` names it, with the reason.
+
+    :Lsp lightbulb [action] [filetype]                    *:Lsp-lightbulb*
+                    The code-action indicator, globally or for one filetype.
+                    Actions: `toggle` (default), `on`, `off`, `status`,
+                    `clear`. With no filetype the global default moves; with
+                    one, an override is written for that filetype alone, and
+                    `clear` gives it back to the global.
+
+                    `status` answers the question that decides whether the
+                    indicator is worth having in this buffer: which attached
+                    clients advertise `codeActionProvider`, which
+                    CodeActionKinds are on the allowlist, and whether a mark
+                    is on screen right now.
 
     :Lsp log open                                          *:Lsp-log-open*
                     Open Neovim's LSP log file (|vim.lsp.get_log_path()|) in a

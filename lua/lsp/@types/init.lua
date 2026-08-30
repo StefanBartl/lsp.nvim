@@ -74,6 +74,17 @@ require("lsp.@types.vim_lsp")
 ---@field enable? boolean # Global default for `vim.lsp.inlay_hint`; the runtime toggle owns it afterwards.
 ---@field filetypes? table<string, boolean> # Per-filetype override. An absent key inherits `enable`; `false` is an explicit off.
 
+---@class LspNvim.LightbulbOpts
+--- The code-action indicator. `filetypes` resolves exactly like
+--- `LspNvim.InlayHintsOpts.filetypes`.
+---@field enable? boolean # Global default; the runtime toggle owns it afterwards.
+---@field filetypes? table<string, boolean> # Per-filetype override. An absent key inherits `enable`; `false` is an explicit off.
+---@field kinds? string[] # CodeActionKind prefixes that light the indicator. Empty means unfiltered; an action without a kind always counts.
+---@field render? "sign"|"virtual_text" # Sign column on the cursor line, or `right_align` virtual text.
+---@field text? string # The indicator itself. Truncated to two display cells when rendered as a sign.
+---@field debounce_ms? integer # Window between the last cursor movement and the request.
+---@field priority? integer # Extmark priority. Above `vim.diagnostic`'s signs (10) by default.
+
 ---@class LspNvim.AttachOpts
 ---@field use_workspace_diagnostics? boolean # Populate workspace diagnostics on attach (the module's own size gate still applies).
 ---@field use_lazydev? boolean # Wire lazydev into lua_ls attaches.
@@ -115,6 +126,7 @@ require("lsp.@types.vim_lsp")
 ---@field formatter? LspNvim.FormatterOpts
 ---@field workspace? LspNvim.WorkspaceOpts
 ---@field inlay_hints? LspNvim.InlayHintsOpts
+---@field lightbulb? LspNvim.LightbulbOpts
 ---@field attach? LspNvim.AttachOpts
 ---@field mason? LspNvim.MasonOpts
 ---@field lspdoctor? table # Options forwarded to `lsp.lspdoctor.setup()`.

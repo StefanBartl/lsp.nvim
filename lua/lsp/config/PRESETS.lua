@@ -43,6 +43,10 @@ local PRESETS = {
       debounce_ms = 400,
     },
     inlay_hints = { enable = false },
+    -- One `textDocument/codeAction` round trip per cursor position. Cheap per
+    -- request and continuous by nature, which is exactly the class of cost
+    -- this preset turns off.
+    lightbulb = { enable = false },
     attach = {
       -- The single most expensive default: it walks the workspace on attach.
       -- Its own `max_files` gate already refuses the biggest cases, but on a
@@ -72,6 +76,10 @@ local PRESETS = {
       debounce_ms = 50,
     },
     inlay_hints = { enable = true },
+    -- Unfiltered here, unlike the default allowlist: this preset's trade is
+    -- "more feedback, sooner", and a refactor you did not know was on offer is
+    -- feedback.
+    lightbulb = { enable = true, kinds = {} },
     attach = {
       use_workspace_diagnostics = true,
       use_lazydev = true,

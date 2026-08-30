@@ -74,7 +74,8 @@ on-demand work: `gd`, hover, rename and code actions behave exactly as they do
 under `default`. That split is what makes it usable rather than merely smaller.
 
 `full` is the inverse trade: `update_in_insert`, inlay hints on, a 50ms
-throttle instead of 150.
+throttle instead of 150, and the code-action indicator unfiltered rather than
+narrowed to `quickfix`/`source`.
 
 Two things no preset ever sets, whatever its name suggests:
 
@@ -112,10 +113,10 @@ nothing to execute — the format *is* the boundary, not a convention on top of
 one.
 
 **An allowlist, not a filter.** `servers`, `diagnostics`, `formatter`,
-`inlay_hints`, `attach`, `workspace`, `tools`, `languages` are accepted;
-everything else is dropped with a warning. The line is not "what could break"
-but *whose question is this*. Those eight describe the codebase, so the
-codebase may answer them. `keymaps`, `usrcmds`, `which_key` and `menu` describe
+`inlay_hints`, `lightbulb`, `attach`, `workspace`, `tools`, `languages` are
+accepted; everything else is dropped with a warning. The line is not "what
+could break" but *whose question is this*. Those nine describe the codebase, so
+the codebase may answer them. `keymaps`, `usrcmds`, `which_key` and `menu` describe
 you — opening a repository must not move a key. `mason` installs software.
 `preset` is a property of the machine. `completion.personal_names.labels` is a
 function and could not be expressed anyway.
@@ -230,6 +231,47 @@ rejected with a warning instead.
 `<leader>th`, `<leader>tH` and `:Lsp hints` move the same state at runtime, and
 the toggle applies to every loaded buffer immediately rather than at the next
 attach.
+
+## lightbulb
+
+The code-action indicator. Same two-level shape as `inlay_hints`, plus the
+allowlist that makes it usable:
+
+```lua
+lightbulb = {
+  enable = true,
+  filetypes = { typescript = false },
+  kinds = { "quickfix", "source" },
+  render = "sign",           -- or "virtual_text"
+  text = "󰌵",
+  debounce_ms = 150,
+  priority = 20,
+},
+```
+
+**`kinds` is why this can be on by default.** An unfiltered code-action
+indicator is lit permanently under `ts_ls` and `gopls` — both offer refactors on
+nearly every line — and an indicator that is always on says nothing. The
+allowlist narrows it to *something here is broken and fixable*. A kind matches
+exactly or as a dotted child (`source` covers `source.organizeImports`), an
+action with no `kind` always counts because `kind` is optional in the protocol,
+and `kinds = {}` turns the filter off. Add `"refactor"` if you want the noisy
+version back.
+
+**`render` exists because both obvious places are occupied.** The sign column
+carries diagnostic signs and `virtual_text` sits at end of line, so `"sign"`
+borrows the sign column on the cursor line only, at a priority above the
+diagnostic signs (`priority`, default 20 against `vim.diagnostic`'s 10), and
+`"virtual_text"` draws at the window edge instead.
+
+**`debounce_ms` is what the feature costs.** One `textDocument/codeAction`
+request per cursor position, sent only to clients advertising
+`codeActionProvider`, marked `triggerKind = 2` (Automatic) so servers that
+distinguish it can answer more cheaply, and not sent at all in insert mode.
+`preset = "lean"` switches the whole thing off for the same reason it switches
+off the other continuous costs.
+
+`<leader>tl`, `<leader>tL` and `:Lsp lightbulb` move the same state at runtime.
 
 ## workspace.markers and workspace.containers
 

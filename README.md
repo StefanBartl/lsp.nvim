@@ -152,6 +152,7 @@ One verb with subcommands and `<Tab>` completion. Full cheatsheet:
 | `:Lsp diag {qf\|loc\|next\|prev} [qf\|loc]` | Diagnostics into a list, or move within one |
 | `:Lsp workspace [action]` | Workspace-wide diagnostics on attach |
 | `:Lsp hints [action] [filetype]` | Inlay hints: globally, or for one filetype |
+| `:Lsp lightbulb [action] [filetype]` | Code-action indicator: globally, or for one filetype |
 | `:Lsp root [pick\|show]` | Root scope: cwd / git root / file path |
 | `:Lsp log open` / `level {level}` | Open the LSP log, or set its level |
 
@@ -198,6 +199,16 @@ require("lsp").setup({
   inlay_hints = {
     enable = false,                -- global startup default; the runtime toggle owns it after
     filetypes = {},                -- per-filetype override; absent inherits, false overrides
+  },
+
+  lightbulb = {                    -- code-action indicator
+    enable = true,                 -- global startup default; the runtime toggle owns it after
+    filetypes = {},                -- per-filetype override; absent inherits, false overrides
+    kinds = { "quickfix", "source" }, -- what lights it; {} = everything, add "refactor" for more
+    render = "sign",               -- or "virtual_text" (right-aligned, clear of the eol text)
+    text = "󰌵",
+    debounce_ms = 150,             -- window between the last cursor move and the request
+    priority = 20,                 -- extmark priority; above vim.diagnostic's signs (10)
   },
 
   attach = {
@@ -279,8 +290,8 @@ A `.nvim-lsp.json` at or above the working directory is merged over your
 
 JSON rather than Lua on purpose: cloning a repository must not be enough to run
 its code, and JSON cannot express a function. Only these keys are accepted --
-`servers`, `diagnostics`, `formatter`, `inlay_hints`, `attach`, `workspace`,
-`tools`, `languages`. They are the ones the *repository* knows the answer to.
+`servers`, `diagnostics`, `formatter`, `inlay_hints`, `lightbulb`, `attach`,
+`workspace`, `tools`, `languages`. They are the ones the *repository* knows the answer to.
 Keymaps, `:Lsp` registration and `mason` are yours; a checkout does not get to
 move your keys or install packages, and anything else in the file is dropped
 with a warning.
@@ -326,7 +337,7 @@ lua/lsp/
     usrcmds.lua       -- the `:Lsp` verb
     autocmds.lua      -- augroup owner (no handlers yet)
     which_key.lua     -- group labels, soft dependency
-  core/               -- registry, attach, capabilities, handlers, diagnostics, inlay hints
+  core/               -- registry, attach, capabilities, handlers, diagnostics, inlay hints, lightbulb
   servers/            -- one module per language server
   languages/          -- filetype-specific quality-of-life setup
   formatter/          -- on-save toggle, conform strategy, view preservation

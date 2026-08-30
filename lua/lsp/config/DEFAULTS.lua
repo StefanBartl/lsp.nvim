@@ -97,6 +97,39 @@ local DEFAULTS = {
     filetypes = {},
   },
 
+  -- The code-action indicator: a mark in the line when `textDocument/codeAction`
+  -- has something to offer there, so `lsa` stops being a blind grab.
+  --
+  -- On by default, and that only works because of `kinds`: an unfiltered
+  -- lightbulb is lit permanently under `ts_ls` and `gopls`, which both offer
+  -- refactors nearly everywhere, and a permanently lit bulb says nothing. The
+  -- allowlist narrows it to "something here is broken and fixable". Add
+  -- `"refactor"` to get the noisy version back; `kinds = {}` disables the
+  -- filter entirely.
+  --
+  -- `filetypes` works exactly as `inlay_hints.filetypes` does: absent inherits
+  -- `enable`, `false` is an explicit off.
+  lightbulb = {
+    enable = true,
+    ---@type table<string, boolean>
+    filetypes = {},
+    ---@type string[]
+    kinds = { "quickfix", "source" },
+    -- "sign" borrows the sign column on the cursor line, above the diagnostic
+    -- signs; "virtual_text" draws at the window edge instead, where the
+    -- diagnostic message at end-of-line cannot collide with it.
+    ---@type "sign"|"virtual_text"
+    render = "sign",
+    text = "󰌵",
+    -- One request per cursor position, so this is the option that decides what
+    -- the feature costs. Same order of magnitude as `diagnostics.debounce_ms`
+    -- on purpose: below the point where a redraw reads as a reaction.
+    debounce_ms = 150,
+    -- Above `vim.diagnostic`'s sign priority (10), which is the point: on a
+    -- line that has both, the actionable mark is the one worth seeing.
+    priority = 20,
+  },
+
   formatter = {
     -- Off at startup; the runtime toggle (`:LspFormatToggle`, `<leader>tft`)
     -- owns it from there.

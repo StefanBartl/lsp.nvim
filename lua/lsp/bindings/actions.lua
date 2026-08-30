@@ -229,6 +229,58 @@ function M.hints_off()
   end
 end
 
+-- ------------------------------------------------------- code-action indicator
+
+---@internal
+--- The runtime toggle for the code-action indicator.
+---@return table|nil
+local function lightbulb()
+  local ok, mod = pcall(require, "lsp.core.lightbulb")
+  return ok and mod or nil
+end
+
+--- Toggle the code-action indicator globally.
+---@return nil
+function M.lightbulb_toggle()
+  local lb = lightbulb()
+  if lb then
+    lb.toggle(nil)
+  end
+end
+
+--- Toggle the code-action indicator for the current buffer's filetype only.
+---@return nil
+function M.lightbulb_toggle_filetype()
+  local lb = lightbulb()
+  if lb == nil then
+    return
+  end
+  local ft = vim.bo[0].filetype
+  if ft == "" then
+    require("lib.nvim.notify").create("[lsp.nvim]").warn("this buffer has no filetype")
+    return
+  end
+  lb.toggle(ft)
+end
+
+--- Turn the code-action indicator on globally.
+---@return nil
+function M.lightbulb_on()
+  local lb = lightbulb()
+  if lb then
+    lb.set(true, nil)
+  end
+end
+
+--- Turn the code-action indicator off globally.
+---@return nil
+function M.lightbulb_off()
+  local lb = lightbulb()
+  if lb then
+    lb.set(false, nil)
+  end
+end
+
 -- ---------------------------------------------------------------- rename
 
 --- Rename the symbol under the cursor.
