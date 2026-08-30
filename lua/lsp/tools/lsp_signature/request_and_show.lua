@@ -48,7 +48,7 @@ return function(bufnr, callback)
   local function show_hover_across_clients()
     -- show_hover returns true when at least one request was scheduled
     local did_schedule =
-      hover_helper.show_hover(clients, params, { mode = mode, callback = callback })
+      hover_helper.show_hover(clients, params, { mode = mode, callback = callback, bufnr = bufnr })
 
     -- schedule a short deferred check: if no floating preview appeared, call fallback providers
     vim.defer_fn(function()

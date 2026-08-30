@@ -4,6 +4,7 @@
 
   - [Overview](#overview)
   - [How it works](#how-it-works)
+  - [The hover cache](#the-hover-cache)
   - [Parameter highlighting](#parameter-highlighting)
     - [Logic](#logic)
     - [Example highlight groups](#example-highlight-groups)
@@ -56,6 +57,38 @@ function signatures and hover information**. It offers:
    * Maximum width: 60% of the screen width.
    * Automatic positioning above or below the cursor, depending on the available space.
    * Border style: `rounded`.
+
+---
+
+## The hover cache
+
+`<C-b>` is a toggle, so looking at the same thing twice means close, open, and
+wait for the server again. It does not have to: hover for a position is a
+function of the buffer text, and the text is versioned by `changedtick`. The
+**displayable lines** — past the request and past `format_hover` — are kept in
+an LRU from `lib.lua.memo`, capacity 32, so a repeat on an unedited buffer
+renders without a roundtrip.
+
+The key is `(bufnr, changedtick, row, col, client ids)`.
+
+The first four are what makes the answer what it is. The client ids are in
+there because they are what makes it *stale* otherwise: restart a server and
+the buffer has not changed, so `changedtick` still matches, but the new client
+carries a new id — the key moves by itself and the old entry is simply never
+asked for again. No invalidation autocmd, and so nothing that can drift out of
+sync with one.
+
+A request whose `params` carry no position is **not** cached at all. Guessing a
+key there would collapse two different questions onto one answer, and a hover
+popup that shows the wrong position is worse than the roundtrip it saved.
+
+`show_hover.clear_cache()` empties it. Nothing in the plugin calls it — the key
+retires its own entries — but a cache with no way to empty it is a cache one
+cannot debug.
+
+Covered by `TESTS/lsp/hover_cache_spec.lua`, which is mostly about the misses:
+an edit, a different position and a replaced client each have to reach the
+wire.
 
 ---
 
