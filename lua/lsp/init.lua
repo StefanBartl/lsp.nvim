@@ -250,6 +250,12 @@ local function bootstrap(cfg)
   step("code-action lightbulb", function()
     require("lsp.core.lightbulb").setup(cfg.lightbulb)
   end)
+  -- Before the servers for a second reason beyond the LspAttach handler: it
+  -- registers the `on_exit` hook on the `"*"` config, and a server started
+  -- before that would run unsupervised until its next restart.
+  step("auto-restart supervisor", function()
+    require("lsp.core.supervisor").setup(cfg.auto_restart)
+  end)
 
   local caps = build_capabilities()
   local attach = build_attach(cfg)

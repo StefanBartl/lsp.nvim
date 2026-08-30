@@ -85,6 +85,14 @@ require("lsp.@types.vim_lsp")
 ---@field debounce_ms? integer # Window between the last cursor movement and the request.
 ---@field priority? integer # Extmark priority. Above `vim.diagnostic`'s signs (10) by default.
 
+---@class LspNvim.AutoRestartOpts
+--- Automatic restart after a client crash, supervised by `lsp.core.supervisor`.
+---@field enable? boolean # Bring a crashed server back at all.
+---@field max_attempts? integer # Consecutive attempts before giving up and saying so.
+---@field initial_delay_ms? integer # Wait before the first attempt; doubles from there.
+---@field max_delay_ms? integer # Cap on that doubling.
+---@field reset_after_ms? integer # How long a relaunched client must survive before the counter clears.
+
 ---@class LspNvim.AttachOpts
 ---@field use_workspace_diagnostics? boolean # Populate workspace diagnostics on attach (the module's own size gate still applies).
 ---@field use_lazydev? boolean # Wire lazydev into lua_ls attaches.
@@ -127,6 +135,7 @@ require("lsp.@types.vim_lsp")
 ---@field workspace? LspNvim.WorkspaceOpts
 ---@field inlay_hints? LspNvim.InlayHintsOpts
 ---@field lightbulb? LspNvim.LightbulbOpts
+---@field auto_restart? LspNvim.AutoRestartOpts
 ---@field attach? LspNvim.AttachOpts
 ---@field mason? LspNvim.MasonOpts
 ---@field lspdoctor? table # Options forwarded to `lsp.lspdoctor.setup()`.

@@ -153,6 +153,7 @@ One verb with subcommands and `<Tab>` completion. Full cheatsheet:
 | `:Lsp workspace [action]` | Workspace-wide diagnostics on attach |
 | `:Lsp hints [action] [filetype]` | Inlay hints: globally, or for one filetype |
 | `:Lsp lightbulb [action] [filetype]` | Code-action indicator: globally, or for one filetype |
+| `:Lsp autorestart [action]` | Bring a crashed server back automatically: control or report |
 | `:Lsp root [pick\|show]` | Root scope: cwd / git root / file path |
 | `:Lsp log open` / `level {level}` | Open the LSP log, or set its level |
 
@@ -209,6 +210,14 @@ require("lsp").setup({
     text = "󰌵",
     debounce_ms = 150,             -- window between the last cursor move and the request
     priority = 20,                 -- extmark priority; above vim.diagnostic's signs (10)
+  },
+
+  auto_restart = {                 -- bring a crashed server back
+    enable = true,
+    max_attempts = 4,              -- then it says so and stops
+    initial_delay_ms = 1000,       -- doubling: 1s, 2s, 4s, 8s
+    max_delay_ms = 30000,
+    reset_after_ms = 60000,        -- survival clears the counter, not attach
   },
 
   attach = {
@@ -337,7 +346,7 @@ lua/lsp/
     usrcmds.lua       -- the `:Lsp` verb
     autocmds.lua      -- augroup owner (no handlers yet)
     which_key.lua     -- group labels, soft dependency
-  core/               -- registry, attach, capabilities, handlers, diagnostics, inlay hints, lightbulb
+  core/               -- registry, attach, capabilities, handlers, diagnostics, inlay hints, lightbulb, supervisor
   servers/            -- one module per language server
   languages/          -- filetype-specific quality-of-life setup
   formatter/          -- on-save toggle, conform strategy, view preservation

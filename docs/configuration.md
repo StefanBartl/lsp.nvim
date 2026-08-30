@@ -273,6 +273,46 @@ off the other continuous costs.
 
 `<leader>tl`, `<leader>tL` and `:Lsp lightbulb` move the same state at runtime.
 
+## auto_restart
+
+Bringing a crashed server back:
+
+```lua
+auto_restart = {
+  enable = true,
+  max_attempts = 4,
+  initial_delay_ms = 1000,
+  max_delay_ms = 30000,
+  reset_after_ms = 60000,
+},
+```
+
+**On by default, and bounded.** It restores the state you already asked for,
+and it cannot run away: four attempts at 1s, 2s, 4s, 8s and then it says so and
+stops. `preset = "lean"` leaves it on — it costs nothing while nothing crashes,
+and a weak machine is where a server gets OOM-killed in the first place.
+
+**What does not count as a crash**, and each for its own reason:
+
+- **A stop you asked for.** A force-stop is a SIGTERM, which looks exactly like
+  a kill. Every deliberate stop in the plugin declares itself first, so `:Lsp
+  stop` and `:Lsp restart` are never fought.
+- **A clean exit nobody asked for.** Ambiguous by construction; restarting
+  risks a loop against a server that has decided it is done.
+- **An exit during `:qa`.**
+- **A client that died before it ever attached.** There is no buffer to bring
+  it back onto, and a server failing *at startup* is the one case where a retry
+  loop is a hazard. `:Lsp recover` owns it.
+
+**`reset_after_ms` is survival, not success.** The counter clears when a
+relaunched client is still alive that much later. Clearing it on attach instead
+would let a server that crashes two seconds after every attach restart forever,
+because each attach would forgive the previous crash.
+
+`:Lsp autorestart [toggle|on|off|status]` moves the switch at runtime. There is
+no keymap: unlike the hint and indicator toggles this is set once and left, and
+a key for it would be a key you never press.
+
 ## workspace.markers and workspace.containers
 
 Which directories `:Lsp root add` / `<leader>lsw` offer as workspace folders:

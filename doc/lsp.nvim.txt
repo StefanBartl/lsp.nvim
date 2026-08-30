@@ -148,6 +148,11 @@ Defaults (excerpt -- the full table is `lua/lsp/config/DEFAULTS.lua`): >lua
         render = "sign",  -- or "virtual_text"
         debounce_ms = 150, priority = 20,
       },
+      auto_restart = {   -- bring a crashed server back
+        enable = true, max_attempts = 4,
+        initial_delay_ms = 1000, max_delay_ms = 30000,
+        reset_after_ms = 60000,
+      },
       attach = { use_workspace_diagnostics = true, use_lazydev = true },
       mason = { ensure_install = false, overrides = { ... } },
       lspdoctor = { use_notify = false, list_limit = 8, ... },
@@ -307,6 +312,43 @@ lightbulb.priority    (integer)   Extmark priority. Above |vim.diagnostic|'s
                                   sign priority (10) by default, which is the
                                   point: on a line that has both, the
                                   actionable mark is the one worth seeing.
+auto_restart.enable   (boolean)   Bring a language server back when it dies
+                                  mid-session. A crashed server is otherwise
+                                  invisible -- hover stops answering,
+                                  completion goes empty, diagnostics freeze --
+                                  and it reads as slowness until someone types
+                                  |:Lsp| restart.
+
+                                  Four exits are deliberately not crashes: one
+                                  this plugin asked for (a force-stop is a
+                                  SIGTERM and would otherwise be
+                                  indistinguishable from a kill, so every
+                                  deliberate stop declares itself first), a
+                                  clean exit nobody asked for, an exit during
+                                  |:qa|, and a client that died before it ever
+                                  attached -- the last is where a retry loop
+                                  would be a hazard, and |:Lsp| recover owns
+                                  it.
+auto_restart.max_attempts (integer)
+                                  Consecutive attempts before it gives up and
+                                  says so. The counter survives the giving-up
+                                  so |:LspDoctor| startup can report how bad it
+                                  got.
+auto_restart.initial_delay_ms (integer)
+                                  Wait before the first attempt. Doubles from
+                                  there: 1s, 2s, 4s, 8s at the defaults.
+auto_restart.max_delay_ms (integer)
+                                  Cap on that doubling. A value below
+                                  `initial_delay_ms` would make the backoff
+                                  shrink instead of grow and is raised to it
+                                  with a warning.
+auto_restart.reset_after_ms (integer)
+                                  How long a relaunched client must stay alive
+                                  before the attempt counter clears. Survival
+                                  rather than attach: clearing it on attach
+                                  would let a server that crashes two seconds
+                                  after every attach restart forever, since
+                                  each attach would forgive the previous crash.
 attach.use_workspace_diagnostics (boolean)
                                   Populate workspace-wide diagnostics on
                                   attach. On by default: the module measures
@@ -492,6 +534,15 @@ into `:Lsp` routes with thin aliases is roadmap section 8.2.
                     or that never asked for `changeNotifications`, is skipped
                     rather than sent a notification it did not ask for.
                     `:Lsp root show` names it, with the reason.
+
+    :Lsp autorestart [action]                           *:Lsp-autorestart*
+                    Whether a crashed server is brought back on its own.
+                    Actions: `toggle` (default), `on`, `off`, `status`.
+
+                    `status` is the one to read after something went wrong: it
+                    names every server with a failed attempt on record, why the
+                    last attempt failed, and how far the backoff had got. The
+                    same counter is what |:LspDoctor| startup reports.
 
     :Lsp lightbulb [action] [filetype]                    *:Lsp-lightbulb*
                     The code-action indicator, globally or for one filetype.

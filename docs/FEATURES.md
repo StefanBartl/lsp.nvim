@@ -147,6 +147,37 @@ distinguish it can answer more cheaply, and skipped entirely in insert mode.
 - **Commands:** `:Lsp lightbulb [toggle|on|off|status|clear] [filetype]`
 - **Keys:** `<leader>tl` (global), `<leader>tL` (this filetype)
 
+## Automatic restart after a crash
+
+A server that dies mid-session is invisible: hover stops answering, completion
+goes empty, diagnostics freeze at whatever they last said. It reads as
+slowness. The supervisor notices instead and brings the server back before the
+next keypress needs it, with an exponential backoff and a cap.
+
+**Crash versus intent is the whole difficulty.** `vim.lsp.stop_client(id, true)`
+sends SIGTERM, so a deliberate `:Lsp restart` is indistinguishable from a
+server killed by the OOM killer. Intent is therefore *declared*: every
+deliberate stop in the plugin calls `expect_stop(id)` first, and a marked exit
+is not a crash. Three further exits are deliberately not crashes either — a
+clean exit nobody asked for (ambiguous, and restarting risks a loop), an exit
+during `:qa`, and a client that died before it ever attached. That last one is
+where a retry loop would be a real hazard, and it already has an owner:
+`:Lsp recover`.
+
+The counter is cleared by **survival**, not by success: a relaunched client
+that is still alive `reset_after_ms` later clears it. Clearing on attach would
+let a server that crashes two seconds after every attach restart forever.
+
+The module also owns the per-server attempt counter that `:LspDoctor startup`
+reports, for both the automatic restarts and the asked ones in
+`usercmds/recovery.lua` — one number, one owner.
+
+- **Module:** `core/supervisor.lua`
+- **Config:** `auto_restart.enable`, `auto_restart.max_attempts`,
+  `auto_restart.initial_delay_ms`, `auto_restart.max_delay_ms`,
+  `auto_restart.reset_after_ms`
+- **Commands:** `:Lsp autorestart [toggle|on|off|status]`
+
 ## Workspace diagnostics
 
 A runtime toggle for populating diagnostics workspace-wide on every attach,

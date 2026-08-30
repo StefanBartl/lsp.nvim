@@ -47,6 +47,9 @@ local PRESETS = {
     -- request and continuous by nature, which is exactly the class of cost
     -- this preset turns off.
     lightbulb = { enable = false },
+    -- Left ON. It costs nothing while nothing crashes, and a weak machine is
+    -- where a server gets OOM-killed in the first place -- exactly where
+    -- noticing by hand is most expensive.
     attach = {
       -- The single most expensive default: it walks the workspace on attach.
       -- Its own `max_files` gate already refuses the biggest cases, but on a

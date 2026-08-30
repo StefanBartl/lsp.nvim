@@ -443,6 +443,7 @@ function M.setup(user_opts)
     "formatter",
     "inlay_hints",
     "lightbulb",
+    "auto_restart",
     "attach",
     "mason",
     "lspdoctor",
@@ -470,6 +471,48 @@ function M.setup(user_opts)
   normalize_filetype_map(cfg, "inlay_hints")
   if type(cfg.inlay_hints.enable) ~= "boolean" then
     cfg.inlay_hints.enable = DEFAULTS.inlay_hints.enable
+  end
+
+  if type(cfg.auto_restart.enable) ~= "boolean" then
+    cfg.auto_restart.enable = DEFAULTS.auto_restart.enable
+  end
+  -- Every one of these ends up in a `uv` timer or a comparison against a
+  -- counter. A zero or a negative would either fire instantly forever or make
+  -- the give-up test unreachable, and both fail far from the setup() call.
+  for _, key in ipairs({
+    "max_attempts",
+    "initial_delay_ms",
+    "max_delay_ms",
+    "reset_after_ms",
+  }) do
+    local value = cfg.auto_restart[key]
+    if type(value) ~= "number" or value <= 0 then
+      if value ~= nil then
+        warn(
+          ("auto_restart.%s: expected a positive number, using %d"):format(
+            key,
+            DEFAULTS.auto_restart[key]
+          ),
+          "auto_restart",
+          key
+        )
+      end
+      cfg.auto_restart[key] = DEFAULTS.auto_restart[key]
+    else
+      cfg.auto_restart[key] = math.floor(value)
+    end
+  end
+  -- A cap below the first delay would make the backoff shrink instead of grow.
+  if cfg.auto_restart.max_delay_ms < cfg.auto_restart.initial_delay_ms then
+    warn(
+      ("auto_restart.max_delay_ms (%d) is below initial_delay_ms (%d), raising it"):format(
+        cfg.auto_restart.max_delay_ms,
+        cfg.auto_restart.initial_delay_ms
+      ),
+      "auto_restart",
+      "max_delay_ms"
+    )
+    cfg.auto_restart.max_delay_ms = cfg.auto_restart.initial_delay_ms
   end
 
   normalize_filetype_map(cfg, "lightbulb")

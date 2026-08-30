@@ -432,6 +432,34 @@ function M.setup()
         end,
       },
 
+      -- ---------------------------------------------------------- auto-restart
+      {
+        path = { "autorestart" },
+        args = {
+          {
+            name = "action",
+            type = "STRING",
+            enum = { "toggle", "on", "off", "status" },
+            optional = true,
+          },
+        },
+        desc = "Bring a crashed server back automatically: control or report",
+        run = function(ctx)
+          local supervisor = require("lsp.core.supervisor")
+          local action = ctx.args.action or "toggle"
+
+          if action == "status" then
+            report(supervisor.status())
+            return
+          end
+          if action == "toggle" then
+            supervisor.toggle()
+          else
+            supervisor.set(action == "on")
+          end
+        end,
+      },
+
       -- ------------------------------------------------- code-action indicator
       {
         path = { "lightbulb" },

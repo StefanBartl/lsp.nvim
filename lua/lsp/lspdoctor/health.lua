@@ -101,20 +101,22 @@ local function config_exists(name)
   return config_for(name) ~= nil
 end
 
---- Get server state/attempts
+--- Get server state/attempts.
+---
+--- Read from `lsp.core.supervisor`, which owns the counter for both the asked
+--- starts (`lsp.usercmds.recovery`) and the automatic ones after a crash. This
+--- used to require `lsp.usercmds.state` -- a module that has never existed in
+--- this plugin -- so the `pcall` failed silently on every call and the
+--- "Attempts" line below reported 0 no matter what had happened, which also
+--- made the "start failed" hint it gates unreachable.
 ---@param name string
 ---@return integer attempts, string|nil last_error
 local function get_server_state(name)
-  local ok, state_mod = pcall(require, "lsp.usercmds.state")
-  if not ok or type(state_mod.state) ~= "table" then
+  local ok, supervisor = pcall(require, "lsp.core.supervisor")
+  if not ok or type(supervisor.attempts) ~= "function" then
     return 0, nil
   end
-
-  local state = state_mod.state
-  local attempts = (state.attempts and state.attempts[name]) or 0
-  local last_error = (state.last_error and state.last_error[name]) or nil
-
-  return attempts, last_error
+  return supervisor.attempts(name), supervisor.last_error(name)
 end
 
 ---@internal

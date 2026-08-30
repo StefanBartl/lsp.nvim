@@ -4,6 +4,7 @@
 local M = {}
 
 local notify = require("lib.nvim.notify").create("[LSP.Stop] ")
+local supervisor = require("lsp.core.supervisor")
 local lsp = vim.lsp
 
 --- Get clients attached to buffer
@@ -26,6 +27,11 @@ end
 ---@return nil
 local function graceful_stop(client_id, timeout_ms, on_done)
   timeout_ms = timeout_ms or 3000
+
+  -- Declared up front, and it covers both paths below: the graceful shutdown
+  -- exits 0, but the force-stop fallback sends SIGTERM, which the supervisor
+  -- cannot tell from a crash. Stopping a server must not restart it.
+  supervisor.expect_stop(client_id)
 
   local function finish(success)
     if on_done then

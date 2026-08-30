@@ -184,6 +184,28 @@ local DEFAULTS = {
     },
   },
 
+  -- Bring a language server back when it dies mid-session. A crashed server
+  -- is otherwise invisible: hover stops answering, completion goes empty,
+  -- diagnostics freeze at whatever they last said, and it all reads as
+  -- slowness until someone types `:Lsp restart`.
+  --
+  -- On by default because it restores the state you already asked for, and
+  -- because it is bounded: `max_attempts` with exponential backoff, and only
+  -- for clients that were attached and working. A server that dies *during
+  -- startup* is deliberately not retried here -- that is the case where a
+  -- retry loop is a hazard, and `:Lsp recover` owns it.
+  --
+  -- The counter clears when a relaunched client survives `reset_after_ms`.
+  -- Clearing it on attach instead would let a server that crashes two seconds
+  -- after every attach restart forever.
+  auto_restart = {
+    enable = true,
+    max_attempts = 4,
+    initial_delay_ms = 1000,
+    max_delay_ms = 30000,
+    reset_after_ms = 60000,
+  },
+
   -- Handed to `core/attach.lua`'s builder.
   attach = {
     -- Startup default only -- `lsp.core.workspace_diagnostics` overrides it at

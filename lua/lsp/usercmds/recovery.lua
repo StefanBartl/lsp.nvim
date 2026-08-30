@@ -1,25 +1,23 @@
 ---@module 'lsp.usercmds.recovery'
---- LSP error recovery and retry strategies
+--- LSP error recovery and retry strategies -- starting a server that should be
+--- running and is not.
+---
+--- The counterpart to `lsp.core.supervisor`, which handles the other
+--- direction: a server that *was* running and died. The split is by trigger,
+--- not by mechanism -- this one is asked (`:Lsp recover`, `:Lsp
+--- force-restart`), that one notices.
+---
+--- The attempt counter lives in the supervisor, not here. It used to live in a
+--- file-local table in this module while `lspdoctor/health.lua` read one from
+--- `lsp.usercmds.state`, a module that has never existed -- so the "Attempts:
+--- N" line in `:LspDoctor startup` was always 0, and the "start failed" hint
+--- it gates could never fire. One owner now, and the report reads from it.
 
 local M = {}
 
 local lsp = vim.lsp
 local notify = require("lib.nvim.notify").create("[LSP.Recovery] ")
-
----@class RecoveryState
----@field attempts table<string, integer> -- server_name -> attempt count
----@field last_error table<string, string> -- server_name -> error message
-local state = {
-  attempts = {},
-  last_error = {},
-}
-
---- Reset recovery state for a server
----@param name string
-local function reset_state(name)
-  state.attempts[name] = 0
-  state.last_error[name] = nil
-end
+local supervisor = require("lsp.core.supervisor")
 
 --- Check if server is running
 ---@param name string
@@ -43,50 +41,39 @@ function M.retry_start(name, bufnr, max_attempts)
   max_attempts = max_attempts or 3
   bufnr = bufnr or 0
 
-  -- Initialize state
-  if not state.attempts[name] then
-    state.attempts[name] = 0
-  end
-
   -- Check if max attempts reached
-  if state.attempts[name] >= max_attempts then
+  if supervisor.attempts(name) >= max_attempts then
     notify.error(
       string.format(
         "Max retry attempts (%d) reached for '%s'. Last error: %s",
         max_attempts,
         name,
-        state.last_error[name] or "unknown"
+        supervisor.last_error(name) or "unknown"
       )
     )
     return false
   end
 
-  -- Increment attempt counter
-  state.attempts[name] = state.attempts[name] + 1
+  local attempt = supervisor.note_attempt(name)
 
   notify.info(
-    string.format(
-      "Attempting to start '%s' (attempt %d/%d)...",
-      name,
-      state.attempts[name],
-      max_attempts
-    )
+    string.format("Attempting to start '%s' (attempt %d/%d)...", name, attempt, max_attempts)
   )
 
   -- Try to start
   local ok, err = pcall(lsp.enable, { name })
 
   if not ok then
-    state.last_error[name] = tostring(err)
+    supervisor.note_error(name, tostring(err))
 
     -- Retry after delay if not max attempts
-    if state.attempts[name] < max_attempts then
+    if attempt < max_attempts then
       vim.defer_fn(function()
         if not vim.api.nvim_buf_is_valid(bufnr) then
           return
         end
         M.retry_start(name, bufnr, max_attempts)
-      end, 2000 * state.attempts[name]) -- Progressive delay: 2s, 4s, 6s
+      end, 2000 * attempt) -- Progressive delay: 2s, 4s, 6s
     end
 
     return false
@@ -99,12 +86,16 @@ function M.retry_start(name, bufnr, max_attempts)
     end
     if is_running(name, bufnr) then
       notify.info(
-        string.format("✓ '%s' started successfully on attempt %d", name, state.attempts[name])
+        string.format(
+          "✓ '%s' started successfully on attempt %d",
+          name,
+          supervisor.attempts(name)
+        )
       )
-      reset_state(name)
+      supervisor.reset(name)
     else
       -- Retry if not attached
-      if state.attempts[name] < max_attempts then
+      if supervisor.attempts(name) < max_attempts then
         notify.warn(string.format("'%s' not attached, retrying...", name))
         M.retry_start(name, bufnr, max_attempts)
       else
@@ -134,6 +125,10 @@ function M.force_restart(name, bufnr)
   for _, c in ipairs(lsp.get_clients({ bufnr = bufnr })) do
     if c.name == name then
       stopped_ids[#stopped_ids + 1] = c.id
+      -- Declared before the stop, not after: a force-stop sends SIGTERM, which
+      -- on the way out is indistinguishable from a crash. Without this the
+      -- supervisor would race this function to restart the same server.
+      supervisor.expect_stop(c.id)
       lsp.stop_client(c.id, true)
     end
   end
@@ -150,7 +145,7 @@ function M.force_restart(name, bufnr)
     if not vim.api.nvim_buf_is_valid(bufnr) then
       return
     end
-    reset_state(name) -- Reset retry counter
+    supervisor.reset(name) -- Reset retry counter
     M.retry_start(name, bufnr, 3)
   end, 500)
 

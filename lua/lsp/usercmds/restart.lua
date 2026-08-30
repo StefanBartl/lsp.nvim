@@ -1,9 +1,17 @@
 ---@module 'lsp.usercmds.restart'
---- LspRestartHere command implementation
+--- LspRestartHere command implementation.
+---
+--- The start half lives in `lsp.core.supervisor`, which needs the same
+--- primitive for a crashed server and is where the bug in this one was found:
+--- the config lookup here went through `vim.lsp.config.get()`, which does not
+--- exist on Neovim 0.12 (checked against 0.12.2). It resolved to nil, the
+--- lookup fell through to an empty table, and the command stopped its client
+--- and then reported a failure it could not distinguish from a real one.
 
 local M = {}
 
 local notify = require("lib.nvim.notify").create("[LSP.Restart] ")
+local supervisor = require("lsp.core.supervisor")
 local lsp = vim.lsp
 
 --- Get clients attached to buffer
@@ -13,40 +21,12 @@ local function get_buffer_clients(bufnr)
   return lsp.get_clients({ bufnr = bufnr or 0 })
 end
 
---- Start LSP server by name (with retry logic) and ATTACH to buffer
+--- Start LSP server by name and ATTACH to buffer.
 ---@param name string
 ---@param bufnr integer
 ---@return boolean success
 local function start_lsp(name, bufnr)
-  if not name or name == "" then
-    return false
-  end
-
-  -- Get LSP config from vim.lsp.config
-  if type(lsp.config) ~= "table" then
-    return false
-  end
-
-  local config_list = lsp.config.get and lsp.config.get() or {}
-  local server_config = nil
-
-  for _, cfg in pairs(config_list) do
-    if cfg.name == name then
-      server_config = cfg
-      break
-    end
-  end
-
-  if not server_config then
-    return false
-  end
-
-  -- Start AND attach to buffer. The `missing-fields` suppression is the same
-  -- case as in servers/lua_ls/reload.lua: the resolved server table is built
-  -- elsewhere, LuaLS checks it against vim.lsp.start's meta regardless.
-  ---@diagnostic disable-next-line: missing-fields
-  local ok, client_id = pcall(lsp.start, server_config, { bufnr = bufnr })
-  return ok and client_id ~= nil
+  return supervisor.start(name, bufnr)
 end
 
 --- Execute LspRestartHere command
@@ -67,6 +47,9 @@ function M.execute(args)
     for _, c in ipairs(clients) do
       if c.name == args.args then
         found = true
+        -- Before the stop: a force-stop is a SIGTERM, which the supervisor
+        -- would otherwise read as a crash and race this restart.
+        supervisor.expect_stop(c.id)
         lsp.stop_client(c.id, true)
 
         -- Delayed restart to allow cleanup
@@ -99,6 +82,7 @@ function M.execute(args)
       ids[#ids + 1] = c.id
     end
 
+    supervisor.expect_stop(ids)
     lsp.stop_client(ids, true)
 
     -- Delayed restart for all servers
