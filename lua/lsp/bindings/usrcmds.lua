@@ -150,8 +150,11 @@ local function status_lines()
   }
 
   if cfg ~= nil then
+    local layers = status.layers or { preset = "default" }
     lines[#lines + 1] = ""
     lines[#lines + 1] = "config"
+    lines[#lines + 1] = ("  preset              = %q"):format(layers.preset)
+    lines[#lines + 1] = ("  project override    = %s"):format(layers.project or "(none)")
     lines[#lines + 1] = ("  keymaps.enable      = %s"):format(tostring(cfg.keymaps.enable))
     lines[#lines + 1] = ("  keymaps.preset      = %q"):format(cfg.keymaps.preset)
     lines[#lines + 1] = ("  usrcmds.enable      = %s"):format(tostring(cfg.usrcmds.enable))

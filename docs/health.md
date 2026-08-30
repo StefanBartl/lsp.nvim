@@ -9,10 +9,21 @@ Five sections, in the order you need them when something is wrong.
 | Section | Answers |
 | ------- | ------- |
 | Environment | Neovim 0.11+, and lib.nvim — the one dependency the plugin cannot run without |
-| lsp.nvim | Whether `setup()` ran, what it registered, and every warning it worked around |
+| lsp.nvim | Whether `setup()` ran, which config layers built it, what it registered, and every warning it worked around |
 | Servers | Installed vs. configured vs. set up vs. attached — here and in total |
 | Ecosystem | Which third-party plugins the adapters can see |
 | Per-buffer diagnosis | Points at `:LspDoctor`, which answers the buffer-level questions |
+
+## The two lines above the warnings
+
+The `lsp.nvim` section names the `preset` that was applied and the
+`.nvim-lsp.json` that was merged, if any — before the warnings, because the
+warnings refer to them: reading `(from .nvim-lsp.json)` is only useful once you
+know a project file was found at all, and which one.
+
+This is the answer to "why is `ts_ls` not attaching in this repository". A
+project override that nobody can see is a debugging trap, so it is reported
+whether or not anything went wrong.
 
 ## Reading the Servers section
 

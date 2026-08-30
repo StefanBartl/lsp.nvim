@@ -384,6 +384,7 @@ function M.status()
   return {
     initialized = _initialized,
     config = _initialized and config.get() or nil,
+    layers = config.layers(),
     keymaps = _keymaps,
     usrcmd = _usrcmd,
     servers = _servers,

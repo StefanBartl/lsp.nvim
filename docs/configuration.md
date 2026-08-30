@@ -15,6 +15,28 @@ That rule has already caught one case in this codebase: `:LspDoctor`'s
 `show_tools` and `semantic_tokens_timeout` were typed, documented and defaulted
 while nothing anywhere read them.
 
+## Four layers, and why they are in that order
+
+`config/init.lua` resolves the options from four sources:
+
+| | source | what it answers |
+| - | ------ | --------------- |
+| 1 | `config/DEFAULTS.lua` | the documented values |
+| 2 | `config/PRESETS.lua`, selected by `preset` | how much of this should run on **this machine** |
+| 3 | the `setup()` options | what **you** wrote |
+| 4 | `.nvim-lsp.json` | what **this checkout** needs |
+
+The order is the whole argument for the feature. A preset sits *below* your
+options because it moves the floor rather than overruling you -- `preset =
+"lean", inlay_hints = { enable = true }` gives you a lean setup with hints on,
+which is the only reading that makes both lines mean something. The project
+file sits *above* them because "here, not globally" is the one thing it is for.
+
+Resolution happens in **two stages**, not one: layers 1-3 are merged first,
+because they are where `project.enable` and `project.file` come from. A project
+file cannot decide whether project files are read, and cannot rename its own
+successor.
+
 ## Malformed values degrade, they do not raise
 
 `config/init.lua` normalizes every option before anything downstream sees it. An
@@ -34,6 +56,86 @@ Two rules behind that:
 defaults rather than yielding no language server at all, because "no server"
 looks exactly like a broken installation and should never be what a typo
 produces.
+
+With four layers, "the value was wrong" stops being enough. Every warning now
+names the layer the value came from -- `(from setup())`, `(from preset "lean")`,
+`(from .nvim-lsp.json)` -- because *where* is the question that turns a warning
+into a fix. A value that nothing supplied gets no suffix; there is no layer to
+name.
+
+## preset: one word for twenty fields
+
+`preset = "lean" | "default" | "full"`. `lean` exists for the machine where
+`ts_ls` on a large repo is already the budget. What it turns down is the
+**continuous** work -- virtual text redrawn per push, the `signatureHelp` round
+trip fired per keystroke inside an argument list, the workspace scan on attach,
+the ~25 legacy command registrations at startup. What it does not touch is the
+on-demand work: `gd`, hover, rename and code actions behave exactly as they do
+under `default`. That split is what makes it usable rather than merely smaller.
+
+`full` is the inverse trade: `update_in_insert`, inlay hints on, a 50ms
+throttle instead of 150.
+
+Two things no preset ever sets, whatever its name suggests:
+
+- **`mason.ensure_install`** — installing software is a side effect outside the
+  editor. A profile is a performance dial, not consent to download.
+- **`formatter.on_save`** — it writes to files. "Turn everything on" must not
+  quietly start rewriting buffers on save.
+
+Both stay opt-in under every preset, which is what makes `full` safe to pick
+without reading `PRESETS.lua` first.
+
+`default` is an **empty table**, not a copy of the defaults. Duplicating them
+would create a second place to change them and a first opportunity for the two
+to disagree.
+
+Not to be confused with `keymaps.preset`, which picks a set of *keys*. This one
+picks a set of *options* — one of which is `keymaps.preset`.
+
+## .nvim-lsp.json: the project layer
+
+The nearest `.nvim-lsp.json` at or above the working directory, merged over
+everything else:
+
+```jsonc
+{
+  "servers": ["lua_ls", "gopls"],
+  "attach": { "use_workspace_diagnostics": false }
+}
+```
+
+**JSON, not Lua.** A project file is written by whoever wrote the repository,
+and Neovim reads it because you opened a directory. Lua would make cloning a
+repository enough to run its code. JSON cannot express a function, so there is
+nothing to execute — the format *is* the boundary, not a convention on top of
+one.
+
+**An allowlist, not a filter.** `servers`, `diagnostics`, `formatter`,
+`inlay_hints`, `attach`, `workspace`, `tools`, `languages` are accepted;
+everything else is dropped with a warning. The line is not "what could break"
+but *whose question is this*. Those eight describe the codebase, so the
+codebase may answer them. `keymaps`, `usrcmds`, `which_key` and `menu` describe
+you — opening a repository must not move a key. `mason` installs software.
+`preset` is a property of the machine. `completion.personal_names.labels` is a
+function and could not be expressed anyway.
+
+**Read once, at `setup()`.** Nearly everything here is consumed while the
+plugin bootstraps: servers are enabled, tools are set up, commands are
+registered. Re-reading after a `:cd` would produce a config that no longer
+matches what is running — worse than not re-reading it. The file that counts is
+the one above the directory Neovim started in, and both `:Lsp status` and
+`:checkhealth lsp` name it, because an override you cannot see is a debugging
+trap.
+
+Lists replace rather than merge here too, for the same `tbl_deep_extend`
+reason as everywhere else — and a malformed value in the project file is *not*
+answered by the `setup()` value underneath it. `"servers": "lua_ls"` degrades
+to the defaults and warns; letting the layer below quietly cover for it would
+make the typo invisible, which is the one outcome worth avoiding.
+
+JSON `null` reads as "no opinion" and leaves the key absent, rather than
+setting it to a sentinel.
 
 ## The two channels
 
@@ -178,6 +280,7 @@ question. Both keys are kept; what changed is that they can no longer disagree.
 | -------- | ------ |
 | What does each field mean? | `:h lsp.nvim-config` |
 | What are the actual defaults? | `lua/lsp/config/DEFAULTS.lua` |
+| Which layers built the active config? | `:Lsp status`, `:checkhealth lsp` |
 | Which keys are bound? | [BINDINGS.md](BINDINGS.md) |
 | Which commands exist? | [commands.md](commands.md) |
 | Why is the code laid out this way? | [architecture.md](architecture.md) |

@@ -169,6 +169,14 @@ Every option has a default; `setup()` with no arguments is a complete setup.
 
 ```lua
 require("lsp").setup({
+  -- Option profile the rest starts from: "default" | "lean" | "full".
+  -- One word instead of ~20 fields; anything you name below still wins over it.
+  preset = "default",
+
+  -- Per-project override file, found by walking up from the working directory
+  -- at setup() time. JSON, and only an allowlist of keys -- see below.
+  project = { enable = true, file = ".nvim-lsp.json" },
+
   -- Servers to set up and enable. Each resolves to `lsp.servers.<name>`, with
   -- `lsp.servers.webdev.<name>` as a fallback for dotless names.
   servers = { "lua_ls", "gopls", "bashls", "marksman", "html", "ts_ls" },
@@ -240,7 +248,47 @@ rename = { provider = "auto" }, -- "auto" | "inc_rename" | "native"
 ```
 
 An out-of-range value degrades to the documented default and shows up in
-`:checkhealth lsp` rather than raising at startup.
+`:checkhealth lsp` rather than raising at startup. With more than one layer in
+play, each warning also names the layer the bad value came from.
+
+### Presets
+
+`preset` picks how much of the plugin runs on this machine. `lean` turns down
+the work paid per keystroke, per attach and per redraw -- virtual text, the
+signature-help round trip, the workspace-diagnostics scan, the legacy command
+aliases; on-demand actions (`gd`, hover, rename) are untouched. `full` is the
+inverse trade. Neither ever sets `mason.ensure_install` or
+`formatter.on_save`: a profile is a performance dial, not consent to install
+software or rewrite your files.
+
+Not to be confused with `keymaps.preset`, which picks a set of *keys*. This one
+picks a set of *options*, and one of the options it sets is `keymaps.preset`.
+
+### Per-project overrides
+
+A `.nvim-lsp.json` at or above the working directory is merged over your
+`setup()` options, so a single checkout can differ from your global config:
+
+```jsonc
+{
+  "servers": ["lua_ls", "gopls"],
+  "formatter": { "on_save": true },
+  "attach": { "use_workspace_diagnostics": false }
+}
+```
+
+JSON rather than Lua on purpose: cloning a repository must not be enough to run
+its code, and JSON cannot express a function. Only these keys are accepted --
+`servers`, `diagnostics`, `formatter`, `inlay_hints`, `attach`, `workspace`,
+`tools`, `languages`. They are the ones the *repository* knows the answer to.
+Keymaps, `:Lsp` registration and `mason` are yours; a checkout does not get to
+move your keys or install packages, and anything else in the file is dropped
+with a warning.
+
+The file is read once, at `setup()`, because that is when servers are enabled
+and tools are set up -- re-reading it after a `:cd` would report a config that
+is not the one running. `:Lsp status` and `:checkhealth lsp` name the file that
+was used, so "why is `ts_ls` not attaching here" has a one-line answer.
 
 ## Health
 

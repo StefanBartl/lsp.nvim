@@ -106,6 +106,25 @@ nothing — selection is per-spec `enabled`, read from `lsp.config.pack`. That i
 also why the helper for it lives in `config/`, not in `pack/`: a module sitting
 there would be read as a malformed spec.
 
+## Configuration is four layers, resolved in two stages
+
+`config/init.lua` merges `DEFAULTS`, the selected `PRESETS` entry, the
+`setup()` options and a per-project `.nvim-lsp.json`, in that order. Two stages
+rather than one, because layers 1-3 are where `project.enable` and
+`project.file` come from — a project file cannot decide whether project files
+are read.
+
+The reason the two arrived together: with more than one override layer, "the
+value was wrong" stops being a useful warning. `config/init.lua` therefore
+keeps the layers as data and attributes every warning to the one that supplied
+the value, and list options are taken from the layer that supplied them rather
+than from the merged table — index-wise array merging is wrong for all of them.
+One normalization pass answers both questions; two features built apart would
+have written it twice.
+
+[configuration.md](configuration.md) has the precedence argument and the
+project file's allowlist.
+
 ## Everything the plugin claims is registered in one place
 
 `bindings/` — keymaps, the `:Lsp` verb, autocommands, which-key labels — with
@@ -120,7 +139,8 @@ lua/lsp/
   init.lua            setup() and status(); composes the layers
   health.lua          :checkhealth lsp
   @types/             shared annotations
-  config/             DEFAULTS, the keymap catalogue, pack selection, merge
+  config/             DEFAULTS, presets, the project file, the keymap
+                      catalogue, pack selection, the four-layer merge
   bindings/           keymaps, :Lsp, autocmds, which-key, actions
   core/               registry, attach, capabilities, handlers, diagnostics
   servers/            one module per language server

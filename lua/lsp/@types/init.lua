@@ -22,6 +22,25 @@ require("lsp.@types.vim_lsp")
 -- #####################################################################
 -- config/DEFAULTS.lua, config/init.lua
 
+---@alias LspNvim.Preset
+--- Named option profile the configuration starts from, below the `setup()`
+--- options. Not `keymaps.preset`, which picks a set of keys: this picks a set
+--- of options, one of which is `keymaps.preset`.
+---| '"default"' # the documented defaults, unchanged
+---| '"lean"'    # continuous per-keystroke/per-attach work turned down
+---| '"full"'    # every feature on, at the cost of more work per keystroke
+
+---@class LspNvim.ProjectOpts
+---@field enable? boolean # Look for a per-project override file at all.
+---@field file? string # Its name; found by walking upward from the working directory at setup() time.
+
+---@class LspNvim.ConfigLayers
+--- Which layers the active configuration was actually built from. Reported by
+--- `:Lsp status` and `:checkhealth lsp`: an override nobody can see is a
+--- debugging trap.
+---@field preset LspNvim.Preset # Profile that was applied.
+---@field project string|nil # Absolute path of the project file that was merged, or nil when none was found or it was disabled.
+
 ---@alias LspNvim.KeymapPreset
 --- Which entry of the keymap catalogue is bound on setup.
 ---| '"default"' # the full preset -- everything the plugin knows about
@@ -86,8 +105,11 @@ require("lsp.@types.vim_lsp")
 ---@field provider? LspNvim.RenameProvider
 
 ---@class LspNvim.Config
---- The resolved configuration: DEFAULTS with the user's options merged over
---- them, normalized so every field below is guaranteed present and valid.
+--- The resolved configuration: DEFAULTS, then the preset, then the user's
+--- options, then the project file merged over one another and normalized, so
+--- every field below is guaranteed present and valid.
+---@field preset? LspNvim.Preset # Option profile the rest starts from.
+---@field project? LspNvim.ProjectOpts # Per-project override file lookup.
 ---@field servers? string[] # Server names to set up and enable.
 ---@field diagnostics? table # Passed straight to `vim.diagnostic.config()`.
 ---@field formatter? LspNvim.FormatterOpts
@@ -150,6 +172,7 @@ require("lsp.@types.vim_lsp")
 --- `:checkhealth lsp` so the two can never drift apart.
 ---@field initialized boolean # Has setup() run?
 ---@field config LspNvim.Config|nil # The resolved config, or nil before setup().
+---@field layers LspNvim.ConfigLayers # Which preset and which project file the config was built from.
 ---@field keymaps LspNvim.KeymapSpec[] # Keymaps actually registered.
 ---@field usrcmd boolean # Was the `:Lsp` verb registered?
 ---@field servers string[] # Servers that were set up and enabled.

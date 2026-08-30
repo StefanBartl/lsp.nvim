@@ -87,6 +87,17 @@ ok(#cfg.servers == 1 and cfg.servers[1] == "lua_ls", "normalize: non-string serv
 cfg = config.setup({ formatter = false })
 ok(type(cfg.formatter) == "table", "normalize: malformed sub-table falls back")
 
+-- The layers above DEFAULTS, end to end: the preset moves the floor, an
+-- explicit option still wins over it, and the resolved layers are reportable.
+cfg = config.setup({ preset = "lean" })
+ok(cfg.attach.use_workspace_diagnostics == false, "preset: lean turns the heavy default off")
+ok(config.layers().preset == "lean", "preset: layers() reports the profile")
+cfg = config.setup({ preset = "lean", attach = { use_workspace_diagnostics = true } })
+ok(cfg.attach.use_workspace_diagnostics == true, "preset: an explicit option wins over it")
+cfg = config.setup({ preset = "lean" })
+ok(cfg.mason.ensure_install == false, "preset: never installs software")
+ok(cfg.formatter.on_save == false, "preset: never starts writing files")
+
 -- setup() is idempotent-by-refusal and registers the command.
 local lsp = require("lsp")
 ok(lsp.setup({}) == true, "setup(): first call succeeds")

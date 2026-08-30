@@ -68,6 +68,22 @@ local function check_plugin()
   end
   health.ok("setup() has run")
 
+  -- Before the warnings, because the warnings name these layers: reading
+  -- "(from .nvim-lsp.json)" is only useful once you know a project file was
+  -- found at all, and *which*.
+  local layers = status.layers or { preset = "default" }
+  if layers.preset == "default" then
+    health.info("preset: default")
+  else
+    health.info(("preset: %q (config/PRESETS.lua)"):format(layers.preset))
+  end
+  if layers.project ~= nil then
+    health.info(("project override: %s"):format(layers.project), {
+      "Merged over your setup() options. Allowed keys: servers, diagnostics, "
+        .. "formatter, inlay_hints, attach, workspace, tools, languages.",
+    })
+  end
+
   for _, warning in ipairs(status.warnings) do
     health.warn(warning)
   end

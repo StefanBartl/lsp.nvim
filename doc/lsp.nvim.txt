@@ -108,8 +108,24 @@ cannot disagree.
 ==============================================================================
 4. CONFIGURATION                                            *lsp.nvim-config*
 
+The options are resolved from four layers, lowest to highest:
+
+    1. `lua/lsp/config/DEFAULTS.lua`     the documented values
+    2. `lua/lsp/config/PRESETS.lua`      selected by `preset` -- how much of
+                                       this should run on this machine
+    3. the |lsp.setup()| options         what you wrote
+    4. `.nvim-lsp.json`                  what this checkout needs
+
+A preset sits below your options because it moves the floor rather than
+overruling you; the project file sits above them because "here, not globally"
+is the one thing it is for. Layers 1-3 are resolved first, since they are where
+`project.enable` and `project.file` come from -- a project file cannot decide
+whether project files are read.
+
 Defaults (excerpt -- the full table is `lua/lsp/config/DEFAULTS.lua`): >lua
     {
+      preset = "default",  -- "default" | "lean" | "full"
+      project = { enable = true, file = ".nvim-lsp.json" },
       servers = { "bashls", "lua_ls", "gopls", "marksman", "html",
                   "ts_ls", "tailwindcss", "csharp" },
       diagnostics = {
@@ -143,6 +159,44 @@ Defaults (excerpt -- the full table is `lua/lsp/config/DEFAULTS.lua`): >lua
 <
 Field reference ~
 
+preset                ("default"|"lean"|"full")
+                                  Option profile the rest of the table starts
+                                  from -- one word instead of roughly twenty
+                                  fields. `lean` turns down the work paid per
+                                  keystroke, per attach and per redraw
+                                  (virtual text, the `signatureHelp` round
+                                  trip, the workspace scan on attach, the ~25
+                                  legacy command registrations); on-demand
+                                  actions such as `gd`, hover and rename are
+                                  untouched. `full` is the inverse trade.
+                                  Anything you name explicitly still wins over
+                                  the preset. No preset ever sets
+                                  `mason.ensure_install` or
+                                  `formatter.on_save` -- a profile is a
+                                  performance dial, not consent to install
+                                  software or rewrite your files. Not
+                                  `keymaps.preset`, which picks a set of keys;
+                                  this picks a set of options, one of which is
+                                  `keymaps.preset`.
+project.enable        (boolean)   Look for a per-project override file at all.
+project.file          (string)    Its name. Found once, at setup() time, by
+                                  walking upward from the working directory;
+                                  the first hit wins. Read once because that
+                                  is when servers are enabled and tools are
+                                  set up -- re-reading after a `:cd` would
+                                  report a config that is not the one running.
+                                  The file is JSON, not Lua: cloning a
+                                  repository must not be enough to run its
+                                  code, and JSON cannot express a function.
+                                  Only `servers`, `diagnostics`, `formatter`,
+                                  `inlay_hints`, `attach`, `workspace`,
+                                  `tools` and `languages` are accepted -- the
+                                  keys the repository knows the answer to.
+                                  Keymaps, `:Lsp` registration and `mason` are
+                                  yours; anything else in the file is dropped
+                                  with a warning. |:Lsp| status and
+                                  |:checkhealth-lsp| name the file that was
+                                  used.
 servers               (string[])  Server names to set up and enable. Each
                                   resolves to `lsp.servers.<name>`, with
                                   `lsp.servers.webdev.<name>` tried as a
@@ -281,7 +335,9 @@ which_key.enable      (boolean)   Label the bound key prefixes as which-key
 
 An out-of-range value never raises. It degrades to the documented default and
 is recorded as a warning, visible in |:Lsp status| and |:checkhealth-lsp| -- a
-typo in a config should cost a feature, not a startup.
+typo in a config should cost a feature, not a startup. With more than one layer
+in play, each warning also names the layer the value came from: `(from
+setup())`, `(from preset "lean")`, `(from .nvim-lsp.json)`.
 
 `completion`, `rename` and `integrations` are
 still absent: nothing reads them yet, and a default nothing reads is a promise

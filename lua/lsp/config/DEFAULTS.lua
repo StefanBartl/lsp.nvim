@@ -15,6 +15,25 @@
 
 ---@type LspNvim.Config
 local DEFAULTS = {
+  -- Which profile the options below start from. "default" is these values as
+  -- written; "lean" and "full" are one word for roughly twenty fields, and
+  -- live in `config/PRESETS.lua`. Anything named in `setup()` still wins over
+  -- the preset -- it moves the floor, it does not overrule you.
+  --
+  -- Not to be confused with `keymaps.preset`, which picks a set of *keys*.
+  -- This one picks a set of *options*, and one of the options it sets is
+  -- `keymaps.preset`.
+  ---@type LspNvim.Preset
+  preset = "default",
+
+  -- Per-project override file, looked up once at setup() by walking upward
+  -- from the working directory. JSON rather than Lua on purpose, and only the
+  -- keys in `config/project.lua`'s allowlist -- see there for both reasons.
+  project = {
+    enable = true,
+    file = ".nvim-lsp.json",
+  },
+
   -- Which servers are set up and enabled. Each name resolves to
   -- `lsp.servers.<name>`, with `lsp.servers.webdev.<name>` tried as a fallback
   -- for dotless names. This used to be a hardcoded ACTIVE list inside
