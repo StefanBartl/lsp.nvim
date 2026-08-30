@@ -337,6 +337,15 @@ local entries = {
     rhs = actions.root_scope_pick,
     desc = "Pick root scope (cwd / git root / file path)",
   },
+  -- Only `add` gets a key. `remove` and `list` are rare enough to type, and a
+  -- second key next to this one would be one keystroke away from removing the
+  -- folder you meant to add.
+  workspace_folder_add = {
+    lhs = "<leader>lsw",
+    mode = "n",
+    rhs = actions.root_workspace_add,
+    desc = "Add a workspace folder (multi-root / monorepo)",
+  },
   marksman_hints = {
     lhs = "<leader>lb",
     mode = "n",
@@ -381,6 +390,7 @@ local presets = {
     "picker_document_diagnostics",
     "picker_workspace_diagnostics",
     "root_scope_pick",
+    "workspace_folder_add",
     "marksman_hints",
   },
   none = {},

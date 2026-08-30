@@ -87,36 +87,109 @@ local function normalize_switch(cfg, key)
 end
 
 ---@internal
---- Force `servers` into a non-empty array of strings. An empty or malformed
---- list would silently mean "no language server at all", which looks exactly
---- like a broken installation -- so it degrades to the default set and says so.
----@param cfg LspNvim.Config
----@return nil
-local function normalize_servers(cfg)
-  local list = cfg.servers
-  if type(list) ~= "table" then
-    _warnings[#_warnings + 1] = "servers: expected a list of names, using defaults"
-    cfg.servers = vim.deepcopy(DEFAULTS.servers)
-    return
+--- Take a list option from the *user's* table rather than the merged one.
+---
+--- `vim.tbl_deep_extend` merges two arrays index by index, which is wrong for
+--- every list option here: `{ "lua_ls" }` over a six-entry default yields
+--- `{ "lua_ls", <defaults 2..6> }`, so a config asking for one server silently
+--- gets six. A list is a replacement, not an overlay -- there is no sensible
+--- reading of "half the default markers".
+---@param user_opts table
+---@param key string # Top-level key on the user's options.
+---@param field string|nil # Sub-field, for a list nested one level down.
+---@return string[]|nil # nil when the user did not supply a list at all.
+local function user_list(user_opts, key, field)
+  local value = user_opts[key]
+  if field ~= nil then
+    value = type(value) == "table" and value[field] or nil
   end
+  if type(value) ~= "table" or not vim.islist(value) then
+    return nil
+  end
+  return value
+end
 
+---@internal
+--- Clean a list of names down to the non-empty strings in it.
+---@param list any[]
+---@param label string # Option path, for the warning.
+---@return string[]
+local function clean_names(list, label)
   ---@type string[]
   local clean = {}
   for _, name in ipairs(list) do
     if type(name) == "string" and name ~= "" then
       clean[#clean + 1] = name
     else
-      _warnings[#_warnings + 1] = ("servers: ignoring non-string entry %s"):format(
+      _warnings[#_warnings + 1] = ("%s: ignoring non-string entry %s"):format(
+        label,
         vim.inspect(name)
       )
     end
   end
+  return clean
+end
+
+---@internal
+--- Force `servers` into a non-empty array of strings. An empty or malformed
+--- list would silently mean "no language server at all", which looks exactly
+--- like a broken installation -- so it degrades to the default set and says so.
+---
+--- Read from `user_opts`, not from the merged table, for the reason `user_list`
+--- gives: `servers = { "lua_ls" }` used to come out of the deep-merge as
+--- `{ "lua_ls", "gopls", "marksman", ... }` -- every default from index two on
+--- survived, so narrowing the server list did almost nothing and said nothing
+--- about it. That is the one behaviour change in this function: a config that
+--- names servers now gets those servers and no others.
+---@param cfg LspNvim.Config
+---@param user_opts table
+---@return nil
+local function normalize_servers(cfg, user_opts)
+  local list = user_list(user_opts, "servers") or cfg.servers
+  if type(list) ~= "table" then
+    _warnings[#_warnings + 1] = "servers: expected a list of names, using defaults"
+    cfg.servers = vim.deepcopy(DEFAULTS.servers)
+    return
+  end
+
+  local clean = clean_names(list, "servers")
 
   if #clean == 0 then
     _warnings[#_warnings + 1] = "servers: list is empty, using defaults"
     clean = vim.deepcopy(DEFAULTS.servers)
   end
   cfg.servers = clean
+end
+
+---@internal
+--- Force `workspace.markers` / `workspace.containers` into lists of names.
+---
+--- Both are read only when the workspace-folder picker opens, so a bad value
+--- would otherwise surface as an empty candidate list days after the typo --
+--- with no hint that the option caused it.
+---@param cfg LspNvim.Config
+---@param user_opts table
+---@return nil
+local function normalize_workspace(cfg, user_opts)
+  for _, field in ipairs({ "markers", "containers" }) do
+    local supplied = user_list(user_opts, "workspace", field)
+    local list = supplied or cfg.workspace[field]
+
+    if type(list) ~= "table" then
+      if list ~= nil then
+        _warnings[#_warnings + 1] = ("workspace.%s: expected a list of names, using defaults"):format(
+          field
+        )
+      end
+      cfg.workspace[field] = vim.deepcopy(DEFAULTS.workspace[field])
+    else
+      cfg.workspace[field] = clean_names(list, "workspace." .. field)
+    end
+  end
+
+  -- An empty marker list is not degraded to the default: "offer me nothing but
+  -- the client roots and the cwd" is a coherent wish, and silently restoring
+  -- eighteen markers over it would be the config lying. `containers` likewise.
 end
 
 ---@internal
@@ -158,7 +231,7 @@ function M.setup(user_opts)
   normalize_keymaps(cfg)
   normalize_switch(cfg, "usrcmds")
   normalize_switch(cfg, "which_key")
-  normalize_servers(cfg)
+  normalize_servers(cfg, user_opts)
   if cfg.rename.provider ~= "inc_rename" and cfg.rename.provider ~= "native" then
     if cfg.rename.provider ~= "auto" and cfg.rename.provider ~= nil then
       _warnings[#_warnings + 1] = ('rename.provider: unknown value %q, using "auto"'):format(
@@ -178,9 +251,11 @@ function M.setup(user_opts)
     "tools",
     "languages",
     "completion",
+    "workspace",
   }) do
     normalize_table(cfg, key)
   end
+  normalize_workspace(cfg, user_opts)
 
   -- `labels` is the one option that is a function rather than data. Anything
   -- else there would blow up at the call site inside the source, far from the

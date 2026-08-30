@@ -103,17 +103,33 @@ now, without changing the on-attach setting. That is the right reach for a big
 repo where you want the numbers once for a specific question rather than on
 every attach.
 
-## Root scope: switch it before you go looking for missing references
+## Roots: switch the scope, or add a folder
 
 Per-server roots come from each server's resolver; the *global* scope switch —
 working directory, git root, or the file's own path — is `<leader>lsp` or
-`:Lsp root pick`, and `:Lsp root show` says where you currently are.
+`:Lsp root pick`. `:Lsp root show` (or a bare `:Lsp root`) reports the scope
+together with the root every attached client actually resolved and the
+workspace folders it holds — which is the question one usually arrives with,
+since the scope alone never says where it put your servers.
 
 The case that makes this a workflow item rather than a setting is the monorepo:
 with the scope on the git root, a server may index far more than the
 sub-project you are in; with it on the file path, cross-package references stop
-resolving. Neither is wrong, and which one you want changes with the task —
-which is why it is a picker rather than a config key you set once.
+resolving. Neither is wrong, and which one you want changes with the task.
+
+**When neither is right, add the folder instead.** `<leader>lsw` (`:Lsp root
+add`) offers the projects around this buffer and hands the chosen one to every
+attached client that accepts a runtime change. gopls sitting in `packages/api`,
+one pick of `packages/web`, and definitions across the package boundary resolve
+— no restart, no re-index of the whole repo. `:Lsp root remove` takes one back
+off, `:Lsp root list` shows what `add` would offer without opening a picker.
+
+Two limits worth knowing before you reach for it. The scope switch only reaches
+servers whose `root_dir` is a function — `lua_ls` and `marksman`; `gopls`,
+`ts_ls`, `clangd` and `csharp` declare `root_markers` and Neovim resolves those
+itself, so for them the folder is the only lever. And a server that never
+advertised `changeNotifications` is skipped rather than sent a notification it
+did not ask for; `:Lsp root show` names it, with the reason.
 
 lua_ls additionally treats the Neovim config directory as a root of its own,
 which is what its workspace library needs; that is not affected by the scope

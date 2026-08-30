@@ -121,6 +121,10 @@ Defaults (excerpt -- the full table is `lua/lsp/config/DEFAULTS.lua`): >lua
         debounce_ms = 150,  -- publishDiagnostics throttle; 0 = off
       },
       formatter = { on_save = false, timeout_ms = 1500 },
+      workspace = {
+        markers = { ".git", "go.mod", "package.json", ... },
+        containers = { "packages", "apps", "services", ... },
+      },
       inlay_hints = { enable = false, filetypes = {} },
       attach = { use_workspace_diagnostics = true, use_lazydev = true },
       mason = { ensure_install = false, overrides = { ... } },
@@ -174,6 +178,27 @@ formatter.on_save     (boolean)   Format on write at startup. The runtime
                                   toggle (|:LspFormatToggle|) owns it from
                                   there; this is only the starting position.
 formatter.timeout_ms  (integer)   Upper bound for one format request.
+workspace.markers     (string[])  A directory holding one of these is offered
+                                  as a workspace folder by |:Lsp| root add.
+                                  Broader than any one server's
+                                  `root_markers` on purpose: the question is
+                                  "could a language server sensibly be
+                                  pointed here", not "is this that server's
+                                  root". Replaces the default list rather
+                                  than merging into it, and an explicitly
+                                  empty list is honoured -- offering nothing
+                                  but the client roots and the cwd is a
+                                  coherent wish.
+workspace.containers  (string[])  Directory names that hold projects rather
+                                  than being one. After walking upward, the
+                                  candidate search reads the outermost
+                                  project's children and descends exactly one
+                                  level through these names -- that is where
+                                  a monorepo's sibling package lives, and an
+                                  upward walk never looks sideways. Bounded
+                                  at one `readdir` per name; an unbounded
+                                  descent would stat a whole repository to
+                                  fill a picker.
 inlay_hints.enable    (boolean)   Global startup default for Neovim's native
                                   inlay hints (|vim.lsp.inlay_hint|). The
                                   runtime toggle (|:Lsp| hints, `<leader>th`)
@@ -273,7 +298,7 @@ means adding a catalogue entry; nothing is hardcoded at the binding site.
 `scripts/gen_bindings.lua`, which CI checks, so the list cannot drift from the
 code.
 
-The `default` preset binds 42 entries; `minimal` binds the 26 that have no
+The `default` preset binds 45 entries; `minimal` binds the 29 that have no
 Neovim 0.11 equivalent (it drops `grn`, `grt` and `]d`/`[d`, and the prefixless
 `ls*` family); `none` binds nothing.
 
@@ -319,6 +344,48 @@ into `:Lsp` routes with thin aliases is roadmap section 8.2.
 
     :Lsp health                                              *:Lsp-health*
                     Run |:checkhealth| for this plugin.
+
+    :Lsp root [action]                                         *:Lsp-root*
+                    Roots and workspace folders. Two mechanisms under one
+                    word, because from where you sit both answer "what does
+                    this server consider my project".
+
+                      show    (default) The active root scope, plus every
+                              attached client's resolved root, the workspace
+                              folders it holds, and whether it accepts a
+                              runtime change.
+                      pick    Switch the resolution scope: cwd, git root, or
+                              the file's own path. Reaches only the servers
+                              whose `root_dir` is a function -- `lua_ls` and
+                              `marksman` here. `gopls`, `ts_ls`, `clangd` and
+                              `csharp` declare `root_markers`, which Neovim
+                              resolves itself with no hook to intercept.
+                      add     Pick a directory and add it as a workspace
+                              folder on every attached client that accepts
+                              one. This is LSP's own multi-root mechanism
+                              (`workspace/didChangeWorkspaceFolders`): it
+                              reaches every server that advertises
+                              `changeNotifications`, `root_markers` ones
+                              included, and takes effect without a restart.
+                              The monorepo case it exists for: gopls sitting
+                              in `packages/api`, one pick of `packages/web`,
+                              and definitions across the package boundary
+                              resolve.
+                      remove  Pick one of the held folders and take it off.
+                      list    What `add` would offer, as a report, without
+                              opening a picker.
+
+                    Candidates are found by walking upward from the buffer
+                    for |lsp.nvim-config| `workspace.markers`, then reading
+                    the outermost project's children and descending one level
+                    through `workspace.containers` -- the sibling package an
+                    upward walk can never see. Anything already a workspace
+                    folder is left out.
+
+                    A client that declares no `workspaceFolders.supported`,
+                    or that never asked for `changeNotifications`, is skipped
+                    rather than sent a notification it did not ask for.
+                    `:Lsp root show` names it, with the reason.
 
     :Lsp log open                                          *:Lsp-log-open*
                     Open Neovim's LSP log file (|vim.lsp.get_log_path()|) in a

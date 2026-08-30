@@ -53,7 +53,7 @@ Three things worth knowing about the left-hand sides:
 
 <!-- BEGIN GENERATED KEYMAPS -->
 
-The `default` preset binds all 44 entries below. `minimal` binds the 28
+The `default` preset binds all 45 entries below. `minimal` binds the 29
 marked in the last column; `none` binds nothing.
 
 | action | lhs | mode | needs | minimal | description |
@@ -102,6 +102,7 @@ marked in the last column; `none` binds nothing.
 | `trouble_toggle` | `<leader>xt` | n | `trouble` | yes | Trouble: toggle diagnostics |
 | `trouble_type_definitions` | `<leader>xlt` | n | `trouble` | — | Trouble: type definitions |
 | `trouble_workspace` | `<leader>xw` | n | `trouble` | yes | Trouble: workspace diagnostics |
+| `workspace_folder_add` | `<leader>lsw` | n | — | yes | Add a workspace folder (multi-root / monorepo) |
 
 which-key group labels:
 
@@ -160,7 +161,7 @@ unless `usrcmds.enable = false`.
 | `:Lsp format` | `[once\|on\|off\|toggle\|status\|which]` | Format once (default), or control format-on-save |
 | `:Lsp diag` | `{qf\|loc\|next\|prev} [qf\|loc]` | Diagnostics into a list, or move within one |
 | `:Lsp workspace` | `[on\|off\|toggle\|status\|now]` | Workspace-wide diagnostics on attach (default `status`) |
-| `:Lsp root` | `[pick\|show]` | Root scope: pick between cwd / git root / path (default `pick`) |
+| `:Lsp root` | `[pick\|show\|add\|remove\|list]` | Roots and workspace folders (default `show`) |
 | `:Lsp hints` | `[toggle\|on\|off\|status\|clear] [filetype]` | Inlay hints, globally or for one filetype (default `toggle`) |
 | `:Lsp log open` | — | Open Neovim's LSP log file in a split |
 | `:Lsp log level` | `{trace\|debug\|info\|warn\|error\|off}` | Set the LSP log level |

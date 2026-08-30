@@ -85,6 +85,53 @@ local DEFAULTS = {
     timeout_ms = 1500,
   },
 
+  -- Which directories `:Lsp root add` / `<leader>lsw` offer as workspace
+  -- folders. Read only when that picker opens -- nothing here runs at startup.
+  workspace = {
+    -- A directory holding one of these is a project, and therefore a
+    -- candidate. Deliberately broader than any single server's `root_markers`:
+    -- the question here is "is this a place a language server could sensibly
+    -- be pointed at", not "is this *my* server's root". `.git` is included
+    -- because in a polyrepo checkout it is the only marker present.
+    markers = {
+      ".git",
+      "go.work",
+      "go.mod",
+      "package.json",
+      "tsconfig.json",
+      "deno.json",
+      "Cargo.toml",
+      "pyproject.toml",
+      "setup.py",
+      "pom.xml",
+      "build.gradle",
+      "CMakeLists.txt",
+      "compile_commands.json",
+      ".luarc.json",
+      "composer.json",
+      "Gemfile",
+      "mix.exs",
+      ".marksman.toml",
+    },
+    -- Directories that hold projects rather than being one. The sibling scan
+    -- descends one level through these and no further -- from `packages/api`
+    -- the interesting neighbour is `packages/web`, which is never *above* you
+    -- and so invisible to an upward walk. An unbounded descent would stat a
+    -- whole repository to fill a picker.
+    containers = {
+      "packages",
+      "apps",
+      "services",
+      "libs",
+      "crates",
+      "modules",
+      "plugins",
+      "projects",
+      "src",
+      "cmd",
+    },
+  },
+
   -- Handed to `core/attach.lua`'s builder.
   attach = {
     -- Startup default only -- `lsp.core.workspace_diagnostics` overrides it at

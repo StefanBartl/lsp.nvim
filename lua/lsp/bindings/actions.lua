@@ -482,19 +482,43 @@ function M.marksman_hints_toggle()
   require("lsp.servers.marksman.hints").toggle()
 end
 
---- Report the active root scope without opening the picker.
+--- Report the active root scope, every attached client's resolved root, and
+--- the workspace folders each one holds.
+---
+--- A scratch split rather than the one-line notification this used to be: the
+--- scope on its own answers "which strategy", never "and where did that
+--- actually put my servers", which is the question one arrives with.
 ---@return nil
 function M.root_show()
   local notify = require("lib.nvim.notify").create("[lsp.nvim]")
-  local ok, scope = pcall(require, "lsp.core.root_scope")
+  local ok, folders = pcall(require, "lsp.core.workspace_folders")
   if not ok then
-    notify.warn("root scope module unavailable")
+    notify.warn("workspace module unavailable")
     return
   end
+  require("lib.nvim.window.open_scratch_split")(folders.report(), { filetype = "lspreport" })
+end
 
-  local mode = scope.get()
-  local label = type(scope.label) == "function" and scope.label(mode) or tostring(mode)
-  notify.info("root scope: " .. label)
+--- Pick a directory to add to the workspace folders of this buffer's clients.
+---@return nil
+function M.root_workspace_add()
+  require("lsp.core.workspace_picker").add()
+end
+
+--- Pick a workspace folder to remove from this buffer's clients.
+---@return nil
+function M.root_workspace_remove()
+  require("lsp.core.workspace_picker").remove()
+end
+
+--- Report the directories `root_workspace_add` would offer.
+---@return nil
+function M.root_workspace_list()
+  local folders = require("lsp.core.workspace_folders")
+  require("lib.nvim.window.open_scratch_split")(
+    folders.candidates_report(),
+    { filetype = "lspreport" }
+  )
 end
 
 return M

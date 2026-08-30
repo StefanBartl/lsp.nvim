@@ -129,6 +129,37 @@ rejected with a warning instead.
 the toggle applies to every loaded buffer immediately rather than at the next
 attach.
 
+## workspace.markers and workspace.containers
+
+Which directories `:Lsp root add` / `<leader>lsw` offer as workspace folders:
+
+```lua
+workspace = {
+  markers = { ".git", "go.mod", "package.json", "Cargo.toml", ... },
+  containers = { "packages", "apps", "services", ... },
+},
+```
+
+`markers` answers "is this a place a language server could sensibly be pointed
+at". It is deliberately broader than any one server's `root_markers`, which
+answer the narrower question of where *that* server's root is.
+
+`containers` is the half an upward walk cannot do. From `packages/api` the
+interesting neighbour is `packages/web`, which is never above you -- so after
+walking up, the search reads the outermost project's children and descends
+exactly one level through these names. One `readdir` per container and no
+further: an unbounded descent would stat a whole repository to fill a picker.
+
+Both are **replaced** by what you pass, not merged with the defaults. That is
+worth stating because Neovim's `tbl_deep_extend` merges arrays index by index,
+which would otherwise turn `markers = { "go.mod" }` into `go.mod` followed by
+every default from index two on. The same now holds for `servers`, where it was
+a live defect: naming one server used to leave you with most of the defaults.
+
+An explicitly empty list is honoured rather than restored -- "offer me nothing
+but the client roots and the cwd" is a coherent wish, and putting eighteen
+markers back over it would be the config lying.
+
 ## rename.provider
 
 One rename action behind both bound keys, with the backend as an option:

@@ -47,6 +47,10 @@ require("lsp.@types.vim_lsp")
 ---@field on_save? boolean # Format on write at startup; the runtime toggle owns it afterwards.
 ---@field timeout_ms? integer # Upper bound for one format request.
 
+---@class LspNvim.WorkspaceOpts
+---@field markers? string[] # A directory holding one of these is offered as a workspace-folder candidate. Replaces the default list rather than extending it.
+---@field containers? string[] # Directory names that hold projects rather than being one; the sibling scan descends exactly one level through them.
+
 ---@class LspNvim.InlayHintsOpts
 ---@field enable? boolean # Global default for `vim.lsp.inlay_hint`; the runtime toggle owns it afterwards.
 ---@field filetypes? table<string, boolean> # Per-filetype override. An absent key inherits `enable`; `false` is an explicit off.
@@ -87,6 +91,7 @@ require("lsp.@types.vim_lsp")
 ---@field servers? string[] # Server names to set up and enable.
 ---@field diagnostics? table # Passed straight to `vim.diagnostic.config()`.
 ---@field formatter? LspNvim.FormatterOpts
+---@field workspace? LspNvim.WorkspaceOpts
 ---@field inlay_hints? LspNvim.InlayHintsOpts
 ---@field attach? LspNvim.AttachOpts
 ---@field mason? LspNvim.MasonOpts

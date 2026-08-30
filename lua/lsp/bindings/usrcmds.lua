@@ -475,18 +475,30 @@ function M.setup()
         end,
       },
 
-      -- ---------------------------------------------------------- root scope
+      -- ------------------------------------------- root scope and workspace
       {
+        -- `pick` still picks the resolution *strategy*; `add`/`remove` move
+        -- the actual workspace folders of the running clients. Two different
+        -- mechanisms, deliberately under one word: from where one sits, both
+        -- answers to "what does this server consider my project".
         path = { "root" },
         args = {
-          { name = "action", type = "STRING", enum = { "pick", "show" }, optional = true },
+          {
+            name = "action",
+            type = "STRING",
+            enum = { "pick", "show", "add", "remove", "list" },
+            optional = true,
+          },
         },
-        desc = "Root scope: pick between cwd / git root / file path, or show it",
+        desc = "Root scope and workspace folders: pick, show, add, remove, list",
         run = function(ctx)
           dispatch({
             pick = actions.root_scope_pick,
             show = actions.root_show,
-          }, ctx.args.action, "pick")
+            add = actions.root_workspace_add,
+            remove = actions.root_workspace_remove,
+            list = actions.root_workspace_list,
+          }, ctx.args.action, "show")
         end,
       },
 

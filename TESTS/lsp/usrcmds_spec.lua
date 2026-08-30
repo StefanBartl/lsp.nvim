@@ -85,7 +85,7 @@ describe("lsp.bindings.usrcmds", function()
     end)
 
     it("root", function()
-      completes("Lsp root ", { "pick", "show" })
+      completes("Lsp root ", { "pick", "show", "add", "remove", "list" })
     end)
 
     it("doctor", function()

@@ -33,6 +33,22 @@ gives the filetype back to the global. `status` reports both levels plus which
 loaded buffers actually have a client advertising `inlayHintProvider` — the
 distinction between "switched on" and "will show something".
 
+`:Lsp root` carries two mechanisms, deliberately under one word:
+
+```
+:Lsp root show     -- scope, plus every client's resolved root and folders
+:Lsp root pick     -- switch the resolution strategy (cwd / git / path)
+:Lsp root add      -- add a workspace folder to the running clients
+:Lsp root remove   -- take one back off
+:Lsp root list     -- what `add` would offer, without opening a picker
+```
+
+`pick` changes *how* a root is found and only reaches the servers whose
+`root_dir` is a function. `add`/`remove` move LSP's own workspace folders over
+`workspace/didChangeWorkspaceFolders`, which reaches every server that
+advertises `changeNotifications`, `root_markers` ones included, and takes
+effect without a restart. A bare `:Lsp root` runs `show`.
+
 None of the routes takes a range: they act on the current buffer or on global
 state, neither of which a line range narrows.
 

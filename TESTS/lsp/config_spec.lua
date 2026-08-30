@@ -77,6 +77,65 @@ describe("lsp.config", function()
       local cfg = reload().setup({ servers = { 1, 2, 3 } })
       assert.is_true(#cfg.servers > 0)
     end)
+
+    it("replaces the default list instead of merging into it", function()
+      -- `vim.tbl_deep_extend` merges arrays index by index, so a one-entry
+      -- list used to come out as that entry followed by every default from
+      -- index two on -- narrowing the server list did almost nothing, and
+      -- said nothing about it.
+      local cfg = reload().setup({ servers = { "lua_ls" } })
+      assert.are.same({ "lua_ls" }, cfg.servers)
+    end)
+  end)
+
+  describe("workspace", function()
+    it("keeps the default markers and containers when nothing is given", function()
+      local cfg = reload().setup()
+      assert.is_true(#cfg.workspace.markers > 0)
+      assert.is_true(vim.tbl_contains(cfg.workspace.markers, ".git"))
+      assert.is_true(vim.tbl_contains(cfg.workspace.containers, "packages"))
+    end)
+
+    it("replaces the marker list rather than merging into it", function()
+      local cfg = reload().setup({ workspace = { markers = { "go.mod" } } })
+      assert.are.same({ "go.mod" }, cfg.workspace.markers)
+      -- The untouched sibling keeps its defaults.
+      assert.is_true(#cfg.workspace.containers > 0)
+    end)
+
+    it("honours an explicitly empty list instead of restoring the defaults", function()
+      -- "Offer me nothing but the client roots and the cwd" is a coherent
+      -- wish; silently putting eighteen markers back would be the config lying.
+      local config = reload()
+      local cfg = config.setup({ workspace = { markers = {} } })
+      assert.are.same({}, cfg.workspace.markers)
+      assert.are.same({}, config.warnings())
+    end)
+
+    it("drops non-string markers and says so", function()
+      local config = reload()
+      local cfg = config.setup({ workspace = { markers = { "go.mod", 42 } } })
+      assert.are.same({ "go.mod" }, cfg.workspace.markers)
+      assert.is_true(#config.warnings() > 0)
+    end)
+
+    it("falls back when the sub-table is not a table at all", function()
+      local cfg = reload().setup({ workspace = false })
+      assert.is_true(#cfg.workspace.markers > 0)
+    end)
+
+    it("falls back when a list is not a list at all", function()
+      local config = reload()
+      local cfg = config.setup({ workspace = { markers = "go.mod" } })
+      assert.is_true(#cfg.workspace.markers > 0)
+      assert.is_true(#config.warnings() > 0)
+    end)
+
+    it("user options do not mutate DEFAULTS", function()
+      local before = vim.deepcopy(DEFAULTS.workspace.markers)
+      reload().setup({ workspace = { markers = { "go.mod" } } })
+      assert.are.same(before, DEFAULTS.workspace.markers)
+    end)
   end)
 
   describe("keymaps", function()
