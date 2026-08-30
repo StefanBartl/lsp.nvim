@@ -21,6 +21,13 @@ end
 --- polled with `vim.wait(100)` inside a `while` loop, which blocked the UI
 --- thread for up to `timeout_ms` (3s) per client — with several clients
 --- attached that froze Neovim for multiple seconds.
+---
+--- Everything here goes through the client object rather than
+--- `vim.lsp.stop_client()` and `client.is_stopped()`, both deprecated on
+--- Neovim 0.12. The poll is why it mattered more than tidiness: the dot-call
+--- sat in a 50ms timer, so stopping one client printed the deprecation notice
+--- on a loop. `Client:stop()` and `Client:is_stopped()` are methods since
+--- 0.11, which is this plugin's minimum.
 ---@param client_id integer
 ---@param timeout_ms integer|nil
 ---@param on_done fun(success: boolean)|nil called on the main loop when settled
@@ -41,12 +48,25 @@ local function graceful_stop(client_id, timeout_ms, on_done)
     end
   end
 
+  local client = lsp.get_client_by_id(client_id)
+  if client == nil then
+    -- Already gone. `vim.lsp.stop_client` swallowed an unknown id silently and
+    -- the poll below would have reported success on its first tick; say so
+    -- directly rather than spending a timer to discover it.
+    finish(true)
+    return
+  end
+
   -- Request graceful shutdown
-  local ok = pcall(lsp.stop_client, client_id, false) -- false = graceful
+  local ok = pcall(function()
+    client:stop(false) -- false = graceful
+  end)
 
   if not ok then
     -- Force stop if graceful fails
-    pcall(lsp.stop_client, client_id, true)
+    pcall(function()
+      client:stop(true)
+    end)
     finish(false)
     return
   end
@@ -56,11 +76,15 @@ local function graceful_stop(client_id, timeout_ms, on_done)
   if not timer then
     -- No timer handle available: fall back to a single deferred force-stop.
     vim.defer_fn(function()
-      local client = lsp.get_client_by_id(client_id)
-      if client and not client.is_stopped() then
-        pcall(lsp.stop_client, client_id, true)
+      -- Re-read rather than closing over the handle above: the client may have
+      -- gone in the meantime, and a stale object is not something to call.
+      local live = lsp.get_client_by_id(client_id)
+      if live and not live:is_stopped() then
+        pcall(function()
+          live:stop(true)
+        end)
       end
-      finish(client == nil)
+      finish(live == nil)
     end, timeout_ms)
     return
   end
@@ -84,14 +108,16 @@ local function graceful_stop(client_id, timeout_ms, on_done)
         return
       end
 
-      local client = lsp.get_client_by_id(client_id)
+      local live = lsp.get_client_by_id(client_id)
 
-      if (not client) or client.is_stopped() then
+      if (not live) or live:is_stopped() then
         close_timer()
         finish(true)
       elseif vim.uv.now() >= deadline then
         close_timer()
-        pcall(lsp.stop_client, client_id, true)
+        pcall(function()
+          live:stop(true)
+        end)
         finish(false)
       end
     end)

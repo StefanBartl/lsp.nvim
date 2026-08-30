@@ -129,7 +129,7 @@ function M.force_restart(name, bufnr)
       -- on the way out is indistinguishable from a crash. Without this the
       -- supervisor would race this function to restart the same server.
       supervisor.expect_stop(c.id)
-      lsp.stop_client(c.id, true)
+      c:stop(true)
     end
   end
 

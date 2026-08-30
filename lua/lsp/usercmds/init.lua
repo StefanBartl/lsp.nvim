@@ -63,7 +63,7 @@ function M.attach(legacy)
       table.insert(lines, string.format("\n[%s]", c.name))
       table.insert(lines, "  ID: " .. tostring(c.id))
       table.insert(lines, "  Root: " .. tostring(c.config and c.config.root_dir or "unknown"))
-      table.insert(lines, "  Status: " .. (c.is_stopped() and "stopped" or "running"))
+      table.insert(lines, "  Status: " .. (c:is_stopped() and "stopped" or "running"))
     end
 
     notify.info(table.concat(lines, "\n"))

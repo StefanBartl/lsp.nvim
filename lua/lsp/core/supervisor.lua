@@ -9,7 +9,7 @@
 --- the server back before the next keypress needs it.
 ---
 --- **Crash versus intent is the whole difficulty.** `on_exit` cannot tell them
---- apart on its own: `vim.lsp.stop_client(id, true)` sends SIGTERM, so a
+--- apart on its own: a force-stop (`Client:stop(true)`) sends SIGTERM, so a
 --- deliberate `:Lsp restart` looks exactly like a server killed by the OOM
 --- killer. So intent is *declared*: every deliberate stop in this plugin calls
 --- `expect_stop(id)` first, and an exit with a mark against it is not a crash.

@@ -75,7 +75,7 @@
 -- Extend vim.lsp namespace
 ---@class vim.lsp
 ---@field start fun(config: vim.lsp.start.Opts, opts?: table): vim.lsp.Client? Start LSP client
----@field stop_client fun(client_id: integer|integer[], force?: boolean) Stop LSP client(s)
+---@field stop_client fun(client_id: integer|integer[], force?: boolean) Stop LSP client(s). Deprecated on 0.12 -- nothing here calls it; use `Client:stop(force)`.
 ---@field get_client_by_id fun(client_id: integer): vim.lsp.Client? Get client by ID
 ---@field get_clients fun(filter?: vim.lsp.get_clients.Filter): vim.lsp.Client[] Get active clients
 ---@field get_active_clients fun(filter?: table): vim.lsp.Client[] Get active clients (deprecated)

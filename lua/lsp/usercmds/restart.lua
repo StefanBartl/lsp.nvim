@@ -50,7 +50,7 @@ function M.execute(args)
         -- Before the stop: a force-stop is a SIGTERM, which the supervisor
         -- would otherwise read as a crash and race this restart.
         supervisor.expect_stop(c.id)
-        lsp.stop_client(c.id, true)
+        c:stop(true)
 
         -- Delayed restart to allow cleanup
         vim.defer_fn(function()
@@ -83,7 +83,13 @@ function M.execute(args)
     end
 
     supervisor.expect_stop(ids)
-    lsp.stop_client(ids, true)
+    -- One at a time: the list form belonged to `vim.lsp.stop_client`, which is
+    -- deprecated on 0.12, and `Client:stop()` has no equivalent. The ids are
+    -- still collected as a list because `expect_stop` takes one, and every
+    -- mark has to be in place before the first client goes down.
+    for _, c in ipairs(clients) do
+      c:stop(true)
+    end
 
     -- Delayed restart for all servers
     vim.defer_fn(function()
