@@ -15,17 +15,16 @@ points here for the per-buffer detail. Neither reimplements the other.
 
 ## Table of content
 
-- [The reports](#the-reports)
-- [`probe`: proving the pipeline works](#probe-proving-the-pipeline-works)
-- [Commands](#commands)
-- [The scratch buffer](#the-scratch-buffer)
-- [Configuration](#configuration)
-- [What the reports show](#what-the-reports-show)
-- [Formatter](#formatter)
-- [Offset encoding mismatch](#offset-encoding-mismatch)
-- [API](#api)
-- [Troubleshooting](#troubleshooting)
-- [Development](#development)
+  - [The reports](#the-reports)
+  - [`probe`: proving the pipeline works](#probe-proving-the-pipeline-works)
+  - [Commands](#commands)
+  - [The scratch buffer](#the-scratch-buffer)
+  - [Configuration](#configuration)
+  - [What the reports show](#what-the-reports-show)
+  - [Formatter](#formatter)
+  - [Offset encoding mismatch](#offset-encoding-mismatch)
+  - [API](#api)
+  - [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -41,30 +40,6 @@ The name says which question it answers, not how much output to expect.
 | `capabilities` | What can the servers here actually do? The `buffer` report uncapped, plus `root_dir` and workspace folders and the full capability set per client. |
 | `probe` | Do diagnostics actually arrive? Hands the attached clients a buffer they cannot possibly parse and waits. The only report that provokes rather than observes — see below. |
 | `all` | The four observing reports, in that order. What `:LspDoctor` runs with no argument. **Not** `probe`. |
-
-### Why these names
-
-Until 2026-08-29 they were `health`, `debug`, `quick` and `deep`. Three
-problems:
-
-- `quick` and `deep` described **volume, not content**. Nothing in "deep" hinted
-  that it is where the capabilities and workspace folders live — which is what
-  one opens it for.
-- `health` was **triple-booked**. `:checkhealth lsp` and `:Lsp health` report on
-  the *plugin*; `:LspDoctor health` reported on *this buffer's servers*. Three
-  commands with "health" in them, two different meanings.
-- `debug` is the vaguest word available for a report that does something very
-  specific.
-
-**The old spellings still work** — as command arguments and as functions.
-Renaming a command someone already has in a mapping is a worse outcome than a
-name that reads badly. They are simply no longer offered in completion, so
-nobody learns them anew.
-
-That "accepted but not offered" split is why the mode argument is a custom
-argument type (`LSP_DOCTOR_MODE`) rather than an `enum`: the command composer
-rejects an off-enum value *before* the route body runs, so an enum cannot
-express it. Same mechanism `lsp.bindings.usrcmds` uses for `LSP_SERVER`.
 
 ---
 
@@ -344,10 +319,6 @@ question:
 When it cannot probe at all it says why in `reason` (`"no snippet"`,
 `"no clients"`, `"no probe buffer"`) and leaves `ok` false.
 
-The legacy names are callable too (`doctor.deep(0)` reaches
-`doctor.capabilities`), and resolve through `LEGACY_MODES`. There is no legacy
-name for `probe`; it never had one.
-
 ---
 
 ## Troubleshooting
@@ -365,24 +336,3 @@ name for `probe`; it never had one.
 
 ---
 
-## Development
-
-Specs live in `TESTS/lsp/lspdoctor_spec.lua`. They **run** every report rather
-than probing that a function exists, for a concrete reason: renaming the reports
-on 2026-08-29 left `M.all` calling `inspect.deep`, which no longer existed.
-`:LspDoctor` with no argument — the most common way to invoke it — raised, and
-nothing noticed: 230 specs passed, the smoke test passed, and the command's own
-`pcall` swallowed the error. A rename is exactly the change that breaks a call
-site nobody exercises, so the specs exercise all of them.
-
-`probe` has its own cases in the same file. They stub the client rather than
-starting a server, because what needs proving here is not that lua_ls works —
-it is that the report distinguishes "answered" from "silent", refuses a
-filetype it has no broken content for, and leaves neither a buffer nor a file
-behind. That last one is the case worth having: the probe names a path in your
-project directory, and a bug that writes to it would write into the repository
-you are working in.
-
-> Verified against a live `lua_ls` on 2026-08-30, twice in one session:
-> 1 diagnostic in ~20ms, no file on disk, no buffer left over, and nothing of
-> the probe's own left in `vim.diagnostic.get()` afterwards.
