@@ -147,7 +147,7 @@ lua/lsp/
   languages/          filetype-specific setup, applied before the servers
   formatter/          on-save toggle, conform strategy, view preservation
   diagnostics/        commands, quickfix/loclist, navigation
-  lspdoctor/          :LspDoctor, five modes
+  lspdoctor/          :LspDoctor, six reports (five observe, one provokes)
   tools/              eslint/prettier, signature help, type lookup, deprecations
   usercmds/           the flat command family (aliases onto :Lsp)
   completion/         nvim-cmp source for the config's own plugin names

@@ -1,15 +1,19 @@
 ---@module 'lsp.lspdoctor.health'
----@brief `:LspDoctor health` -- is this buffer's LSP actually working?
+---@brief `:LspDoctor startup` -- is this buffer's LSP actually working?
 ---@description
 --- Answers one question per expected server: is it configured, is it running,
 --- and if not, what to do about it. `inspect.lua` answers the wider ones
---- (`quick`/`deep`: clients, diagnostics, conflicts, workspace, capabilities).
+--- (`buffer` and `capabilities`: clients, diagnostics, conflicts, workspace,
+--- capability sets).
+---
+--- The report was called `health` until 2026-08-29. It is `startup` now, and
+--- the file kept its name: what it does is check whether the server started.
 ---
 --- Which options apply here follows from that split, and it is not all of
---- them. `show_capabilities`, `show_workspace` and `show_conflicts` are
---- documented as deep-mode sections and `inspect.lua` honours them; repeating
---- them here would mean two implementations of the same report. What this
---- module honours:
+--- them. `show_capabilities`, `show_workspace` and `show_conflicts` belong to
+--- the `capabilities` report and `inspect.lua` honours them; repeating them
+--- here would mean two implementations of the same report. What this module
+--- honours:
 ---
 --- - `list_limit` -- caps the per-server detail, so a filetype with a long
 ---   server list still produces a readable report.

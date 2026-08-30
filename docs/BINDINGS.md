@@ -196,7 +196,7 @@ the same functions as the routes above. Switch them off with
 
 Two commands are **not** aliases and stay registered either way:
 
-- `:LspDoctor` — a diagnostic tool with its own renderer and five modes, not an
+- `:LspDoctor` — a diagnostic tool with its own renderer and six reports, not an
   LSP control command. It is reachable as `:Lsp doctor` as well.
 - `:LspMdHints` — marksman-specific. Server commands do not belong in a global
   verb, which is also why `:TypeDef*`, `:EslintFix`, `:AstroDevStart`,

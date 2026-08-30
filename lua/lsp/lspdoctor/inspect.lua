@@ -1,5 +1,14 @@
 ---@module 'lsp.lspdoctor.inspect'
----@brief LSP inspection (quick/deep modes)
+---@brief The `buffer` and `capabilities` reports.
+---@description
+--- What is attached to this buffer, and what it can do. `buffer` caps its
+--- lists at `list_limit`; `capabilities` is the same report uncapped, plus
+--- root_dir, workspace folders and the full capability set per client.
+---
+--- Both were named for their volume until 2026-08-29 -- `quick` and `deep` --
+--- which said nothing about which of the two holds the capabilities.
+---
+---@see lsp.lspdoctor.health
 
 local M = {}
 
@@ -316,7 +325,7 @@ local function generate_report(mode, bufnr)
   )
   table.insert(lines, "")
 
-  -- Deep mode extras
+  -- `capabilities` only: everything the capped `buffer` report leaves out
   if mode == "capabilities" then
     -- Workspace
     if Opts.show_workspace and #names > 0 then

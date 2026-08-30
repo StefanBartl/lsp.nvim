@@ -89,11 +89,11 @@ describe("lsp.bindings.usrcmds", function()
     end)
 
     it("doctor", function()
-      completes("Lsp doctor ", { "startup", "resolve", "buffer", "capabilities", "all" })
+      completes("Lsp doctor ", { "startup", "resolve", "buffer", "capabilities", "probe", "all" })
     end)
 
     -- The legacy spellings are accepted but deliberately NOT offered: an enum
-    -- is also the discovery surface, and offering nine names for five reports
+    -- is also the discovery surface, and offering ten names for six reports
     -- would undo the rename. Accepting them is what keeps an existing mapping
     -- working.
     it("doctor does not offer the report names it replaced", function()

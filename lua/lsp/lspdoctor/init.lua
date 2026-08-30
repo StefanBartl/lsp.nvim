@@ -1,12 +1,14 @@
 ---@module 'lsp.lspdoctor'
 ---@brief Comprehensive LSP diagnostics and health checking system
 ---@description
---- Four reports, each answering one question. The names say which question,
---- because the previous ones said how much output to expect instead:
---- `quick`/`deep` described volume rather than content -- nothing in "deep"
---- hinted that it is where the capabilities live, which is what one opens it
---- for -- and `health` collided with |:checkhealth-lsp| and `:Lsp health`,
---- which report on the *plugin*, not on this buffer's servers.
+--- Six reports, each answering one question. Five observe; `probe` provokes.
+---
+--- The names say which question, because the previous ones said how much
+--- output to expect instead: `quick`/`deep` described volume rather than
+--- content -- nothing in "deep" hinted that it is where the capabilities
+--- live, which is what one opens it for -- and `health` collided with
+--- |:checkhealth-lsp| and `:Lsp health`, which report on the *plugin*, not on
+--- this buffer's servers.
 ---
 --- - startup:      Is the server running, and if not, why? Executable found,
 ---                 attempts made, last error, what to run next.
@@ -311,7 +313,7 @@ function M.all(bufnr, use_scratch)
   vim.list_extend(all_lines, debug_lines)
   table.insert(all_lines, "")
 
-  -- Deep inspection
+  -- Buffer and capabilities
   local inspect_lines, inspect_report = inspect.capabilities(bufnr)
   table.insert(all_lines, "## Buffer and capabilities")
   table.insert(all_lines, "")

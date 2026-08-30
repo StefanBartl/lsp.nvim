@@ -158,13 +158,23 @@ the reason, rather than notified into the void.
 
 ## Doctor
 
-`:LspDoctor` in five modes — `health`, `debug`, `quick`, `deep`, `all` —
-answering the per-buffer questions: which servers are expected, which are
-running, whether their executables resolve, what the clients advertise, and
-where two providers overlap.
+`:LspDoctor` in six reports — `startup`, `resolve`, `buffer`, `capabilities`,
+`probe`, `all` — answering the per-buffer questions: which servers are
+expected, which are running, whether their executables resolve, where the
+filetype → server chain breaks, what the clients advertise, and where two
+providers overlap.
+
+Five of them observe. `probe` provokes: it hands the attached clients a buffer
+they cannot parse and reports whether diagnostics come back — the only way to
+tell a clean file from a dead pipeline, since both look like an empty gutter.
+It is not part of `all`, because it is the only report that costs anything.
+
+The first four were called `health`, `debug`, `quick` and `deep` until
+2026-08-29. Those spellings still work; they are no longer offered in
+completion.
 
 - **Module:** `lspdoctor/`
-- **Config:** `lspdoctor`
+- **Config:** `lspdoctor`, `lspdoctor.probe_timeout`
 
 ## Per-language and per-server setup
 

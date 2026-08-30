@@ -13,7 +13,7 @@
 --- longer drift apart.
 ---
 --- Two commands are deliberately *not* folded in. `:LspDoctor` keeps its own
---- verb -- it is a diagnostic tool with its own renderer and five modes, not
+--- verb -- it is a diagnostic tool with its own renderer and six reports, not
 --- an LSP control command (the same exception `replacer.nvim` makes for
 --- `:Surround`) -- and it is reachable as `:Lsp doctor` anyway.
 --- `:LspMdHints` is marksman-specific, and server commands do not belong in a
