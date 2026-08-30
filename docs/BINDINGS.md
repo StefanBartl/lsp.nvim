@@ -53,7 +53,7 @@ Three things worth knowing about the left-hand sides:
 
 <!-- BEGIN GENERATED KEYMAPS -->
 
-The `default` preset binds all 47 entries below. `minimal` binds the 31
+The `default` preset binds all 49 entries below. `minimal` binds the 33
 marked in the last column; `none` binds nothing.
 
 | action | lhs | mode | needs | minimal | description |
@@ -83,6 +83,8 @@ marked in the last column; `none` binds nothing.
 | `marksman_hints` | `<leader>lb` | n | — | yes | Toggle Marksman markdown hints |
 | `picker_document_diagnostics` | `<leader>do` | n | `fzf-lua` | yes | Picker: document diagnostics |
 | `picker_document_symbols` | `<leader>dos` | n | `fzf-lua` | yes | Picker: document symbols |
+| `picker_incoming_calls` | `lsc` | n | `fzf-lua` | yes | Picker: incoming calls (who calls this) |
+| `picker_outgoing_calls` | `lsC` | n | `fzf-lua` | yes | Picker: outgoing calls (what this calls) |
 | `picker_workspace_diagnostics` | `<leader>wo` | n | `fzf-lua` | yes | Picker: workspace diagnostics |
 | `picker_workspace_symbols` | `<leader>wos` | n | `fzf-lua` | yes | Picker: workspace symbols (live) |
 | `qf_next` | `]q` | n | — | yes | Next quickfix entry |

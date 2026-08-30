@@ -346,6 +346,27 @@ local entries = {
     requires = "fzf-lua",
   },
 
+  -- Call hierarchy, through the same picker. Neovim ships
+  -- `vim.lsp.buf.incoming_calls`, but it dumps into the quickfix list, which
+  -- loses the tree the protocol actually returns; fzf-lua's providers keep it
+  -- browsable. `lsc`/`lsC` follow `lsd`/`lsD`: the lowercase key is the
+  -- direction one asks for far more often ("who calls this"), the shifted one
+  -- is its sibling.
+  picker_incoming_calls = {
+    lhs = "lsc",
+    mode = "n",
+    rhs = "<cmd>FzfLua lsp_incoming_calls<cr>",
+    desc = "Picker: incoming calls (who calls this)",
+    requires = "fzf-lua",
+  },
+  picker_outgoing_calls = {
+    lhs = "lsC",
+    mode = "n",
+    rhs = "<cmd>FzfLua lsp_outgoing_calls<cr>",
+    desc = "Picker: outgoing calls (what this calls)",
+    requires = "fzf-lua",
+  },
+
   -- ------------------------------------------------------------ misc
   root_scope_pick = {
     lhs = "<leader>lsp",
@@ -407,6 +428,8 @@ local presets = {
     "picker_workspace_symbols",
     "picker_document_diagnostics",
     "picker_workspace_diagnostics",
+    "picker_incoming_calls",
+    "picker_outgoing_calls",
     "root_scope_pick",
     "workspace_folder_add",
     "marksman_hints",

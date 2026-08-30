@@ -274,8 +274,16 @@ abstraction, and says so. An adapter over fzf-lua, telescope, snacks and
 pickers.nvim is worth building when there is a second backend to abstract;
 removing the second backend was the cheaper half of that trade.
 
+Call hierarchy rides on the same picker and is the reason it was worth
+consolidating first: `lsc` asks who calls the symbol under the cursor, `lsC`
+what it calls. Neovim ships `vim.lsp.buf.incoming_calls`, but it dumps into the
+quickfix list and loses the tree the protocol actually returns; fzf-lua's
+providers keep it browsable. `lsc`/`lsC` follow `lsd`/`lsD` — lowercase is the
+direction one asks for far more often.
+
 - **Module:** `tools/ts_type_lookup/symbol_picker.lua`, `integrations/picker.lua`
 - **Commands:** `:TypeDefPick [symbol]`
+- **Keys:** `<leader>dos`, `<leader>wos`, `<leader>do`, `<leader>wo`, `lsc`, `lsC`
 
 ## Completion source
 
