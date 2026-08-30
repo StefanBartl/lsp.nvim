@@ -54,6 +54,9 @@ instead of this plugin.
 | `pack_spec.lua` | The `vim.g.lsp_nvim.pack` gating, and that the two completion engines exclude each other. |
 | `registry_spec.lua` | Server-name resolution, the `webdev.*` fallback, and what happens to a name whose module is missing or throws. |
 | `usrcmds_spec.lua` | The `:Lsp` route table: every route reachable, the legacy aliases mapping onto real routes, and the argument completion. |
+| `lightbulb_spec.lua` | The CodeActionKind allowlist the code-action indicator rests on, the per-filetype resolution, and the draw path against a stub client. |
+| `supervisor_spec.lua` | The exit classifier: every way a deliberate stop, a quit and a startup failure can be mistaken for a crash, plus the backoff curve and the shared attempt counter. |
+| `recovery_spec.lua` | That servers are started through `supervisor.start` rather than `vim.lsp.enable`, and the two counter guards -- a name with no config spends no attempt, and `:Lsp recover` clears a counter the supervisor left exhausted. |
 | `smoke.lua` | End-to-end: every module loads, `setup()` runs the whole bootstrap, servers and commands are registered. |
 
 The specs run against stubs, not against real servers or plugins: a real

@@ -12,6 +12,17 @@
 --- `lsp.usercmds.state`, a module that has never existed -- so the "Attempts:
 --- N" line in `:LspDoctor startup` was always 0, and the "start failed" hint
 --- it gates could never fire. One owner now, and the report reads from it.
+---
+--- **Starting goes through `supervisor.start`, not `vim.lsp.enable`**, and
+--- that distinction is the whole reason `:Lsp force-restart` never worked.
+--- `vim.lsp.enable` arms an autocommand: it launches a client the next time a
+--- matching buffer event fires. After a force-restart the buffer is already
+--- open and no such event is coming, so the client was never created, the
+--- attach poll 1500ms later found nothing, and the retry called the same
+--- ineffective function two more times before giving up with "Try :edit".
+--- `supervisor.start` resolves the registered config and calls
+--- `vim.lsp.start(cfg, { bufnr })`, which attaches to the buffer in hand --
+--- the same fix that `:Lsp restart` got.
 
 local M = {}
 
@@ -41,6 +52,15 @@ function M.retry_start(name, bufnr, max_attempts)
   max_attempts = max_attempts or 3
   bufnr = bufnr or 0
 
+  -- A name with no registered configuration cannot be started by trying
+  -- again. Answered before the counter moves, so a typo costs one message
+  -- instead of three attempts and six seconds of delays.
+  if supervisor.config_for(name) == nil then
+    supervisor.note_error(name, "no registered configuration")
+    notify.error(string.format("No registered LSP configuration for '%s'", name))
+    return false
+  end
+
   -- Check if max attempts reached
   if supervisor.attempts(name) >= max_attempts then
     notify.error(
@@ -60,11 +80,10 @@ function M.retry_start(name, bufnr, max_attempts)
     string.format("Attempting to start '%s' (attempt %d/%d)...", name, attempt, max_attempts)
   )
 
-  -- Try to start
-  local ok, err = pcall(lsp.enable, { name })
-
-  if not ok then
-    supervisor.note_error(name, tostring(err))
+  -- Start AND attach to this buffer. See the module doc for why it is not
+  -- `vim.lsp.enable`.
+  if not supervisor.start(name, bufnr) then
+    supervisor.note_error(name, "vim.lsp.start refused the configuration")
 
     -- Retry after delay if not max attempts
     if attempt < max_attempts then
@@ -182,6 +201,13 @@ function M.auto_recover(bufnr)
   notify.info(string.format("Auto-recovery: starting %d server(s)...", #to_start))
 
   for _, name in ipairs(to_start) do
+    -- Clear the history first, the same way `force_restart` does, and for the
+    -- same reason: this is someone asking for a retry *now*. The counter is
+    -- shared with `lsp.core.supervisor`, so a server that crash-looped until
+    -- the supervisor gave up arrives here well past any cap -- and the guard
+    -- in `retry_start` would refuse to make a single attempt, in exactly the
+    -- situation this command exists for.
+    supervisor.reset(name)
     M.retry_start(name, bufnr, 2) -- Max 2 attempts for auto-recovery
   end
 end
