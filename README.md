@@ -315,3 +315,7 @@ in the layer that decides *whether* it is installed.
 | [health.md](docs/health.md) | Reading `:checkhealth lsp` |
 
 `:h lsp.nvim` has the same material as a vimdoc.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
