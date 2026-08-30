@@ -20,7 +20,7 @@
 --- - `semantic_tokens_timeout` -- bounds the semantic-tokens probe below.
 ---
 --- The last two used to be read by nothing at all, anywhere in the plugin:
---- documented in `@types.lua` and `doc/help.txt`, defaulted in `init.lua`,
+--- documented in `@types.lua` and `README.md`, defaulted in `init.lua`,
 --- consumed nowhere. They are real now.
 ---
 ---@see lsp.lspdoctor.inspect

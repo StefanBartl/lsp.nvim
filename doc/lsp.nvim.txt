@@ -459,6 +459,40 @@ into `:Lsp` routes with thin aliases is roadmap section 8.2.
                     Set the LSP log level. Completes over trace, debug, info,
                     warn, error and off.
 
+    :LspDoctor [report]                                        *:LspDoctor*
+                    Six reports on the LSP state of the current buffer, each
+                    answering one question. Reachable as `:Lsp doctor` too.
+                    With `!` the report opens in a scratch buffer instead of
+                    being printed.
+
+                      startup       Is the server running, and if not, why?
+                                    Executable, attempts, last error, and what
+                                    to run next.
+                      resolve       Where the filetype -> server chain breaks,
+                                    in five steps.
+                      buffer        Clients, diagnostic counts, provider
+                                    conflicts, offset encodings, formatter.
+                                    Capped at `lspdoctor.list_limit`.
+                      capabilities  The `buffer` report uncapped, plus
+                                    root_dir, workspace folders and the full
+                                    capability set per client.
+                      probe         Whether diagnostics arrive at all: hands
+                                    the attached clients a buffer they cannot
+                                    parse and waits `lspdoctor.probe_timeout`.
+                                    The only report that provokes rather than
+                                    observes, and the only one that costs
+                                    anything -- which is why `all` leaves it
+                                    out.
+                      all           (default) The four observing reports.
+
+                    The older names `health`, `debug`, `quick` and `deep` are
+                    still accepted -- they map onto `startup`, `resolve`,
+                    `buffer` and `capabilities` -- but are not offered in
+                    completion.
+
+                    `lua/lsp/lspdoctor/README.md` documents the reports in
+                    full.
+
 Reports open in a scratch split rather than a notification: they are
 multi-line, and meant to be read and copied from.
 
