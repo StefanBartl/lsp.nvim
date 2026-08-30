@@ -56,6 +56,7 @@ instead of this plugin.
 | `usrcmds_spec.lua` | The `:Lsp` route table: every route reachable, the legacy aliases mapping onto real routes, and the argument completion. |
 | `lightbulb_spec.lua` | The CodeActionKind allowlist the code-action indicator rests on, the per-filetype resolution, and the draw path against a stub client. |
 | `supervisor_spec.lua` | The exit classifier: every way a deliberate stop, a quit and a startup failure can be mistaken for a crash, plus the backoff curve and the shared attempt counter. |
+| `start_spec.lua` | That the expected-server list is derived from the registered `vim.lsp.config` entries rather than a hardcoded filetype table -- which server declares which filetype, and that a registered-but-not-enabled config is not expected. |
 | `recovery_spec.lua` | That servers are started through `supervisor.start` rather than `vim.lsp.enable`, and the two counter guards -- a name with no config spends no attempt, and `:Lsp recover` clears a counter the supervisor left exhausted. |
 | `smoke.lua` | End-to-end: every module loads, `setup()` runs the whole bootstrap, servers and commands are registered. |
 

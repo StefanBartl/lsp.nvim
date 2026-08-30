@@ -190,6 +190,63 @@ function M.config_for(name)
   return nil
 end
 
+--- Every server name registered with `vim.lsp.config` and enabled.
+---
+--- There is no public enumeration on Neovim 0.12: `vim.lsp.config` is a table
+--- with an `__index` that resolves one name at a time, and `vim.lsp.config.get`
+--- does not exist. The registered names live in its `_configs` field, which is
+--- private -- so this reads it defensively and falls back to the names this
+--- plugin was configured with when it is not there.
+---
+--- The fallback is not equivalent, which is why it is the fallback: a server
+--- module may register under a different name than the one in `servers`
+--- (`"csharp"` registers `omnisharp`, `"zig"` registers `zls`), and only the
+--- store knows the registered spelling.
+---
+--- `"*"` is skipped: it is the shared base config, not a server.
+---@return string[]
+function M.registered_names()
+  ---@type string[]
+  local names = {}
+
+  ---@type table|nil
+  local store = type(lsp.config) == "table" and rawget(lsp.config, "_configs") or nil
+  if type(store) == "table" then
+    for name in pairs(store) do
+      if type(name) == "string" and name ~= "*" then
+        names[#names + 1] = name
+      end
+    end
+  else
+    local ok, resolved = pcall(function()
+      return require("lsp.config").get()
+    end)
+    for _, name in ipairs((ok and resolved and resolved.servers) or {}) do
+      if type(name) == "string" and name ~= "*" then
+        names[#names + 1] = name
+      end
+    end
+  end
+
+  -- A registered config that was never enabled is not a server this buffer
+  -- should expect. `is_enabled` is public; when it is missing, registered is
+  -- the best available answer.
+  if type(lsp.is_enabled) == "function" then
+    ---@type string[]
+    local enabled = {}
+    for _, name in ipairs(names) do
+      local ok, yes = pcall(lsp.is_enabled, name)
+      if ok and yes then
+        enabled[#enabled + 1] = name
+      end
+    end
+    names = enabled
+  end
+
+  table.sort(names)
+  return names
+end
+
 --- Start a registered server and attach it to a buffer.
 ---
 --- `vim.lsp.start` reuses a client with the same name and root rather than
