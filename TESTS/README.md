@@ -57,6 +57,7 @@ instead of this plugin.
 | `lightbulb_spec.lua` | The CodeActionKind allowlist the code-action indicator rests on, the per-filetype resolution, and the draw path against a stub client. |
 | `supervisor_spec.lua` | The exit classifier: every way a deliberate stop, a quit and a startup failure can be mistaken for a crash, plus the backoff curve and the shared attempt counter. |
 | `start_spec.lua` | That the expected-server list is derived from the registered `vim.lsp.config` entries rather than a hardcoded filetype table -- which server declares which filetype, and that a registered-but-not-enabled config is not expected. |
+| `symbol_picker_spec.lua` | That `:TypeDefPick` sends its argument as fzf-lua's `lsp_query` (the server-side `workspace/symbol` query) and not as `query` (fzf's local filter over a full workspace dump), plus the `<cword>` fallback and the missing-fzf-lua path. |
 | `recovery_spec.lua` | That servers are started through `supervisor.start` rather than `vim.lsp.enable`, and the two counter guards -- a name with no config spends no attempt, and `:Lsp recover` clears a counter the supervisor left exhausted. |
 | `smoke.lua` | End-to-end: every module loads, `setup()` runs the whole bootstrap, servers and commands are registered. |
 

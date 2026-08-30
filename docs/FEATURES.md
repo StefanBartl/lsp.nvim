@@ -254,6 +254,29 @@ help, TypeScript type lookup, and deprecation help.
 - **Module:** `tools/`
 - **Config:** `tools.<name>.enable`
 
+## One picker, not two
+
+The four picker keymaps (`<leader>dos`, `<leader>wos`, `<leader>do`,
+`<leader>wo`) are fzf-lua, and so is `:TypeDefPick` since roadmap M4a. It used
+to be 171 lines of hand-rolled Telescope — its own finder, entry maker, buffer
+previewer and single `<CR>` action — answering the same `workspace/symbol`
+request fzf-lua answers with `lsp_workspace_symbols`. Two backends for one kind
+of list meant two sets of keys inside the picker, two preview behaviours, and
+two plugins to have installed.
+
+Telescope is not gone from the plugin: `languages/webdev/astro` still uses
+`telescope.builtin` for component, layout and page navigation, behind a
+`FileType astro` autocommand. What is gone is a second picker for the same
+list.
+
+`integrations/picker.lua` is still presence-reporting rather than an
+abstraction, and says so. An adapter over fzf-lua, telescope, snacks and
+pickers.nvim is worth building when there is a second backend to abstract;
+removing the second backend was the cheaper half of that trade.
+
+- **Module:** `tools/ts_type_lookup/symbol_picker.lua`, `integrations/picker.lua`
+- **Commands:** `:TypeDefPick [symbol]`
+
 ## Completion source
 
 An nvim-cmp source that completes dotted plugin names as one atomic candidate
