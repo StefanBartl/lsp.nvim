@@ -158,7 +158,7 @@ local function conform_chain(bufnr)
     return nil, false
   end
 
-  local ok_call, formatters, lsp = pcall(conform.list_formatters_to_run, bufnr)
+  local ok_call, formatters, lsp_after = pcall(conform.list_formatters_to_run, bufnr)
   if not ok_call or type(formatters) ~= "table" then
     return nil, false
   end
@@ -168,7 +168,7 @@ local function conform_chain(bufnr)
   for _, f in ipairs(formatters) do
     names[#names + 1] = f.name
   end
-  return names, lsp == true
+  return names, lsp_after == true
 end
 
 ---Which LSP client this report would name as the preferred formatter.
