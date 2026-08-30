@@ -196,6 +196,11 @@ local DEFAULTS = {
     -- decides nothing. Kept because the preference is still worth recording.
     formatter_priority = { "null-ls", "eslint", "lua_ls" },
     semantic_tokens_timeout = 300,
+    -- How long `:LspDoctor probe` waits for a deliberately broken buffer to
+    -- come back diagnosed. Generous on purpose: the answer that matters is
+    -- "nothing arrived", and a timeout too short to let a busy server finish
+    -- would produce that answer for a pipeline that works.
+    probe_timeout = 5000,
     scratch_filetype = "markdown",
     auto_open_scratch = true,
     scratch_threshold = 20,

@@ -331,7 +331,7 @@ lua/lsp/
   languages/          -- filetype-specific quality-of-life setup
   formatter/          -- on-save toggle, conform strategy, view preservation
   diagnostics/        -- commands, quickfix/loclist, navigation
-  lspdoctor/          -- :LspDoctor, five modes
+  lspdoctor/          -- :LspDoctor, six reports
   tools/              -- eslint/prettier, signature help, type lookup, deprecations
   usercmds/           -- the migrated :Lsp* command family
   completion/         -- nvim-cmp source for the config's own plugin names

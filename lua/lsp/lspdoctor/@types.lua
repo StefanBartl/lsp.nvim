@@ -12,6 +12,7 @@
 ---@field show_conflicts? boolean Detect potential provider conflicts (formatting, diagnostics) (default: true)
 ---@field formatter_priority? string[] Order in which the report ranks LSP clients that can format. Report only -- it does not choose what formats a buffer (see lsp.formatter). Namespaced under `lspdoctor` for that reason. (default: {})
 ---@field semantic_tokens_timeout? integer Timeout (ms) for semantic tokens probe (default: 300)
+---@field probe_timeout? integer Timeout (ms) the `probe` report waits for diagnostics to come back (default: 5000)
 ---@field scratch_filetype? string Filetype for scratch export buffer (default: 'markdown')
 ---@field scratch_threshold? number
 ---@field auto_open_scratch? boolean
@@ -21,7 +22,7 @@
 ---@field lines string[]
 
 ---@class Lsp.Doctor.Report
----@field mode '"buffer"'|'"capabilities"'
+---@field mode '"buffer"'|'"capabilities"'|'"probe"'
 ---@field ok boolean
 ---@field summary string
 ---@field sections Lsp.Doctor.Section[]

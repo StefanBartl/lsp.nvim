@@ -19,15 +19,25 @@
 --- - capabilities: What can the servers here actually do? The `buffer` report
 ---                 uncapped, plus root_dir/workspace folders and the full
 ---                 capability set per client.
---- - all:          All four.
+--- - probe:        Do diagnostics actually arrive? The only report that
+---                 provokes rather than observes: a buffer of deliberately
+---                 broken content, handed to the clients on this buffer.
+--- - all:          The four observing reports. Not `probe` -- see below.
 ---
 --- Commands:
----   :LspDoctor               -> all four combined
+---   :LspDoctor               -> the four observing reports combined
 ---   :LspDoctor startup       -> why a server is (not) running
 ---   :LspDoctor resolve       -> filetype to server resolution chain
 ---   :LspDoctor buffer        -> what is going on in this buffer
 ---   :LspDoctor capabilities  -> per-client capabilities and workspace
+---   :LspDoctor probe         -> whether diagnostics come back at all
 ---   :LspDoctor! [mode]       -> open in scratch buffer instead of printing
+---
+--- `probe` stays out of `all` on purpose. The other four read state and are
+--- instant; `probe` creates a buffer, talks to the servers and waits up to
+--- `probe_timeout` for an answer. Folding it in would make the default
+--- `:LspDoctor` -- the one people reach for first -- slow and side-effectful
+--- for the sake of a question they did not ask.
 ---
 --- The old names (`health`, `debug`, `quick`, `deep`) still work, as command
 --- arguments and as functions -- renaming a command someone has in a mapping
@@ -63,6 +73,7 @@ local Defaults = {
   show_conflicts = true,
   formatter_priority = {},
   semantic_tokens_timeout = 300,
+  probe_timeout = 5000,
   scratch_filetype = "markdown",
   auto_open_scratch = false, -- open scratch buffer automatically for long output
   scratch_threshold = 20, -- lines before auto-opening scratch
@@ -76,6 +87,7 @@ local Opts = vim.deepcopy(Defaults)
 local health = require("lsp.lspdoctor.health")
 local debug = require("lsp.lspdoctor.debug")
 local inspect = require("lsp.lspdoctor.inspect")
+local probe = require("lsp.lspdoctor.probe")
 
 -- Utils -----------------------------------------------------------------------
 
@@ -182,6 +194,7 @@ function M.setup(opts)
   -- Pass options to submodules
   health.setup(Opts)
   inspect.setup(Opts)
+  probe.setup(Opts)
 end
 
 ---Why a server is, or is not, running for this buffer.
@@ -228,6 +241,21 @@ function M.capabilities(bufnr, use_scratch)
   return report
 end
 
+---Whether diagnostics actually arrive, proven rather than assumed.
+---
+---Unlike the other reports this one has side effects and takes time: it builds
+---a buffer of broken content, attaches this buffer's clients to it, and waits
+---up to `probe_timeout` for something to come back. See `lsp.lspdoctor.probe`.
+---@param bufnr integer|nil
+---@param use_scratch boolean|nil
+---@return table report
+function M.probe(bufnr, use_scratch)
+  bufnr = bufnr or 0
+  local lines, report = probe.run(bufnr)
+  render_output(lines, use_scratch or false)
+  return report
+end
+
 --- The names these reports used to have, mapped to the ones they have now.
 ---
 --- Kept because a rename that breaks a mapping someone already made is a worse
@@ -236,7 +264,7 @@ end
 --- they are simply not offered in completion, so nobody learns them anew.
 --- The reports, in the order one reaches for them when something is wrong.
 ---@type string[]
-M.MODES = { "startup", "resolve", "buffer", "capabilities", "all" }
+M.MODES = { "startup", "resolve", "buffer", "capabilities", "probe", "all" }
 
 ---@type table<string, string>
 M.LEGACY_MODES = {
@@ -252,7 +280,11 @@ for legacy, current in pairs(M.LEGACY_MODES) do
   end
 end
 
----Run all checks combined
+---Run the four observing reports combined.
+---
+---`probe` is deliberately not among them: it is the one report that acts on
+---the session instead of reading it, and `:LspDoctor` with no argument should
+---stay instant and harmless.
 ---@param bufnr integer|nil
 ---@param use_scratch boolean|nil
 ---@return table combined

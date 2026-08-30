@@ -290,6 +290,14 @@ lspdoctor.formatter_priority (string[])
                                   covers, no LSP client formats at all. The
                                   report names conform's answer first and this
                                   ranking second.
+lspdoctor.probe_timeout (integer, ms)
+                                  How long `:LspDoctor probe` waits for
+                                  diagnostics to come back from a buffer of
+                                  deliberately broken content. Default 5000.
+                                  Generous on purpose: the answer that matters
+                                  is "nothing arrived", and a timeout too short
+                                  for a busy server produces that answer for a
+                                  pipeline that works.
 tools.<name>.enable   (boolean)   Master switch per extra tool:
                                   eslint_prettier, lsp_signature,
                                   ts_type_lookup, deprecated_help.
