@@ -120,6 +120,11 @@ describe("lsp.config layers", function()
     --- A throwaway directory with a project file in it, made current for the
     --- duration of the case. The lookup walks up from the working directory,
     --- so this is the only way to exercise the real path rather than a stub.
+    ---
+    --- Every case reloads `lsp.config` *before* calling this. Requiring a
+    --- module while the working directory is a temp dir depends on how the
+    --- runner set the runtimepath up, which is not what any of these cases is
+    --- about -- only `setup()` needs to run from inside the project.
     ---@param content string|nil # File body; nil writes no file at all.
     ---@param name string|nil # File name, default `.nvim-lsp.json`.
     ---@return string dir
@@ -150,8 +155,9 @@ describe("lsp.config layers", function()
 
     it("switches a server off in this checkout only", function()
       -- The point of the whole layer: the global config is untouched.
+      local config = reload()
       project_dir('{ "servers": ["lua_ls"] }')
-      local cfg = reload().setup({ servers = { "lua_ls", "ts_ls", "gopls" } })
+      local cfg = config.setup({ servers = { "lua_ls", "ts_ls", "gopls" } })
 
       assert.are.same({ "lua_ls" }, cfg.servers)
     end)
@@ -159,32 +165,35 @@ describe("lsp.config layers", function()
     it("replaces a list instead of merging into it", function()
       -- Same reason as `servers` in setup(): index-wise array merging would
       -- leave every entry from index two on in place.
+      local config = reload()
       project_dir('{ "workspace": { "markers": ["go.mod"] } }')
-      local cfg = reload().setup()
+      local cfg = config.setup()
 
       assert.are.same({ "go.mod" }, cfg.workspace.markers)
     end)
 
     it("wins over the setup() options", function()
+      local config = reload()
       project_dir('{ "formatter": { "on_save": true } }')
-      local cfg = reload().setup({ formatter = { on_save = false } })
+      local cfg = config.setup({ formatter = { on_save = false } })
 
       assert.is_true(cfg.formatter.on_save)
     end)
 
     it("is found by walking upward from the working directory", function()
+      local config = reload()
       local root = project_dir('{ "languages": { "enable": false } }')
       local nested = root .. "/a/b"
       vim.fn.mkdir(nested, "p")
       vim.fn.chdir(nested)
 
-      local cfg = reload().setup()
+      local cfg = config.setup()
       assert.is_false(cfg.languages.enable)
     end)
 
     it("layers() names the file that was merged", function()
-      local dir = project_dir('{ "languages": { "enable": false } }')
       local config = reload()
+      local dir = project_dir('{ "languages": { "enable": false } }')
       config.setup()
 
       local found = config.layers().project
@@ -195,12 +204,12 @@ describe("lsp.config layers", function()
     it("refuses keys that are not the repository's to set", function()
       -- A checkout may describe the code. It may not move your keys or install
       -- software.
+      local config = reload()
       project_dir([[{
         "servers": ["lua_ls"],
         "keymaps": { "enable": false },
         "mason": { "ensure_install": true }
       }]])
-      local config = reload()
       local cfg = config.setup()
 
       assert.are.same({ "lua_ls" }, cfg.servers)
@@ -211,8 +220,8 @@ describe("lsp.config layers", function()
     end)
 
     it("survives invalid JSON and says so", function()
-      project_dir("{ not json")
       local config = reload()
+      project_dir("{ not json")
       local cfg = config.setup({ servers = { "lua_ls" } })
 
       assert.are.same({ "lua_ls" }, cfg.servers)
@@ -221,21 +230,22 @@ describe("lsp.config layers", function()
 
     it("ignores an empty file without complaining", function()
       -- A placeholder someone has not filled in yet is not a mistake.
-      project_dir("")
       local config = reload()
+      project_dir("")
       config.setup()
       assert.are.same({}, config.warnings())
     end)
 
     it("reads JSON null as no opinion", function()
+      local config = reload()
       project_dir('{ "servers": null }')
-      local cfg = reload().setup({ servers = { "lua_ls" } })
+      local cfg = config.setup({ servers = { "lua_ls" } })
       assert.are.same({ "lua_ls" }, cfg.servers)
     end)
 
     it("is skipped entirely when project.enable is false", function()
-      project_dir('{ "servers": ["lua_ls"] }')
       local config = reload()
+      project_dir('{ "servers": ["lua_ls"] }')
       local cfg = config.setup({ project = { enable = false }, servers = { "gopls" } })
 
       assert.are.same({ "gopls" }, cfg.servers)
@@ -243,8 +253,9 @@ describe("lsp.config layers", function()
     end)
 
     it("honours a different file name", function()
+      local config = reload()
       project_dir('{ "servers": ["lua_ls"] }', ".lsp.json")
-      local cfg = reload().setup({ project = { file = ".lsp.json" }, servers = { "gopls" } })
+      local cfg = config.setup({ project = { file = ".lsp.json" }, servers = { "gopls" } })
 
       assert.are.same({ "lua_ls" }, cfg.servers)
     end)
@@ -252,8 +263,8 @@ describe("lsp.config layers", function()
     it("cannot decide whether project files are read", function()
       -- `project` is resolved from the layers below it, so the file cannot
       -- keep itself alive -- or, here, rename its own successor.
-      project_dir('{ "project": { "enable": false }, "servers": ["lua_ls"] }')
       local config = reload()
+      project_dir('{ "project": { "enable": false }, "servers": ["lua_ls"] }')
       local cfg = config.setup({ servers = { "gopls" } })
 
       assert.are.same({ "lua_ls" }, cfg.servers)
@@ -261,8 +272,8 @@ describe("lsp.config layers", function()
     end)
 
     it("a malformed value degrades rather than raising", function()
-      project_dir('{ "servers": "lua_ls" }')
       local config = reload()
+      project_dir('{ "servers": "lua_ls" }')
       local cfg = config.setup({ servers = { "gopls" } })
 
       assert.is_true(#cfg.servers > 0)
@@ -294,13 +305,13 @@ describe("lsp.config layers", function()
     end)
 
     it("names the project file for a value the project file supplied", function()
+      local config = reload()
       local dir = vim.fn.tempname()
       vim.fn.mkdir(dir, "p")
       vim.fn.writefile({ '{ "servers": ["lua_ls", 42] }' }, dir .. "/.nvim-lsp.json")
       local cwd = vim.fn.getcwd()
       vim.fn.chdir(dir)
 
-      local config = reload()
       config.setup()
       vim.fn.chdir(cwd)
       vim.fn.delete(dir, "rf")
