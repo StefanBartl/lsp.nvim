@@ -87,9 +87,16 @@ return function(root)
   -- ===================================================================
   -- NEOVIM RUNTIME PATHS
   -- ===================================================================
+  -- The dev repos are on the runtimepath, so the repo currently being edited is
+  -- among them. Handing lua_ls its own workspace as a library makes it read
+  -- every file twice, and each `@class` in there then reports duplicate-doc-field
+  -- against itself -- measured at 1085 of the config's 1222 warnings.
+  local normalized_root = root:gsub("\\", "/"):gsub("/+$", ""):lower()
   local runtime_paths = vim.api.nvim_get_runtime_file("", true) or {}
   for _, path in ipairs(runtime_paths) do
-    library[path] = true
+    if path:gsub("\\", "/"):gsub("/+$", ""):lower() ~= normalized_root then
+      library[path] = true
+    end
   end
 
   -- ===================================================================
