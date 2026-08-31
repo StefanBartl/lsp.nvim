@@ -1,3 +1,7 @@
+-- Test code: when something here comes back nil -- a `pcall(require, ...)`,
+-- a fixture read, a uv handle -- this file must crash and name it. The nil
+-- guards LuaLS asks for below would hide the very failure it exists to report.
+---@diagnostic disable: need-check-nil
 --- Covers the parts of `:checkhealth lsp` that answer "what is this costing
 --- me": the installed side, the per-buffer attached line, and the one warning
 --- that fires for a heavy server held over many buffers.
