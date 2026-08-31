@@ -8,11 +8,6 @@
   "diagnostics.globals": ["vim"],
   "diagnostics.unusedLocalExclude": ["_*"],
   "workspace.checkThirdParty": false,
-  "workspace.ignoreDir": [
-    ".git",
-    ".deps",
-    "docs/map"
-  ],
   "hint.enable": true,
   "hint.paramName": "All",
   "hint.paramType": true,

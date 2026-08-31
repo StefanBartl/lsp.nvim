@@ -16,6 +16,12 @@ return function(root)
   -- ===================================================================
   library["${3rd}/luv/library"] = true
   library["${3rd}/busted/library"] = true
+  -- busted without luassert is half a test environment: `assert.are.equal`
+  -- and friends live in luassert, and every spec in these repos calls them.
+  -- Without this the `luassert` type is undefined wherever a repo annotates
+  -- the global -- a `.luarc.json` cannot supply it, because naming
+  -- `workspace.library` there replaces this whole list instead of adding to it.
+  library["${3rd}/luassert/library"] = true
 
   -- ===================================================================
   -- PROJECT TYPE DIRECTORIES AND FILES
