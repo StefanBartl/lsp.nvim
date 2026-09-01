@@ -61,7 +61,7 @@ end
 -- Collection ------------------------------------------------------------------
 
 ---@param bufnr integer
----@return table<string, LspMod.Client> clients_by_name, string[] names
+---@return table<string, vim.lsp.Client> clients_by_name, string[] names
 local function collect_clients(bufnr)
   if type(bufnr) ~= "number" or not api.nvim_buf_is_valid(bufnr) then
     return {}, {}
@@ -102,7 +102,7 @@ end
 
 -- Checks ----------------------------------------------------------------------
 
----@param clients_by_name table<string, LspMod.Client>
+---@param clients_by_name table<string, vim.lsp.Client>
 ---@return string[] unique_encs, string[] mismatches
 local function check_offset_encoding(clients_by_name)
   local set, order = {}, {}
@@ -126,7 +126,7 @@ local function check_offset_encoding(clients_by_name)
   return order, mismatches
 end
 
----@param clients_by_name table<string, LspMod.Client>
+---@param clients_by_name table<string, vim.lsp.Client>
 ---@return string[] conflicts
 local function detect_conflicts(clients_by_name)
   local conflicts = {}
@@ -136,7 +136,10 @@ local function detect_conflicts(clients_by_name)
     if caps.documentFormattingProvider == true then
       fmt[#fmt + 1] = name
     end
-    if caps.diagnosticProvider or caps.publishDiagnosticsProvider then
+    -- Only pull diagnostics are visible here: push diagnostics
+    -- (`textDocument/publishDiagnostics`) carry no server capability,
+    -- so a server that sends them cannot be counted as a provider.
+    if caps.diagnosticProvider then
       diagp[#diagp + 1] = name
     end
   end
@@ -193,7 +196,7 @@ end
 ---a TypeScript buffer that `prettierd` was formatting -- a diagnostic tool
 ---naming the wrong culprit, which is the one thing a diagnostic tool must not
 ---do.
----@param clients_by_name table<string, LspMod.Client>
+---@param clients_by_name table<string, vim.lsp.Client>
 ---@return string|nil winner, string[] candidates, string reason
 local function pick_formatter(clients_by_name)
   local candidates = {}

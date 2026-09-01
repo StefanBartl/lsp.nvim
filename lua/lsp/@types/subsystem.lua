@@ -4,55 +4,17 @@
 ---@class LspMod.Init
 ---@field ensure_installing boolean|nil
 
----@class LspMod.Client.Capabilities
----@field codeLensProvider table|nil
----@field inlayHintProvider table|nil
----@field semanticTokensProvider table|nil
----@field documentFormattingProvider boolean|nil
----@field documentRangeFormattingProvider boolean|nil
----@field completionProvider table|nil
----@field definitionProvider boolean|nil
----@field codeActionProvider boolean|nil
----@field textDocumentSync any
----@field positionEncoding string|nil
----@field diagnosticProvider boolean|nil
----@field publishDiagnosticsProvider boolean|nil
-
----@class LspMod.Client
----@field id integer
----@field name string
----@field offset_encoding string|nil
----@field root_dir string|nil
----@field workspace_folders { name?: string, uri?: string }[]|nil
----@field config table|nil
----@field supports_method fun(self: LspMod.Client, method: string): boolean
----@field server_capabilities LspMod.Client.Capabilities|nil
----@field request fun(self: LspMod.Client, method: string, params: table, callback: fun(err:any, res:any), bufnr: integer)
-
----@alias LspMod.PositionEncoding "utf-8"|"utf-16"|"utf-32"
-
----@class LspMod.Position
----@field line integer        # 0-based line index
----@field character integer  # character offset in the given positionEncoding
-
----@class LspMod.Range
----@field start LspMod.Position
----@field ["end"] LspMod.Position
-
----@class LspMod.TextDocumentIdentifier
----@field uri string          # document URI (e.g. file:///...)
-
----@class LspMod.CodeAction.Context
----@field diagnostics table[]|nil
----@field only string[]|nil
----@field triggerKind integer|nil
-
----@class LspMod.CodeAction.Params
----@field textDocument LspMod.TextDocumentIdentifier
----@field range LspMod.Range
----@field context LspMod.CodeAction.Context
----@field workDoneToken any|nil
----@field partialResultToken any|nil
+-- The client and protocol shapes below used to be declared here under
+-- `LspMod.*` names. Neovim carries every one of them, and more precisely:
+-- `vim.lsp.Client` has each field this file listed, `lsp.ServerCapabilities`
+-- is the full capability set rather than the eleven keys we happened to use,
+-- and `lsp.Position`/`lsp.Range`/`lsp.TextDocumentIdentifier`/
+-- `lsp.CodeActionParams` come straight from the protocol meta.
+--
+-- Keeping a second name for the same shape is not free: LuaLS decides class
+-- assignability by NAME, not by shape, so a parallel `LspMod.Client` can never
+-- be assigned from a `vim.lsp.Client` however identical the fields are. That
+-- collision is what `languages/webdev/typescript.lua` ran into three times.
 
 ---@class LspMod.AttachOptions
 ---@field use_workspace_diagnostics boolean

@@ -17,7 +17,7 @@ describe("lsp.integrations", function()
 
   --- Replace one adapter module for the duration of a case.
   ---@param name string
-  ---@param module table
+  ---@param module table|nil  # nil simulates an adapter that is not installed
   ---@return fun(): nil restore
   local function stub(name, module)
     local key = "lsp.integrations." .. name

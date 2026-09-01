@@ -16,7 +16,7 @@ local M = {}
 M._orig_publish = vim.lsp.handlers["textDocument/publishDiagnostics"]
 
 -- registry for callbacks keyed by client name. Each callback: function(err, result, ctx, config)
----@type table<string, fun(err: any, result: table, ctx: table, config: table)>
+---@type table<string, fun(err: any, result: table, ctx: table, config: table|nil)>
 M.server_callbacks = {}
 
 -- Register a server-specific diagnostic callback. Overwrites existing for same server name.

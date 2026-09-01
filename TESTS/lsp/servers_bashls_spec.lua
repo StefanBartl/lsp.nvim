@@ -17,6 +17,7 @@ describe("lsp.servers.bashls", function()
   --- The registered config, without touching the global enable machinery.
   ---@return table
   local function register()
+    ---@diagnostic disable-next-line: invisible
     vim.lsp.config._configs["bashls"] = nil
     server().setup({}, { enable = false })
     return vim.lsp.config["bashls"]

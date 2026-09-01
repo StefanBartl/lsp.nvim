@@ -35,7 +35,15 @@ local SOURCE_NAME = "personal_names"
 --- Reader supplied by the host through `setup({ labels = fn })`, returning the
 --- entries whose names should be completed. Each entry may be a string or a
 --- table with a `name` field. nil until `setup()` provides one.
----@type (fun(): (string|{name: string})[])|nil
+---@alias LspNvim.PersonalNames.Entry string|{ name: string }
+
+--- Naming the function type matters: written inline as
+--- `(fun(): Entry[])|nil`, LuaLS pulls the `|nil` into the RETURN type rather
+--- than the variable's, and the reader then satisfies neither `pcall` nor its
+--- own assignment.
+---@alias LspNvim.PersonalNames.Reader fun(): LspNvim.PersonalNames.Entry[]
+
+---@type LspNvim.PersonalNames.Reader|nil
 local label_source = nil
 
 -- ============================================================================
@@ -58,8 +66,9 @@ local function collect_labels()
   -- reader so the config can hand it over instead of this module reaching back
   -- into `plugins.personal.list`. Without one the source simply has no plugin
   -- names and falls back to `extra.lua` alone.
-  if label_source ~= nil then
-    local ok, entries = pcall(label_source)
+  local source = label_source
+  if source ~= nil then
+    local ok, entries = pcall(source)
     if ok and type(entries) == "table" then
       for _, entry in ipairs(entries) do
         local name = (type(entry) == "table") and entry.name or entry
@@ -130,7 +139,7 @@ local function get_items()
   if not items then
     build_items()
   end
-  return items
+  return items or {}
 end
 
 -- ============================================================================
@@ -144,7 +153,7 @@ local _initialized = false
 ---Call once. Under nvim-cmp this belongs in cmp's own `opts` function, where
 ---cmp is already loading; under blink the call can happen any time before the
 ---first completion request, since blink resolves its providers lazily.
----@param opts? { labels?: fun(): (string|{name: string})[] }
+---@param opts? { labels?: LspNvim.PersonalNames.Reader }
 function M.setup(opts)
   if _initialized then
     return

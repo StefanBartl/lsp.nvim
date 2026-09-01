@@ -13,14 +13,9 @@
 --- @field range table              -- LSP Range
 --- @field newText string
 
---- TextDocument identifier with version
---- @class LspVersionedLspMod.TextDocumentIdentifier
---- @field uri string
---- @field version integer|nil
-
 --- A change to a single text document
 --- @class LspTextDocumentEdit
---- @field textDocument LspVersionedLspMod.TextDocumentIdentifier
+--- @field textDocument lsp.VersionedTextDocumentIdentifier
 --- @field edits LspTextEdit[]
 
 --- File operations in WorkspaceEdit (rename/create/delete)

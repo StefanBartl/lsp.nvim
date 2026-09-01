@@ -30,7 +30,10 @@ function M.setup()
     vim.lsp.buf.code_action({
       -- Neovim's meta declares `diagnostics` required on lsp.CodeActionContext,
       -- but vim.lsp.buf.code_action fills it from the current position.
-      ---@diagnostic disable-next-line: missing-fields
+      -- `only` is a server-specific kind; CodeActionKind is an open
+      -- string enum in the protocol, Neovim's meta lists the standard
+      -- ones.
+      ---@diagnostic disable-next-line: missing-fields, assign-type-mismatch
       context = { only = { "source.organizeImports.astro" } },
       apply = true,
     })

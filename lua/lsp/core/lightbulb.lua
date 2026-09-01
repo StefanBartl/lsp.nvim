@@ -352,11 +352,16 @@ local function refresh()
     -- `make_range_params` needs the client's own encoding: the range it builds
     -- is measured in it, and a utf-8 server handed utf-16 columns is asked
     -- about the wrong place on any line with a multi-byte character.
-    local params = vim.lsp.util.make_range_params(winid, client.offset_encoding)
-    params.context = {
-      diagnostics = diagnostics,
-      -- CodeActionTriggerKind.Automatic -- see the module doc.
-      triggerKind = 2,
+    local range = vim.lsp.util.make_range_params(winid, client.offset_encoding)
+    ---@type lsp.CodeActionParams
+    local params = {
+      textDocument = range.textDocument,
+      range = range.range,
+      context = {
+        diagnostics = diagnostics,
+        -- CodeActionTriggerKind.Automatic -- see the module doc.
+        triggerKind = 2,
+      },
     }
 
     -- A client may answer synchronously (a cached result, or a stub in the
@@ -441,8 +446,9 @@ function M.setup(opts)
     end
   end
   state.render = (opts.render == "virtual_text") and "virtual_text" or "sign"
-  if type(opts.text) == "string" and opts.text ~= "" then
-    state.text = state.render == "sign" and fit_sign(opts.text) or opts.text
+  local text = opts.text
+  if type(text) == "string" and text ~= "" then
+    state.text = state.render == "sign" and fit_sign(text) or text
   end
   if type(opts.debounce_ms) == "number" and opts.debounce_ms >= 0 then
     state.debounce_ms = math.floor(opts.debounce_ms)

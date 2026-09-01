@@ -240,7 +240,7 @@ local function collect_files_async(ext_set, cb)
 
   local buf_path = vim.api.nvim_buf_get_name(0)
   local finder = require("lib.nvim.fs.find_root")({ markers = { ".git" } })
-  local root = finder.find(buf_path ~= "" and buf_path or vim.uv.cwd())
+  local root = finder.find(buf_path ~= "" and buf_path or vim.uv.cwd() or ".")
   if not root then
     files_cache[key] = false
     flush_waiters(key, {})
@@ -320,7 +320,7 @@ local function send_did_open(client, bufnr, files, force)
     populated_clients[client.id] = true
   end
 
-  if not client:supports_method("textDocumentSync/openClose") then
+  if not client:supports_method("textDocument/didOpen") then
     return
   end
 

@@ -54,7 +54,12 @@ describe("lsp.core.handlers", function()
 
     local wrapper = vim.lsp.handlers[KEY]
     return function(uri, diagnostics, client_id)
-      wrapper(nil, { uri = uri, diagnostics = diagnostics }, { client_id = client_id or 1 }, nil)
+      wrapper(
+        nil,
+        { uri = uri, diagnostics = diagnostics },
+        { client_id = client_id or 1, method = KEY },
+        nil
+      )
     end
   end
 
@@ -256,13 +261,13 @@ describe("lsp.core.handlers", function()
       wrapper(
         nil,
         { uri = "file:///a.lua", diagnostics = { diag(1, "x") } },
-        { client_id = 1 },
+        { client_id = 1, method = KEY },
         nil
       )
       wrapper(
         nil,
         { uri = "file:///a.lua", diagnostics = { diag(2, "y") } },
-        { client_id = 1 },
+        { client_id = 1, method = KEY },
         nil
       )
 

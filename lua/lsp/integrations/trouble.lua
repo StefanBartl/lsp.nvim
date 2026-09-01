@@ -63,6 +63,11 @@ local function patch_treesitter_view()
     if type(highlighter) ~= "table" then
       return
     end
+    -- Patching private fields is the whole point of this function, so the
+    -- handle is untyped: `_on_win`/`_on_line` are marked private on
+    -- `vim.treesitter.highlighter`, and reading or writing them through the
+    -- typed name is three findings that all say the same true thing.
+    ---@cast highlighter table<string, any>
 
     ---@param primary string
     ---@param fallbacks string[]

@@ -10,7 +10,7 @@ local api = vim.api
 local Autocmd = require("lib.nvim.bindings.autocmd")
 
 --- Check whether a client supports a given CodeActionKind.
----@param client LspMod.Client
+---@param client vim.lsp.Client
 ---@param kind string
 ---@return boolean
 local function client_supports_code_action_kind(client, kind)
@@ -34,7 +34,7 @@ local function client_supports_code_action_kind(client, kind)
 end
 
 --- Run "source.organizeImports" synchronously before save.
---- Builds proper LspMod.CodeAction.Params, applies edits, and executes commands explicitly.
+--- Builds proper lsp.CodeActionParams, applies edits, and executes commands explicitly.
 ---@param bufnr integer
 ---@return boolean applied
 local function organize_imports_sync(bufnr)
@@ -43,7 +43,7 @@ local function organize_imports_sync(bufnr)
     return false
   end
 
-  ---@type LspMod.Client[]
+  ---@type vim.lsp.Client[]
   local eligible = {}
   for _, c in ipairs(clients) do
     if client_supports_code_action_kind(c, "source.organizeImports") then
@@ -59,7 +59,7 @@ local function organize_imports_sync(bufnr)
   local line_count = api.nvim_buf_line_count(bufnr)
   local td = lsp.util.make_text_document_params(bufnr)
 
-  ---@type LspMod.CodeAction.Params
+  ---@type lsp.CodeActionParams
   local params = {
     textDocument = td,
     range = {

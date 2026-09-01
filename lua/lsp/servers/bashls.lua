@@ -61,9 +61,11 @@ local function before_init(_params, config)
     return
   end
   s.bashIde = s.bashIde or {}
+  local bash_ide = s.bashIde
+  ---@cast bash_ide table
   -- If shellcheck is present, bashls will use it automatically; this is an
   -- explicit override to be robust, and an empty string when it is absent.
-  s.bashIde.shellcheckPath = shellcheck_path()
+  bash_ide.shellcheckPath = shellcheck_path()
 end
 
 ---@param shared {capabilities?:table,on_attach?:fun(client,bufnr),on_init?:fun(client,init_result):boolean}|nil

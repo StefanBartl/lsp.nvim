@@ -60,12 +60,14 @@ function M.setup(cfg, registered)
   -- `register`. Try v3 first, since `add` does not exist on v2.
   if type(wk.add) == "function" then
     pcall(wk.add, groups)
+  ---@diagnostic disable-next-line: deprecated
   elseif type(wk.register) == "function" then
     ---@type table<string, table>
     local v2 = {}
     for _, g in ipairs(groups) do
       v2[g[1]] = { name = g.group }
     end
+    ---@diagnostic disable-next-line: deprecated
     pcall(wk.register, v2)
   else
     return 0

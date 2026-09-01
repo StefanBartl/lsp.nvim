@@ -146,10 +146,11 @@ local function normalize_switch(cfg, key)
     if sub ~= nil then
       warn(("%s: expected a table, using defaults"):format(key), key)
     end
-    -- Through a typed local: indexing DEFAULTS with a variable yields the
-    -- union of every field's type, and `deepcopy` takes a table.
-    ---@type table
+    -- Indexing DEFAULTS with a variable yields the union of every field's
+    -- type. `---@type table` on the local moves the mismatch onto the
+    -- assignment instead of removing it; the claim belongs on the value.
     local fallback = DEFAULTS[key]
+    ---@cast fallback table
     cfg[key] = vim.deepcopy(fallback)
     return
   end
@@ -312,10 +313,11 @@ local function normalize_table(cfg, key)
     if cfg[key] ~= nil then
       warn(("%s: expected a table, using defaults"):format(key), key)
     end
-    -- Through a typed local: indexing DEFAULTS with a variable yields the
-    -- union of every field's type, and `deepcopy` takes a table.
-    ---@type table
+    -- Indexing DEFAULTS with a variable yields the union of every field's
+    -- type. `---@type table` on the local moves the mismatch onto the
+    -- assignment instead of removing it; the claim belongs on the value.
     local fallback = DEFAULTS[key]
+    ---@cast fallback table
     cfg[key] = vim.deepcopy(fallback)
   end
 end

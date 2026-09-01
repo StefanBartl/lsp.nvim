@@ -353,6 +353,7 @@ end
 ---@param n integer
 ---@return nil
 local function trouble_view_move(view, direction, n)
+  ---@type table<string, boolean|integer>
   local opts = { jump = true }
   opts[direction == "next" and "down" or "up"] = n
   view:wait(function()

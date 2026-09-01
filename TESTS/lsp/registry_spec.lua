@@ -38,10 +38,12 @@ end
 describe("lsp.core.registry", function()
   describe("arguments", function()
     it("returns nothing without a shared table", function()
+      ---@diagnostic disable-next-line: param-type-mismatch
       assert.are.same({}, registry.setup_all(nil, { "lua_ls" }))
     end)
 
     it("returns nothing without a server list", function()
+      ---@diagnostic disable-next-line: param-type-mismatch
       assert.are.same({}, registry.setup_all(shared(), nil))
     end)
 

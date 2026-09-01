@@ -119,6 +119,7 @@ function M.attach()
     local start_line = vim.fn.line("'<")
     local end_line = vim.fn.line("'>")
     local lines = vim.fn.getline(start_line, end_line)
+    ---@cast lines string[]
 
     require("lib.nvim.ui.kit").input({
       title = "Component name: ",

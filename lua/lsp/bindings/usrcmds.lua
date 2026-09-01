@@ -585,7 +585,7 @@ function M.setup()
         path = { "log", "open" },
         desc = "Open Neovim's LSP log file in a split",
         run = function()
-          local path = vim.lsp.get_log_path()
+          local path = vim.lsp.log.get_filename()
           if path == nil or vim.fn.filereadable(path) ~= 1 then
             notify.warn("No LSP log file yet: " .. tostring(path))
             return

@@ -31,6 +31,7 @@ describe("lsp.config.KEYMAPS", function()
       local claimed = {}
       for name, spec in pairs(KEYMAPS.entries) do
         local modes = type(spec.mode) == "table" and spec.mode or { spec.mode }
+        ---@cast modes string[]
         for _, mode in ipairs(modes) do
           local key = mode .. " " .. spec.lhs
           assert.is_nil(

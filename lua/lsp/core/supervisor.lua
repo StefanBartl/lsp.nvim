@@ -485,7 +485,9 @@ function M.setup(opts)
     -- `"*"` is merged into every named config, including ones registered
     -- later (resolution is lazy -- verified on 0.12.2), so this reaches
     -- servers that do not exist yet.
-    pcall(lsp.config, "*", { on_exit = on_exit })
+    pcall(function()
+      lsp.config("*", { on_exit = on_exit })
+    end)
   end
 
   registered = true

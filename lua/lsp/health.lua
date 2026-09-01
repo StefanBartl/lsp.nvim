@@ -78,10 +78,12 @@ local function check_plugin()
     health.info(("preset: %q (config/PRESETS.lua)"):format(layers.preset))
   end
   if layers.project ~= nil then
-    health.info(("project override: %s"):format(layers.project), {
-      "Merged over your setup() options. Allowed keys: servers, diagnostics, "
-        .. "formatter, inlay_hints, lightbulb, attach, workspace, tools, languages.",
-    })
+    health.info(("project override: %s"):format(layers.project))
+    health.info(
+      "  merged over your setup() options; allowed keys: servers, "
+        .. "diagnostics, formatter, inlay_hints, lightbulb, attach, "
+        .. "workspace, tools, languages"
+    )
   end
 
   for _, warning in ipairs(status.warnings) do

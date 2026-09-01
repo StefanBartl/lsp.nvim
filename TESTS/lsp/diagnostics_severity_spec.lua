@@ -53,6 +53,7 @@ describe("lsp.diagnostics.util severity", function()
       local sev, err = util.parse_severity("eror")
       assert.is_nil(sev)
       assert.is_string(err)
+      err = assert(err, "parse_severity must report the typo")
       assert.is_truthy(err:find("eror", 1, true))
       assert.is_truthy(err:find("error", 1, true)) -- names the valid set
     end)
