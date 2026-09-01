@@ -129,14 +129,18 @@ describe("lsp.lspdoctor", function()
       vim.lsp.get_clients = function()
         return { { id = 4242, name = "fake_ls" } }
       end
+      -- Three stdlib doubles for this case, all restored afterwards.
+      ---@diagnostic disable-next-line: duplicate-set-field
       vim.lsp.buf_attach_client = function()
         return true
       end
+      ---@diagnostic disable-next-line: duplicate-set-field
       vim.lsp.diagnostic.get_namespace = function(_id, is_pull)
         -- One namespace answers, the other does not, so a double count would
         -- show up as a wrong number rather than passing unnoticed.
         return is_pull and 998 or 999
       end
+      ---@diagnostic disable-next-line: duplicate-set-field
       vim.diagnostic.get = function(_bufnr, opts)
         if opts and opts.namespace == 999 and count > 0 then
           local items = {}

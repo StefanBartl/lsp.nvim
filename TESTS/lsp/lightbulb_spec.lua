@@ -262,6 +262,7 @@ describe("lsp.core.lightbulb", function()
       vim.lsp.get_clients = function()
         return { client }
       end
+      ---@diagnostic disable-next-line: duplicate-set-field
       vim.lsp.util.make_range_params = function()
         return {
           textDocument = { uri = "file:///stub.lua" },

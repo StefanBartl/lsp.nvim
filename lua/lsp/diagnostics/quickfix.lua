@@ -29,13 +29,17 @@ function M.next_qf(count)
   -- `:{count}cnext` is native; no loop needed. Still pcall-wrapped, because
   -- Vim raises E553 at the end of the list and swallowing that is the
   -- friendlier behaviour for a key one holds down.
-  pcall(vim.cmd, (count or 1) .. "cnext")
+  pcall(function()
+    vim.cmd((count or 1) .. "cnext")
+  end)
 end
 
 --- Jump to previous quickfix entry.
 ---@return nil
 function M.prev_qf(count)
-  pcall(vim.cmd, (count or 1) .. "cprev")
+  pcall(function()
+    vim.cmd((count or 1) .. "cprev")
+  end)
 end
 
 return M

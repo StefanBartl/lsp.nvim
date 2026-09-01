@@ -13,6 +13,8 @@
 local api = vim.api
 local Autocmd = require("lib.nvim.bindings.autocmd")
 
+require("lsp.formatter.@types")
+
 local M = {}
 
 --- Build a formatter API instance (stateless config + internal state).

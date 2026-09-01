@@ -3,6 +3,8 @@
 --- systems/webdev language module's own `enable()`, pcall-guarded so one
 --- missing module never stops the rest.
 
+require("lsp.languages.@types")
+
 local M = {}
 
 ---@type Lsp.Languages.ConfiguredLangs.Literal.App[]

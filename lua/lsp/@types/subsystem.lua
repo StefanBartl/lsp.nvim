@@ -1,8 +1,6 @@
 ---@meta
 ---@module 'lsp.@types.subsystem'
 
-require("lsp.@types.vim_lsp")
-
 ---@class LspMod.Init
 ---@field ensure_installing boolean|nil
 

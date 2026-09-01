@@ -124,8 +124,8 @@ end
 --- Shows: filetype-relevant servers + configured servers + mason servers
 --- Excludes: already running servers
 ---@param arglead string
----@param cmdline string
----@param cursorpos integer
+---@param _cmdline string
+---@param _cursorpos integer
 ---@return string[]
 ---@diagnostic disable-next-line: unused-local
 function M.complete_start(arglead, _cmdline, _cursorpos)
@@ -177,8 +177,8 @@ end
 --- Completion for LspStopHere
 --- Shows: only running servers
 ---@param arglead string
----@param cmdline string
----@param cursorpos integer
+---@param _cmdline string
+---@param _cursorpos integer
 ---@return string[]
 ---@diagnostic disable-next-line: unused-local
 function M.complete_stop(arglead, _cmdline, _cursorpos)

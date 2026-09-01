@@ -281,6 +281,8 @@ describe("count support (NEW-25)", function()
   it("diagnostic navigation passes the count to vim.diagnostic.jump", function()
     local seen
     local orig = vim.diagnostic.jump
+    -- Test double, restored below.
+    ---@diagnostic disable-next-line: duplicate-set-field
     vim.diagnostic.jump = function(opts)
       seen = opts
     end
@@ -400,6 +402,8 @@ describe("diagnostics.ui: Trouble as the ]d/[d sink (roadmap 15.1)", function()
 
     local seen
     local orig = vim.diagnostic.jump
+    -- Test double, restored below.
+    ---@diagnostic disable-next-line: duplicate-set-field
     vim.diagnostic.jump = function(opts)
       seen = opts
     end

@@ -11,13 +11,16 @@
 ---@see lsp.config
 ---@see lsp.bindings.keymaps
 ---@see lsp.@types.subsystem
----@see lsp.@types.vim_lsp
 
 -- Annotations of the migrated subsystem (client/server records, formatter,
--- diagnostics, doctor) and the `vim.lsp.*` types Neovim does not ship. Pulled
--- in here so requiring one types module is enough.
+-- diagnostics, doctor). Pulled in here so requiring one types module is
+-- enough.
+--
+-- There used to be a second one next to it, `lsp.@types.vim_lsp`, declaring
+-- `vim.lsp.Client`, `vim.lsp.ClientConfig` and five more "missing from
+-- Neovim's builtin types". Neovim 0.12 ships all seven, so every field in
+-- that file was a duplicate of the real one.
 require("lsp.@types.subsystem")
-require("lsp.@types.vim_lsp")
 
 -- #####################################################################
 -- config/DEFAULTS.lua, config/init.lua
@@ -66,6 +69,14 @@ require("lsp.@types.vim_lsp")
 ---@field on_save? boolean # Format on write at startup; the runtime toggle owns it afterwards.
 ---@field timeout_ms? integer # Upper bound for one format request.
 
+--- The resolved `workspace` table. `normalize_workspace` forces both into
+--- lists of names, falling back to the defaults, which is what
+--- `workspace_folders.candidates()` relies on when it reads them straight
+--- through.
+---@class LspNvim.Workspace
+---@field markers string[]
+---@field containers string[]
+
 ---@class LspNvim.WorkspaceOpts
 ---@field markers? string[] # A directory holding one of these is offered as a workspace-folder candidate. Replaces the default list rather than extending it.
 ---@field containers? string[] # Directory names that hold projects rather than being one; the sibling scan descends exactly one level through them.
@@ -105,6 +116,20 @@ require("lsp.@types.vim_lsp")
 ---@field enable? boolean # Master switch for this tool.
 ---@field filetypes string[]|nil # Filetypes it attaches to, where the tool takes a list.
 
+--- The resolved `tools` table. `normalize_switch` guarantees each of the four
+--- entries exists with a boolean `enable`, which is what `setup_tools()`
+--- relies on when it reads them straight through.
+---@class LspNvim.Tools
+---@field eslint_prettier LspNvim.Tool
+---@field lsp_signature LspNvim.Tool
+---@field ts_type_lookup LspNvim.Tool
+---@field deprecated_help LspNvim.Tool
+
+--- The resolved form of `LspNvim.ToolOpts`.
+---@class LspNvim.Tool
+---@field enable boolean
+---@field filetypes string[]|nil
+
 ---@class LspNvim.ToolsOpts
 ---@field eslint_prettier? LspNvim.ToolOpts
 ---@field lsp_signature? LspNvim.ToolOpts
@@ -123,10 +148,47 @@ require("lsp.@types.vim_lsp")
 ---@class LspNvim.RenameOpts
 ---@field provider? LspNvim.RenameProvider
 
+--- Hand-written completion sources, read at setup time regardless of which
+--- completion engine is active. Present in DEFAULTS since 2026-08-23 and
+--- declared nowhere until now, which is why `cfg.completion` read as an
+--- undefined field at both of its call sites.
+---@class LspNvim.CompletionOpts
+---@field personal_names LspNvim.PersonalNamesOpts
+
+---@class LspNvim.PersonalNamesOpts
+---@field enable boolean
+---@field labels (fun(): (string|{ name: string })[])|nil # Reader for the host config's own name list; nil falls back to `extra.lua` alone.
+
+--- The **resolved** configuration, as every consumer downstream of
+--- `config.setup()` receives it: DEFAULTS, then the preset, then the user's
+--- options, then the project file, merged and normalized. Every field is
+--- present and valid -- which the class now says instead of only claiming it
+--- in prose while marking all twenty optional. `LspNvim.Opts` below is the
+--- partial shape a caller hands in.
 ---@class LspNvim.Config
---- The resolved configuration: DEFAULTS, then the preset, then the user's
---- options, then the project file merged over one another and normalized, so
---- every field below is guaranteed present and valid.
+---@field preset LspNvim.Preset # Option profile the rest starts from.
+---@field project LspNvim.ProjectOpts # Per-project override file lookup.
+---@field servers string[] # Server names to set up and enable.
+---@field diagnostics table # Passed straight to `vim.diagnostic.config()`.
+---@field formatter LspNvim.FormatterOpts
+---@field workspace LspNvim.Workspace
+---@field inlay_hints LspNvim.InlayHintsOpts
+---@field lightbulb LspNvim.LightbulbOpts
+---@field auto_restart LspNvim.AutoRestartOpts
+---@field attach LspNvim.AttachOpts
+---@field mason LspNvim.MasonOpts
+---@field lspdoctor table # Options forwarded to `lsp.lspdoctor.setup()`.
+---@field tools LspNvim.Tools
+---@field languages LspNvim.LanguagesOpts
+---@field rename LspNvim.RenameOpts
+---@field keymaps LspNvim.KeymapsOpts
+---@field usrcmds LspNvim.UsrcmdsOpts
+---@field which_key LspNvim.WhichKeyOpts
+---@field menu LspNvim.MenuOpts
+---@field completion LspNvim.CompletionOpts # Hand-written completion sources.
+
+--- What `lsp.setup()` / `config.setup()` accept: any subset of the above.
+---@class LspNvim.Opts
 ---@field preset? LspNvim.Preset # Option profile the rest starts from.
 ---@field project? LspNvim.ProjectOpts # Per-project override file lookup.
 ---@field servers? string[] # Server names to set up and enable.
@@ -146,6 +208,7 @@ require("lsp.@types.vim_lsp")
 ---@field usrcmds? LspNvim.UsrcmdsOpts
 ---@field which_key? LspNvim.WhichKeyOpts
 ---@field menu? LspNvim.MenuOpts
+---@field completion? LspNvim.CompletionOpts
 
 -- #####################################################################
 -- config/KEYMAPS.lua, bindings/keymaps.lua

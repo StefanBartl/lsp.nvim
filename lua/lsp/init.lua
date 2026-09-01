@@ -356,7 +356,7 @@ end
 
 --- Set up lsp.nvim. Safe to call once; a second call is refused rather than
 --- rebinding and re-registering on top of the first.
----@param opts? LspNvim.Config|table
+---@param opts? LspNvim.Opts|table
 ---@return boolean success
 function M.setup(opts)
   if _initialized then

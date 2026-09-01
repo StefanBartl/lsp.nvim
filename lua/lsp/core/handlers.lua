@@ -116,10 +116,15 @@ local function open_window(key, ms, orig)
     vim.schedule_wrap(function()
       local win = windows[key]
       close_window(key)
-      if win == nil or win.pending == nil then
+      if win == nil then
         return
       end
+      -- Bound before the check, not after it: the narrowing has to land on
+      -- the value the lines below actually read.
       local p = win.pending
+      if p == nil then
+        return
+      end
       -- The client may have stopped while the window was open. Handing its
       -- payload on would render diagnostics for a server that is gone.
       if vim.lsp.get_client_by_id(p.ctx.client_id) == nil then

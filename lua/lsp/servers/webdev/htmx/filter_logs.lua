@@ -31,9 +31,9 @@ function M.create_handler(opts)
     ignore_set[level] = true
   end
 
-  ---@param err any
+  ---@param _err any
   ---@param chunk string|nil
-  ---@param ctx table|nil
+  ---@param _ctx table|nil
   ---@return nil
   ---@diagnostic disable-next-line: unused-local
   return function(_err, chunk, _ctx)

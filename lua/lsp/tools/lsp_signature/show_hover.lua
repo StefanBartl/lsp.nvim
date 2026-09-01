@@ -96,8 +96,8 @@ end
 
 --- Internal single-client handler creator.
 --- Calls the client and invokes `on_result` when result processed (true if preview shown).
----@param client table # Unused
----@param params table # Unused
+---@param _client table # Unused
+---@param _params table # Unused
 ---@param opts table|nil
 ---@param on_result fun(shown: boolean, lines: string[]|nil)
 ---@diagnostic disable-next-line: unused-local

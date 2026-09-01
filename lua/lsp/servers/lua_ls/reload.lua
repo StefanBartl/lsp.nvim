@@ -103,12 +103,20 @@ function M.reload_library()
     count = count + 1
   end
 
-  -- Update client settings
-  client.config.settings.Lua.workspace.library = library
+  -- Update client settings. `settings` is a plain table as far as the type
+  -- system is concerned, so the lua_ls-specific path is walked through a
+  -- local rather than annotated key by key.
+  ---@type table
+  local settings = client.config.settings
+  settings.Lua.workspace.library = library
 
-  -- Notify client of configuration change
-  client.notify("workspace/didChangeConfiguration", {
-    settings = client.config.settings,
+  -- Notify client of configuration change.
+  --
+  -- `notify` is a method: `client.notify(method, params)` passed the method
+  -- name as `self`, so this call raised inside `Client:notify` the moment it
+  -- ran -- the settings table was updated and the server never told.
+  client:notify("workspace/didChangeConfiguration", {
+    settings = settings,
   })
 
   notify.info(string.format("Reloaded lua_ls workspace library: %d paths", count))

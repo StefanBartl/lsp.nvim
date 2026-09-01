@@ -73,6 +73,7 @@ ok(#config.warnings() == 0, "defaults: no warnings")
 
 -- A bad value degrades to the documented default and is reported, rather than
 -- being passed through or raised.
+---@diagnostic disable-next-line: assign-type-mismatch
 cfg = config.setup({ keymaps = { preset = "nonsense" }, which_key = "yes" })
 ok(cfg.keymaps.preset == "default", "normalize: unknown preset falls back")
 ok(cfg.which_key.enable == true, "normalize: malformed which_key falls back")
@@ -82,8 +83,10 @@ ok(#config.warnings() >= 1, "normalize: warnings recorded")
 ok(type(cfg.servers) == "table" and #cfg.servers > 0, "defaults: servers list is populated")
 cfg = config.setup({ servers = {} })
 ok(#cfg.servers > 0, "normalize: empty server list falls back to defaults")
+---@diagnostic disable-next-line: assign-type-mismatch
 cfg = config.setup({ servers = { "lua_ls", 42 } })
 ok(#cfg.servers == 1 and cfg.servers[1] == "lua_ls", "normalize: non-string server entries dropped")
+---@diagnostic disable-next-line: assign-type-mismatch
 cfg = config.setup({ formatter = false })
 ok(type(cfg.formatter) == "table", "normalize: malformed sub-table falls back")
 

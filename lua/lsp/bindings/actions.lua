@@ -510,14 +510,18 @@ end
 ---@param count integer|nil # Explicit repeat; from a keypress, `v:count1`.
 ---@return nil
 function M.loc_next(count)
-  pcall(vim.cmd, steps(count) .. "lnext")
+  pcall(function()
+    vim.cmd(steps(count) .. "lnext")
+  end)
 end
 
 --- Previous location-list entry.
 ---@param count integer|nil # Explicit repeat; from a keypress, `v:count1`.
 ---@return nil
 function M.loc_prev(count)
-  pcall(vim.cmd, steps(count) .. "lprevious")
+  pcall(function()
+    vim.cmd(steps(count) .. "lprevious")
+  end)
 end
 
 -- ---------------------------------------------------------------- misc

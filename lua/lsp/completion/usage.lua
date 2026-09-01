@@ -44,25 +44,31 @@ local LEGACY_FILE = vim.fs.joinpath(vim.fn.stdpath("state"), "personal_names_usa
 local counts = nil
 
 ---@internal
----@return nil
+--- Load the counters once and hand them back. Returning them rather than
+--- only filling the upvalue is what lets callers work with a plain table:
+--- `counts` is `|nil` until this has run, and no caller can see that it has.
+---@return table<string, table<string, integer>>
 local function load()
   if counts ~= nil then
-    return
+    return counts
   end
 
   local decoded = json.read(STATE_FILE)
-  counts = type(decoded) == "table" and decoded or {}
+  local fresh = type(decoded) == "table" and decoded or {}
 
   -- One-time migration. Guarded on the namespace being absent rather than on
   -- the legacy file being present: re-running it after the user has picked
   -- something new would overwrite fresh counts with stale ones.
-  if counts.personal_names == nil then
+  if fresh.personal_names == nil then
     local legacy = json.read(LEGACY_FILE)
     if type(legacy) == "table" and next(legacy) ~= nil then
-      counts.personal_names = legacy
-      json.write(STATE_FILE, counts)
+      fresh.personal_names = legacy
+      json.write(STATE_FILE, fresh)
     end
   end
+
+  counts = fresh
+  return fresh
 end
 
 --- Record one use of `label` in `ns` and persist immediately.
@@ -76,10 +82,10 @@ function M.bump(ns, label)
   if type(ns) ~= "string" or type(label) ~= "string" or label == "" then
     return
   end
-  load()
-  counts[ns] = counts[ns] or {}
-  counts[ns][label] = (counts[ns][label] or 0) + 1
-  json.write(STATE_FILE, counts)
+  local c = load()
+  c[ns] = c[ns] or {}
+  c[ns][label] = (c[ns][label] or 0) + 1
+  json.write(STATE_FILE, c)
 end
 
 --- How often `label` has been picked in `ns`.
@@ -87,8 +93,7 @@ end
 ---@param label string
 ---@return integer
 function M.count(ns, label)
-  load()
-  local bucket = counts[ns]
+  local bucket = load()[ns]
   return (bucket and bucket[label]) or 0
 end
 
@@ -103,8 +108,7 @@ end
 ---@param ns string
 ---@return string[]
 function M.ranked(ns)
-  load()
-  local bucket = counts[ns] or {}
+  local bucket = load()[ns] or {}
 
   ---@type string[]
   local labels = {}

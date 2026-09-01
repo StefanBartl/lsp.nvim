@@ -146,7 +146,11 @@ local function normalize_switch(cfg, key)
     if sub ~= nil then
       warn(("%s: expected a table, using defaults"):format(key), key)
     end
-    cfg[key] = vim.deepcopy(DEFAULTS[key])
+    -- Through a typed local: indexing DEFAULTS with a variable yields the
+    -- union of every field's type, and `deepcopy` takes a table.
+    ---@type table
+    local fallback = DEFAULTS[key]
+    cfg[key] = vim.deepcopy(fallback)
     return
   end
   if type(sub.enable) ~= "boolean" then
@@ -308,7 +312,11 @@ local function normalize_table(cfg, key)
     if cfg[key] ~= nil then
       warn(("%s: expected a table, using defaults"):format(key), key)
     end
-    cfg[key] = vim.deepcopy(DEFAULTS[key])
+    -- Through a typed local: indexing DEFAULTS with a variable yields the
+    -- union of every field's type, and `deepcopy` takes a table.
+    ---@type table
+    local fallback = DEFAULTS[key]
+    cfg[key] = vim.deepcopy(fallback)
   end
 end
 
@@ -375,7 +383,7 @@ local function resolve_preset(user_opts)
 end
 
 --- Merge the layers, normalize the result, and store it.
----@param user_opts? LspNvim.Config|table
+---@param user_opts? LspNvim.Opts|table
 ---@return LspNvim.Config
 function M.setup(user_opts)
   -- Cleared first, not after the type check below: appending a warning and

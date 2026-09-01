@@ -35,7 +35,7 @@ local function file_contains(path, pattern)
   return txt:match(pattern) ~= nil
 end
 
----@param root string
+---@param root string|nil  # `find_root` answers nil for an unnamed buffer
 ---@param patterns string[]
 local function has_any_config(root, patterns)
   if not root then
@@ -57,11 +57,11 @@ local function has_any_config(root, patterns)
   return false
 end
 
----@param root string
+---@param root string|nil
 function M.has_eslint(root)
   return has_any_config(root, eslint_patterns)
 end
----@param root string
+---@param root string|nil
 function M.has_prettier(root)
   return has_any_config(root, prettier_patterns)
 end

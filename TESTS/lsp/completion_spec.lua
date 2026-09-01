@@ -13,16 +13,20 @@ local register = require("lsp.completion.register")
 
 ---Point the counter at a scratch file so a test run never touches the real
 ---history in stdpath("state").
----@param fn fun()
+---@param fn fun(usage: table, store: table<string, any>) # the freshly reloaded counter, and the table standing in for the state file
 local function with_temp_state(fn)
   local json = require("lib.nvim.fs.json")
   local real_read, real_write = json.read, json.write
 
   ---@type table<string, any>
   local store = {}
+  -- Test doubles for the duration of the callback; the originals are put
+  -- back below.
+  ---@diagnostic disable-next-line: duplicate-set-field
   json.read = function(path)
     return store[path]
   end
+  ---@diagnostic disable-next-line: duplicate-set-field
   json.write = function(path, tbl)
     store[path] = vim.deepcopy(tbl)
   end
@@ -215,9 +219,13 @@ describe("lsp.completion.register", function()
 
   it("rejects a source with no name or no items function", function()
     assert.has_error(function()
+      -- The empty name is the case; `items` only has to be a function.
+      ---@diagnostic disable-next-line: missing-return
       register.source({ name = "", items = function() end })
     end)
     assert.has_error(function()
+      -- A non-function `items` is the case.
+      ---@diagnostic disable-next-line: assign-type-mismatch
       register.source({ name = "x", items = "not a function" })
     end)
   end)
