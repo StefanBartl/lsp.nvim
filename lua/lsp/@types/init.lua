@@ -155,9 +155,17 @@ require("lsp.@types.subsystem")
 ---@class LspNvim.CompletionOpts
 ---@field personal_names LspNvim.PersonalNamesOpts
 
+--- `labels` names `LspNvim.PersonalNames.Reader` rather than spelling the
+--- function type out inline. Written as `(fun(): (string|{ name: string })[])|nil`
+--- -- as it was until now -- LuaLS pulls the `|nil` into the RETURN type
+--- instead of the field's, and the field then matches nothing: not
+--- `personal_names.setup`'s own `{ labels?: Reader }` parameter
+--- (`lsp/init.lua`, one `assign-type-mismatch`), and not a reader the host
+--- config hands in. The alias in `lsp.completion.personal_names` exists for
+--- exactly this reason and says so; this field had been missed.
 ---@class LspNvim.PersonalNamesOpts
 ---@field enable boolean
----@field labels (fun(): (string|{ name: string })[])|nil # Reader for the host config's own name list; nil falls back to `extra.lua` alone.
+---@field labels LspNvim.PersonalNames.Reader|nil # Reader for the host config's own name list; nil falls back to `extra.lua` alone.
 
 --- The **resolved** configuration, as every consumer downstream of
 --- `config.setup()` receives it: DEFAULTS, then the preset, then the user's
