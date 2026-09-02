@@ -1,6 +1,6 @@
 --- Covers `lsp.lspdoctor`'s report surface: that every name reachable from a
---- command actually produces a report, and that the names it replaced still
---- resolve.
+--- command actually produces a report, and that the names it replaced are
+--- gone.
 ---
 --- This file exists because of a regression it would have caught. Renaming the
 --- reports on 2026-08-29 left `M.all` calling `inspect.deep`, which no longer
@@ -41,30 +41,19 @@ describe("lsp.lspdoctor", function()
       end
     end)
 
-    it("every replaced name still runs, and reaches its replacement", function()
+    -- The four names the reports carried until 2026-08-29 were kept as
+    -- forwarding functions and as an accepted-but-unoffered command argument,
+    -- and dropped on 2026-09-02. Asserted as *absent* rather than deleted
+    -- along with them: `M.deep` was reachable by anything doing `doctor[name]`
+    -- with a name from an old mapping, and a silent reappearance -- a stray
+    -- `M.deep = ...`, or the map coming back -- would restore a spelling that
+    -- is supposed to be gone.
+    it("no longer answers to the names it replaced", function()
       local mod = doctor()
-      for legacy, current in pairs(mod.LEGACY_MODES) do
-        assert.are.same(
-          mod.MODES,
-          vim.tbl_filter(function(m)
-            return m ~= nil
-          end, mod.MODES),
-          "MODES intact"
-        )
-        assert.is_truthy(vim.tbl_contains(mod.MODES, current), legacy .. " maps into MODES")
-
-        local ok, err = pcall(mod[legacy], 0, false)
-        assert.is_true(ok, ("legacy report %q raised: %s"):format(legacy, tostring(err)))
+      assert.is_nil(rawget(mod, "LEGACY_MODES"))
+      for _, legacy in ipairs({ "health", "debug", "quick", "deep" }) do
+        assert.is_nil(mod[legacy], ("%q is still callable"):format(legacy))
       end
-    end)
-
-    it("maps every replaced name to a current one", function()
-      assert.are.same({
-        debug = "resolve",
-        deep = "capabilities",
-        health = "startup",
-        quick = "buffer",
-      }, doctor().LEGACY_MODES)
     end)
   end)
 

@@ -92,10 +92,10 @@ describe("lsp.bindings.usrcmds", function()
       completes("Lsp doctor ", { "startup", "resolve", "buffer", "capabilities", "probe", "all" })
     end)
 
-    -- The legacy spellings are accepted but deliberately NOT offered: an enum
-    -- is also the discovery surface, and offering ten names for six reports
-    -- would undo the rename. Accepting them is what keeps an existing mapping
-    -- working.
+    -- The four spellings the reports carried until 2026-08-29 were accepted
+    -- but not offered; they were dropped on 2026-09-02. Since the completion
+    -- list is now the accepted set too, "not offered" and "not accepted" are
+    -- the same assertion -- which is the point of the change.
     it("doctor does not offer the report names it replaced", function()
       local got = complete("Lsp doctor ")
       for _, legacy in ipairs({ "health", "debug", "quick", "deep" }) do
@@ -103,19 +103,15 @@ describe("lsp.bindings.usrcmds", function()
       end
     end)
 
-    it("doctor still accepts the report names it replaced", function()
-      local doctor = require("lsp.lspdoctor")
-      for legacy, current in pairs(doctor.LEGACY_MODES) do
-        assert.are.equal("function", type(doctor[legacy]), legacy .. " is callable")
-        assert.are.equal("function", type(doctor[current]), current .. " is callable")
-      end
-      -- The map is the single source both `:LspDoctor` and `:Lsp doctor`
-      -- resolve through, so a name missing here is a name that silently stops
-      -- working.
-      assert.are.same(
-        { debug = "resolve", deep = "capabilities", health = "startup", quick = "buffer" },
-        doctor.LEGACY_MODES
-      )
+    -- Both commands take `lspdoctor.MODES` itself rather than each spelling
+    -- out an enum, so this is what stops them from drifting apart: a report
+    -- added to one is added to both, or to neither.
+    it("doctor completes from lspdoctor's own list of reports", function()
+      local want = vim.deepcopy(require("lsp.lspdoctor").MODES)
+      local got = complete("Lsp doctor ")
+      table.sort(want)
+      table.sort(got)
+      assert.are.same(want, got)
     end)
 
     it("log level", function()

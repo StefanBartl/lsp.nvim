@@ -287,7 +287,6 @@ doctor.probe(0, false)         -- blocks up to probe_timeout
 doctor.all(0, false)           -- { startup = …, resolve = …, capabilities = … }
 
 doctor.MODES                -- { "startup", "resolve", "buffer", "capabilities", "probe", "all" }
-doctor.LEGACY_MODES         -- { health = "startup", debug = "resolve", … }
 ```
 
 `doctor.buffer` and `doctor.capabilities` return an `Lsp.Doctor.Report`:

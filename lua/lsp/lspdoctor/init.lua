@@ -41,9 +41,9 @@
 --- `:LspDoctor` -- the one people reach for first -- slow and side-effectful
 --- for the sake of a question they did not ask.
 ---
---- The old names (`health`, `debug`, `quick`, `deep`) still work, as command
---- arguments and as functions -- renaming a command someone has in a mapping
---- is not worth a broken mapping. They are not offered in completion.
+--- The old names (`health`, `debug`, `quick`, `deep`) were kept as accepted-
+--- but-unoffered aliases through 2026-09-02 and are gone. Six names, one
+--- spelling each.
 ---
 --- Keymaps in scratch buffer:
 ---   q     -> close buffer
@@ -56,7 +56,6 @@ require("lsp.lspdoctor.@types")
 local notify = require("lib.nvim.notify").create("[lspdoctor]")
 local map = require("lib.nvim.bindings.keymap")
 local composer = require("lib.nvim.bindings.usercmd.composer")
-local argtypes = require("lib.nvim.bindings.usercmd.composer.argtypes")
 local kit = require("lib.nvim.ui.kit")
 
 local M = {}
@@ -258,29 +257,15 @@ function M.probe(bufnr, use_scratch)
   return report
 end
 
---- The names these reports used to have, mapped to the ones they have now.
----
---- Kept because a rename that breaks a mapping someone already made is a worse
---- outcome than a name that reads badly. They resolve at the call site, so
---- `require("lsp.lspdoctor").deep(0)` and `:LspDoctor deep` both keep working;
---- they are simply not offered in completion, so nobody learns them anew.
 --- The reports, in the order one reaches for them when something is wrong.
+---
+--- This is the accepted set *and* the offered set -- it is handed to the
+--- composer as an `enum`. That was not possible while the four replaced names
+--- (`health`, `debug`, `quick`, `deep`) still had to be accepted without being
+--- offered; a custom `LSP_DOCTOR_MODE` argtype existed for exactly that
+--- difference, and went with them.
 ---@type string[]
 M.MODES = { "startup", "resolve", "buffer", "capabilities", "probe", "all" }
-
----@type table<string, string>
-M.LEGACY_MODES = {
-  health = "startup",
-  debug = "resolve",
-  quick = "buffer",
-  deep = "capabilities",
-}
-
-for legacy, current in pairs(M.LEGACY_MODES) do
-  M[legacy] = function(bufnr, use_scratch)
-    return M[current](bufnr, use_scratch)
-  end
-end
 
 ---Run the four observing reports combined.
 ---
@@ -333,41 +318,7 @@ end
 ---the composer's own enum validation replaces the hand-written "Unknown
 ---mode" warning.
 ---@return nil
---- Argument type for a report name.
----
---- It exists because an `enum` is both the accepted set *and* the offered set,
---- and here those have to differ: the four current names are what should be
---- discoverable, the four legacy ones have to keep working without being
---- taught to anyone new. The composer rejects an off-enum value before `run`
---- is ever reached, so "accepted but not offered" is not something an enum can
---- express -- verified, not assumed.
----
---- Same mechanism `lsp.bindings.usrcmds` uses for `LSP_SERVER`, and registered
---- under a name only this plugin uses, because `argtypes.register` is a shared
---- registry.
---- Registered from two places: here, and `lsp.bindings.usrcmds`, which needs
---- the type to exist when it composes `:Lsp doctor` -- and the bindings layer
---- is set up before the bootstrap reaches this module. Registering twice is
---- harmless (same spec, last one wins); not registering before the compose
---- would make the composer refuse the whole `:Lsp` verb.
----@return nil
-function M.register_mode_argtype()
-  argtypes.register("LSP_DOCTOR_MODE", {
-    validate = function(raw)
-      local canonical = M.LEGACY_MODES[raw] or raw
-      if canonical == "all" or type(M[canonical]) == "function" then
-        return true, canonical, nil
-      end
-      return false, nil, ("unknown report %q -- try %s"):format(raw, table.concat(M.MODES, ", "))
-    end,
-    complete = function(arg_lead)
-      return argtypes.prefix(M.MODES, arg_lead)
-    end,
-  })
-end
-
 function M.enable_usercmd()
-  M.register_mode_argtype()
   composer.verb("LspDoctor", {
     bang = true,
     desc = "[LSP Doctor] Comprehensive LSP diagnostics (add ! for scratch buffer)",
@@ -377,12 +328,16 @@ function M.enable_usercmd()
         args = {
           {
             name = "mode",
-            type = "LSP_DOCTOR_MODE",
+            type = "STRING",
+            -- `M.MODES` itself, not a copy: `:Lsp doctor` takes the same
+            -- table, so the two commands cannot come to offer different
+            -- report names.
+            enum = M.MODES,
             optional = true,
           },
         },
         run = function(ctx)
-          local mode = M.LEGACY_MODES[ctx.args.mode] or ctx.args.mode or "all"
+          local mode = ctx.args.mode or "all"
           local use_scratch = ctx.bang
           local run = M[mode]
           if type(run) == "function" then

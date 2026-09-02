@@ -79,8 +79,9 @@ and six reports, not an LSP control command. It stays registered even with the
 aliases off, and is reachable as `:Lsp doctor` as well.
 
 Four of the six were called `health`, `debug`, `quick` and `deep` until
-2026-08-29. Those spellings still work everywhere they used to — as command
-arguments and as functions — they are simply no longer offered in completion.
+2026-08-29. They kept working as command arguments and as functions without
+being offered in completion, and were removed on 2026-09-02 — the accepted set
+and the offered set are the same list again.
 
 `:LspMdHints` is marksman-specific. Server commands do not belong in a global
 verb, which is also why `:TypeDef*`, `:EslintFix`, `:AstroDevStart`, `:MdFormat`

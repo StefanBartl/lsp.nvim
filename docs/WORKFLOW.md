@@ -28,10 +28,10 @@ default and records a warning rather than raising, so "my option does nothing"
 is a `status` question, never a server question.
 
 `:Lsp doctor` is about the *buffer*: expected servers vs. running ones,
-executables on PATH, advertised capabilities, provider overlap. `health` is the
-default and is usually enough; `deep` is the one for "it runs but behaves
-oddly", because that is where capabilities and two providers fighting over the
-same request show up.
+executables on PATH, advertised capabilities, provider overlap. `startup` is the
+default and is usually enough; `capabilities` is the one for "it runs but
+behaves oddly", because that is where capabilities and two providers fighting
+over the same request show up.
 
 `:checkhealth lsp` is the third and widest: environment, servers, ecosystem —
 including keymaps that are bound while the plugin they need is not installed.

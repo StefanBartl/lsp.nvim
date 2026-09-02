@@ -591,10 +591,10 @@ into `:Lsp` routes with thin aliases is roadmap section 8.2.
                                     out.
                       all           (default) The four observing reports.
 
-                    The older names `health`, `debug`, `quick` and `deep` are
-                    still accepted -- they map onto `startup`, `resolve`,
-                    `buffer` and `capabilities` -- but are not offered in
-                    completion.
+                    The older names `health`, `debug`, `quick` and `deep`
+                    (which mapped onto `startup`, `resolve`, `buffer` and
+                    `capabilities`) were accepted but never offered, and were
+                    removed on 2026-09-02.
 
                     `lua/lsp/lspdoctor/README.md` documents the reports in
                     full.

@@ -231,8 +231,8 @@ tell a clean file from a dead pipeline, since both look like an empty gutter.
 It is not part of `all`, because it is the only report that costs anything.
 
 The first four were called `health`, `debug`, `quick` and `deep` until
-2026-08-29. Those spellings still work; they are no longer offered in
-completion.
+2026-08-29. Those spellings were accepted but not offered until 2026-09-02,
+when they were removed.
 
 - **Module:** `lspdoctor/`
 - **Config:** `lspdoctor`, `lspdoctor.probe_timeout`
