@@ -308,3 +308,20 @@ the entries into its own menu.
 - **Module:** `integrations/menu.lua` (`M.items`, `M.submenu`)
 - **Config:** `opts.menu.enable` (default `true`)
 - **Docs:** [docs/BINDINGS.md](BINDINGS.md#right-click-context-menu)
+
+## Breadcrumb depth
+
+lspsaga draws the winbar breadcrumb, and it descends into every document
+symbol that contains the cursor line. In Markdown that is the whole heading
+hierarchy — `folder > file > H1 > H2 > H3` — because marksman reports headings
+as a nested outline; in Lua the same code yields `folder > file`, because
+lua_ls reports no symbol at all for a line outside a function. The difference
+is what the server sends, not how it is drawn, and lspsaga has no depth option
+(`ignore_patterns`, the only related knob, matches the buffer name and would
+remove the folder and file name too). So the adapter re-cuts the winbar after
+lspsaga has written it: path items plus a per-filetype number of symbols.
+
+- **Module:** `integrations/lspsaga.lua` (`M.winbar_max_symbols`,
+  `M.set_winbar_max_symbols`, `M.trim_winbar`)
+- **Default:** `markdown = 1` — the file's own top heading and nothing below
+  it. A filetype not named there keeps the full chain.
