@@ -271,7 +271,7 @@ distinguish it can answer more cheaply, and not sent at all in insert mode.
 `preset = "lean"` switches the whole thing off for the same reason it switches
 off the other continuous costs.
 
-`<leader>tl`, `<leader>tL` and `:Lsp lightbulb` move the same state at runtime.
+`<leader>tb`, `<leader>tB` and `:Lsp lightbulb` move the same state at runtime.
 
 ## auto_restart
 

@@ -281,7 +281,7 @@ lightbulb.enable      (boolean)   Global startup default for the code-action
                                   indicator: a mark in the line when
                                   `textDocument/codeAction` has something to
                                   offer there. The runtime toggle (|:Lsp|
-                                  lightbulb, `<leader>tl`) owns it from there.
+                                  lightbulb, `<leader>tb`) owns it from there.
 lightbulb.filetypes   (table<string, boolean>)
                                   Per-filetype override, resolved exactly as
                                   `inlay_hints.filetypes` is.

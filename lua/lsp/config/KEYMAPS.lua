@@ -148,14 +148,19 @@ local entries = {
   -- --------------------------------------------------- code-action indicator
   -- Same global/shifted-for-filetype pairing as the inlay-hint toggles above,
   -- for the same reason: it is the same kind of switch.
+  --
+  -- `tb` (bulb), not the `tl` this used to be: `<leader>tl` is NvChad's
+  -- "move tab left", the mirror of `<leader>tr`. That pair is positional and
+  -- cannot move; a mnemonic for "lightbulb" can. Which of the two survived
+  -- depended on load order, so one of them was always silently broken.
   lightbulb_toggle = {
-    lhs = "<leader>tl",
+    lhs = "<leader>tb",
     mode = "n",
     rhs = actions.lightbulb_toggle,
     desc = "Toggle the code-action indicator (global)",
   },
   lightbulb_toggle_filetype = {
-    lhs = "<leader>tL",
+    lhs = "<leader>tB",
     mode = "n",
     rhs = actions.lightbulb_toggle_filetype,
     desc = "Toggle the code-action indicator for this filetype",

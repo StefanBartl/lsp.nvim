@@ -44,7 +44,7 @@
 --- should be configured the same way.
 ---
 --- Driven by `:Lsp lightbulb [on|off|toggle|status|clear] [filetype]` and
---- `<leader>tl`.
+--- `<leader>tb`.
 ---
 --- Not to be confused with `:LspMdHints`, which toggles marksman's
 --- Hint-severity diagnostics and predates this module under the same nickname;

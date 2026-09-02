@@ -145,7 +145,7 @@ distinguish it can answer more cheaply, and skipped entirely in insert mode.
   `lightbulb.render`, `lightbulb.text`, `lightbulb.debounce_ms`,
   `lightbulb.priority`
 - **Commands:** `:Lsp lightbulb [toggle|on|off|status|clear] [filetype]`
-- **Keys:** `<leader>tl` (global), `<leader>tL` (this filetype)
+- **Keys:** `<leader>tb` (global), `<leader>tB` (this filetype)
 
 ## Automatic restart after a crash
 

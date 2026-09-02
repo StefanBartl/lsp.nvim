@@ -76,8 +76,8 @@ marked in the last column; `none` binds nothing.
 | `goto_type_definition_gr` | `grt` | n | — | — | Go to type definition (g-prefix variant) |
 | `hints_toggle` | `<leader>th` | n | — | yes | Toggle inlay hints (global) |
 | `hints_toggle_filetype` | `<leader>tH` | n | — | yes | Toggle inlay hints for this filetype |
-| `lightbulb_toggle` | `<leader>tl` | n | — | yes | Toggle the code-action indicator (global) |
-| `lightbulb_toggle_filetype` | `<leader>tL` | n | — | yes | Toggle the code-action indicator for this filetype |
+| `lightbulb_toggle` | `<leader>tb` | n | — | yes | Toggle the code-action indicator (global) |
+| `lightbulb_toggle_filetype` | `<leader>tB` | n | — | yes | Toggle the code-action indicator for this filetype |
 | `loc_next` | `]l` | n | — | yes | Next location-list entry |
 | `loc_prev` | `[l` | n | — | yes | Prev location-list entry |
 | `marksman_hints` | `<leader>lb` | n | — | yes | Toggle Marksman markdown hints |
