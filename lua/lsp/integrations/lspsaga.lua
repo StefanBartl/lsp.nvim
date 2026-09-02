@@ -155,7 +155,12 @@ end
 --- Deferring to the event loop is ordering-independent.
 ---@return nil
 local function watch_winbar()
-  local group = api.nvim_create_augroup("LspNvimSagaWinbarDepth", { clear = true })
+  -- `lib.nvim.bindings.autocmd`, not the raw API: every autocmd this plugin
+  -- registers goes through it, and the Autocmds cheatsheet states that as a
+  -- fact about the plugin. The inlay-hints autocmd of 2026-08-29 was the one
+  -- exception, caught and corrected before it was committed.
+  local autocmd = require("lib.nvim.bindings.autocmd")
+  local group = autocmd.group("LspNvimSagaWinbarDepth", true)
 
   local function schedule_trim()
     -- Cheapest possible guard, on the main path: one table lookup per cursor
@@ -169,16 +174,16 @@ local function watch_winbar()
     end)
   end
 
-  api.nvim_create_autocmd("CursorMoved", {
+  autocmd.create("CursorMoved", schedule_trim, {
     group = group,
-    callback = schedule_trim,
     desc = "lsp.nvim: cap the lspsaga breadcrumb's symbol depth",
   })
-  api.nvim_create_autocmd("User", {
+  -- lspsaga's own event, fired when a fresh document-symbol answer has been
+  -- rendered -- the other of the two moments it writes the winbar.
+  autocmd.create("User", schedule_trim, {
     group = group,
     pattern = "SagaSymbolUpdate",
-    callback = schedule_trim,
-    desc = "lsp.nvim: cap the lspsaga breadcrumb's symbol depth",
+    desc = "lsp.nvim: cap the lspsaga breadcrumb's symbol depth after a symbol update",
   })
 end
 
