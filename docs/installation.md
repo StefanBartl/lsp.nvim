@@ -15,7 +15,29 @@ does not register without it.
 }
 ```
 
-Other managers, and the full option surface, are in the README.
+```lua
+-- packer.nvim / pckr.nvim
+use({
+  "StefanBartl/lsp.nvim",
+  requires = { "StefanBartl/lib.nvim" },
+  config = function()
+    require("lsp").setup()
+  end,
+})
+```
+
+```vim
+" vim-plug
+Plug 'StefanBartl/lib.nvim'
+Plug 'StefanBartl/lsp.nvim'
+```
+
+Only lazy.nvim understands `import = "lsp.pack"`. Under the other managers you
+install the third-party plugins yourself; lsp.nvim wires up whichever of them
+are present and reports the rest in `:checkhealth lsp`.
+
+The full option surface is `:h lsp.nvim-config`, with
+[configuration.md](configuration.md) for the reasoning behind its shape.
 
 ## With or without the pack
 

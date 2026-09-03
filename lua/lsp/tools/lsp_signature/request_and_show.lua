@@ -109,7 +109,6 @@ return function(bufnr, callback)
 
           -- apply active parameter highlighting if hl present
           if active_hl and buf then
-            -- local groups = param_hl.group_names()
             local ns = ns_id or param_hl.setup()
             local start_col = active_hl.col_start or 1
             local end_col = active_hl.col_end or start_col

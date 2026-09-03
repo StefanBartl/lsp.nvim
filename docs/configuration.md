@@ -6,14 +6,16 @@ page covers what those two cannot: why the options are shaped the way they are.
 
 ## Everything here is read by code
 
-Options are added when the code that honours them arrives, not before. The
-roadmap designs a wider surface (`completion`, `integrations`) and those keys
-are deliberately absent — a default nothing reads is a promise the plugin does
-not keep, and it is worse than no option at all, because it looks like a knob.
+Options are added when the code that honours them arrives, not before. A
+default nothing reads is a promise the plugin does not keep, and it is worse
+than no option at all, because it looks like a knob. `integrations` is the
+standing example: the shape of it has been sketched more than once, and the key
+stays absent until something reads it.
 
-That rule has already caught one case in this codebase: `:LspDoctor`'s
-`show_tools` and `semantic_tokens_timeout` were typed, documented and defaulted
-while nothing anywhere read them.
+The rule cuts both ways. `completion.personal_names` sat on the far side of it
+for a while and is here now — the source reads it at setup time regardless of
+which completion engine is active, which is the whole reason it is an option
+rather than something nvim-cmp's own `opts` hands over.
 
 ## Four layers, and why they are in that order
 

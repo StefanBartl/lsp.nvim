@@ -18,8 +18,15 @@ The full table — every route, every argument, every legacy alias — is in
 :Lsp doctor resolve       -- where the filetype -> server chain breaks
 :Lsp doctor buffer        -- what is going on in this buffer right now
 :Lsp doctor capabilities  -- what the servers here can do, plus workspaces
-:Lsp doctor all           -- all four
+:Lsp doctor probe         -- do diagnostics actually come back at all
+:Lsp doctor all           -- the four observing reports, without `probe`
 ```
+
+`probe` is the odd one out and stays out of `all` deliberately: it builds a
+buffer of deliberately broken content, hands it to this buffer's clients and
+waits for an answer. That is the only way to tell a clean file from a dead
+pipeline — both look like an empty gutter — and it is the only report that
+costs anything.
 
 Built with lib.nvim's user-command composer, so subcommands and every closed
 argument set complete with `<Tab>`. `[server]` completes from the **live** set —
@@ -76,12 +83,9 @@ apart. [BINDINGS.md](BINDINGS.md) maps each one to its route.
 
 `:LspDoctor` keeps its own verb: it is a diagnostic tool with its own renderer
 and six reports, not an LSP control command. It stays registered even with the
-aliases off, and is reachable as `:Lsp doctor` as well.
-
-Four of the six were called `health`, `debug`, `quick` and `deep` until
-2026-08-29. They kept working as command arguments and as functions without
-being offered in completion, and were removed on 2026-09-02 — the accepted set
-and the offered set are the same list again.
+aliases off, and is reachable as `:Lsp doctor` as well — both take the mode
+list from the same table, so the two cannot come to offer different report
+names. A bare `:LspDoctor` runs `all`; a bare `:Lsp doctor` runs `startup`.
 
 `:LspMdHints` is marksman-specific. Server commands do not belong in a global
 verb, which is also why `:TypeDef*`, `:EslintFix`, `:AstroDevStart`, `:MdFormat`

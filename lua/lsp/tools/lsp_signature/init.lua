@@ -5,7 +5,7 @@
 ---   copied from.
 --- - Insert mode: the popup opens but focus stays in the buffer, so typing
 ---   continues uninterrupted.
---- - Popup persistent, Toggle zum Schließen
+--- - The popup is persistent; the same mapping closes it again.
 
 local M = {}
 

@@ -23,11 +23,10 @@ local function find_omnisharp()
     return stat and stat.type == "file" or false
   end
 
-  -- Standard-Datenpfad auflösen
   local data_path = vim.fn.stdpath("data")
 
-  -- 2. MASON BIN FALLBACK (Der Standard-Wrapper)
-  -- Unter WSL/Linux ist das oft ein Shell-Skript ohne Endung
+  -- 2. MASON BIN FALLBACK (the standard wrapper)
+  -- On WSL/Linux this is usually a shell script with no extension.
   local mason_bin_linux = data_path .. "/mason/bin/omnisharp"
   local mason_bin_windows = data_path .. "/mason/bin/omnisharp.CMD"
 
@@ -37,8 +36,8 @@ local function find_omnisharp()
     return mason_bin_windows
   end
 
-  -- 3. MASON PACKAGES FALLBACK (Direkter Zugriff auf die Assembly)
-  -- Mason entpackt OmniSharp unter Linux tief in diesen Unterordner:
+  -- 3. MASON PACKAGES FALLBACK (the assembly directly)
+  -- On Linux, Mason unpacks OmniSharp deep into this subdirectory:
   local mason_pkg_run = data_path .. "/mason/packages/omnisharp/OmniSharp"
   -- The standalone build, whose binary is sometimes lowercased:
   local mason_pkg_run_cmd = data_path .. "/mason/packages/omnisharp/omnisharp"
@@ -57,8 +56,6 @@ end
 ---@param opts { enable?: boolean }|nil
 ---@return nil
 function M.setup(shared, opts)
-  -- notify.info("🔧 C# Setup: Starting...") -- DEBUG
-
   shared = shared or {}
   opts = opts or {}
 
@@ -68,12 +65,8 @@ function M.setup(shared, opts)
     return
   end
 
-  -- notify.info("🔧 C# Setup: Found cmd = " .. cmd) -- DEBUG
-
   -- Define config
   if type(lsp.config) == "table" then
-    -- notify.info("🔧 C# Setup: lsp.config available") -- DEBUG
-
     local config_ok, config_err = pcall(function()
       lsp.config("omnisharp", {
         cmd = { cmd },
@@ -91,8 +84,6 @@ function M.setup(shared, opts)
       notify.error("🔧 C# Setup: Config failed: " .. tostring(config_err))
       return
     end
-
-    -- notify.info("🔧 C# Setup: Config registered") -- DEBUG
 
     if opts.enable ~= false then
       local enable_ok, enable_err = pcall(lsp.enable, "omnisharp")

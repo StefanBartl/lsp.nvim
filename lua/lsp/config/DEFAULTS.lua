@@ -5,10 +5,10 @@
 --- deep-merges the user's options over a copy of this table; the table itself
 --- is never mutated at runtime.
 ---
---- Every key here is read by code. Options
---- that nothing consumes yet (`completion`, `integrations`) are deliberately
---- absent -- a default nothing reads is a promise the plugin does not keep.
---- They arrive with the layer that honors them.
+--- Every key here is read by code. Options that nothing consumes yet
+--- (`integrations`) are deliberately absent -- a default nothing reads is a
+--- promise the plugin does not keep. They arrive with the layer that honors
+--- them.
 ---
 ---@see lsp.config
 ---@see lsp.config.KEYMAPS

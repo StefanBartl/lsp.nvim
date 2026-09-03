@@ -1,6 +1,6 @@
 # Workflow — using lsp.nvim day to day
 
-Every feature is described on its own in [FEATURES.md](FEATURES.md), the
+Every feature is described on its own in [FEATURES/](FEATURES/README.md), the
 commands in [commands.md](commands.md) and [BINDINGS.md](BINDINGS.md). This is
 the different question: how the pieces combine once you are working in a real
 project, and which of the near-identical-looking routes answers which question.

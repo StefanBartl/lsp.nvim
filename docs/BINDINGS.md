@@ -5,11 +5,9 @@ documentation only; the source of truth is `lua/lsp/config/KEYMAPS.lua` (the
 keymap catalogue) and `lua/lsp/bindings/` (commands, autocommands). A change
 there must be reflected here.
 
-All five migration phases are through: the command family, the keymap
-catalogue and the autocommands below are all real. The keymap tables are
-generated from the catalogue and checked by CI, so they cannot go stale; the
-prose around them can, and this paragraph is the one that did — it claimed an
-empty catalogue while the generated table below it listed 44 entries.
+The keymap tables are generated from the catalogue and checked by CI, so they
+cannot go stale. The prose around them can — including the counts quoted in it,
+which is why they are quoted nowhere else.
 
 ## Keymaps
 
@@ -38,7 +36,7 @@ while their plugin is missing.
 The eight motion keys honour a count: `3]q` moves three quickfix entries,
 `2]d` two diagnostics. `]d`/`[d`, `]q`/`[q`, `]l`/`[l` and `]w`/`[w` are the
 ones that mean "move"; the leader-prefixed actions populate a list or toggle a
-setting and have no ordered target for a count to index into (NEW-25).
+setting and have no ordered target for a count to index into.
 
 Three things worth knowing about the left-hand sides:
 
@@ -156,7 +154,7 @@ unless `usrcmds.enable = false`.
 | `:Lsp servers` | — | Servers set up, and the clients currently attached |
 | `:Lsp info` | — | Detailed LSP information for the current buffer |
 | `:Lsp health` | — | Run `:checkhealth lsp` |
-| `:Lsp doctor` | `{startup\|resolve\|buffer\|capabilities\|all}` | Per-buffer diagnosis (default `startup`) |
+| `:Lsp doctor` | `{startup\|resolve\|buffer\|capabilities\|probe\|all}` | Per-buffer diagnosis (default `startup`; `all` omits `probe`) |
 | `:Lsp start` | `[server]` | Start servers here (auto-detect, or one by name) |
 | `:Lsp stop` | `[server]` | Stop clients here (all, or one by name) |
 | `:Lsp restart` | `[server]` | Restart clients here (all, or one by name) |
@@ -178,7 +176,7 @@ state, neither of which a line range narrows.
 Every closed argument set completes with `<Tab>`. `[server]` completes from the
 **live** set — attached clients first, then everything in `servers` — through a
 custom argument type, because an enum captured when the verb was registered
-would go stale the moment a server is added (NEW-26).
+would go stale the moment a server is added.
 
 ### Legacy aliases
 
@@ -232,6 +230,3 @@ per-window group, lua_ls's root recompute). They are not listed here because
 they are not bindings — the complete inventory lives in the config's
 `docs/NOTES/PersonelPlugins/BINDINGS/Autocmds/lsp.nvim.md`, and a second copy
 here would be a second thing to keep in sync.
-
-Planned (phases 2 and 3): `LspAttach` wiring, the format-on-save group, and the
-diagnostics refresh — all under the single group above.

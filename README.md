@@ -1,4 +1,4 @@
-> **Active development.** This repository is in its development phase — breaking changes are to be expected at any time. Pin a commit or tag if you depend on it.
+> **Alpha stage — active development.** This repository is in its development phase — breaking changes are to be expected at any time. Pin a commit or tag if you depend on it.
 
 # lsp.nvim
 
@@ -35,52 +35,33 @@ third-party plugins (`trouble.nvim`, `conform.nvim`, `lazydev.nvim`,
 `mason.nvim`, the completion engine) and every LSP and diagnostics keymap that
 would otherwise be spread across five files.
 
+A config's `lua/lsp/**` is not a pile of settings, it is a stateful subsystem —
+a registry, an attach handler, a capabilities merge, runtime toggles — and the
+part usually left behind when one extracts it is the ecosystem around it.
+Extracting only the own code leaves `trouble.nvim` configured in one file,
+`conform.nvim` in two contradicting ones, and `]q` bound twice by modules that
+do not know about each other. This one takes the ecosystem with it, in three
+layers — core, integrations, pack — with the arrows pointing one way only.
+[architecture.md](docs/architecture.md) has the argument.
+
 ---
 
 ## Table of contents
 
-- [Why an umbrella](#why-an-umbrella)
-- [Installation](#installation)
-- [Commands](#commands)
-- [Configuration](#configuration)
-- [Health](#health)
-- [Architecture](#architecture)
+- [Quickstart](#quickstart)
+- [What it does](#what-it-does)
 - [Documentation](#documentation)
-- [Roadmap](#roadmap)
+- [License](#license)
 
 ---
 
-## Why an umbrella
+## Quickstart
 
-A config's `lua/lsp/**` is not a pile of settings, it is a stateful subsystem:
-a registry of servers, an attach handler, a capabilities merge, runtime
-toggles. That makes it the same kind of thing as a debugger integration, and
-the same kind of thing that belongs in its own repository.
-
-The part usually left behind is the ecosystem around it. Extracting only the
-own code leaves `trouble.nvim` configured in one file, `conform.nvim` in two
-contradicting ones, and `]q` bound twice by modules that do not know about each
-other. `lsp.nvim` takes the ecosystem with it, in three layers:
-
-| Layer | Contents |
-| ----- | -------- |
-| Core | Own code on `vim.lsp.*`: registry, attach, servers, formatter, diagnostics, doctor |
-| Integrations | One adapter per third-party plugin: how it is configured and wired |
-| Pack | A LazySpec export, so one entry in your plugin list installs the whole set |
-
-The core never reaches into the integrations. That is not a style preference —
-it is what keeps the core testable without a plugin manager and makes swapping
-a completion engine a one-file change. `scripts/gen_map.lua` declares it as a
-layer rule, so it stays checkable rather than aspirational.
-
-## Installation
-
-Requires Neovim 0.11+ and [lib.nvim](https://github.com/StefanBartl/lib.nvim)
+Requires Neovim **0.11+** and [lib.nvim](https://github.com/StefanBartl/lib.nvim)
 as a hard dependency — the `:Lsp` command is built on its user-command composer
 and does not register without it.
 
 ```lua
--- lazy.nvim
 {
   "StefanBartl/lsp.nvim",
   import = "lsp.pack",   -- installs the ecosystem too; drop it to bring your own
@@ -93,42 +74,29 @@ and does not register without it.
 With `import = "lsp.pack"` you also get conform, lazydev,
 workspace-diagnostics, trouble, lspsaga, lensline and inc-rename, configured.
 Without it you get the plugin alone: it wires up whatever of those happens to
-be installed and reports the rest in `:checkhealth lsp`.
+be installed and reports the rest in `:checkhealth lsp`. *Which* of them get
+installed is a separate channel from `opts` (`vim.g.lsp_nvim.pack`, set before
+`require("lazy").setup()`) — [installation.md](docs/installation.md) explains
+why it has to be, and covers packer/pckr and vim-plug.
 
-Which of them gets installed is a *separate* channel from `opts`, set before
-`require("lazy").setup()`:
+Then one verb, with `<Tab>` completion over subcommands and arguments:
 
-```lua
-vim.g.lsp_nvim = {
-  pack = {
-    core = true,          -- conform, lazydev, workspace-diagnostics
-    ui = true,            -- trouble, lspsaga, lensline, inc-rename
-    completion = "blink", -- "cmp" | "blink" | false (default: blink)
-    completion_accept = "cr", -- "cr" | "ctrl_y" (default: cr) -- blink only
-    disable = { "lspsaga.nvim" },
-  },
-}
+```
+:Lsp status     -- what setup() registered, and every warning it worked around
+:Lsp doctor     -- why the server for this buffer is not running
+:Lsp servers    -- what is set up, and which clients are attached here
 ```
 
-It has to be separate: lazy evaluates `import` while collecting specs, long
-before `setup(opts)` exists to be read. `vim.g` decides *whether* a plugin is
-installed, `opts` decides *how* everything is configured.
+`:Lsp` covers status, the server lifecycle, formatting, diagnostics, inlay
+hints, the code-action indicator, roots and workspace folders, auto-restart and
+the LSP log. The full route table, the ~25 flat legacy aliases and every keymap
+are in [BINDINGS.md](docs/BINDINGS.md); [commands.md](docs/commands.md) is the
+shape of it.
 
-```lua
--- packer.nvim
-use({
-  "StefanBartl/lsp.nvim",
-  requires = { "StefanBartl/lib.nvim" },
-  config = function()
-    require("lsp").setup()
-  end,
-})
+Verify your setup any time with:
+
 ```
-
-```vim
-" vim-plug
-Plug 'StefanBartl/lib.nvim'
-Plug 'StefanBartl/lsp.nvim'
+:checkhealth lsp
 ```
 
 > The module root is `lsp`, chosen so that existing `require("lsp.…")` paths in
@@ -136,252 +104,51 @@ Plug 'StefanBartl/lsp.nvim'
 > its own `lua/lsp/**`, that directory wins on the runtimepath and shadows this
 > plugin — the two are meant to swap, not to coexist.
 
-## Commands
+## What it does
 
-One verb with subcommands and `<Tab>` completion. Full cheatsheet:
-[docs/BINDINGS.md](docs/BINDINGS.md).
+Each of these is a page in [docs/FEATURES/](docs/FEATURES/README.md), with the
+reasoning behind it:
 
-| Command | Effect |
-| ------- | ------ |
-| `:Lsp status` / `servers` / `info` / `health` | What is set up, what is attached, what is wrong |
-| `:Lsp doctor [mode]` | Per-buffer diagnosis (`startup`, `resolve`, `buffer`, `capabilities`, `all`) |
-| `:Lsp start` / `stop` / `restart` `[server]` | Lifecycle for this buffer's clients |
-| `:Lsp force-restart {server}` | Restart one server with a full cleanup first |
-| `:Lsp recover` | Auto-recover servers that should be running here |
-| `:Lsp format [action]` | Format once, or control format-on-save |
-| `:Lsp diag {qf\|loc\|next\|prev} [qf\|loc]` | Diagnostics into a list, or move within one |
-| `:Lsp workspace [action]` | Workspace-wide diagnostics on attach |
-| `:Lsp hints [action] [filetype]` | Inlay hints: globally, or for one filetype |
-| `:Lsp lightbulb [action] [filetype]` | Code-action indicator: globally, or for one filetype |
-| `:Lsp autorestart [action]` | Bring a crashed server back automatically: control or report |
-| `:Lsp root [pick\|show]` | Root scope: cwd / git root / file path |
-| `:Lsp log open` / `level {level}` | Open the LSP log, or set its level |
+- **Servers** — the registry resolves configured names to modules, merges
+  capabilities, owns attach, and brings a crashed server back with a bounded
+  backoff.
+- **Configuration in four layers** — defaults, a `preset` profile, your
+  `setup()` options, and a per-project `.nvim-lsp.json`. Every warning names
+  the layer the bad value came from.
+- **Diagnostics** — into the quickfix or location list, with a leading-edge
+  throttle on `publishDiagnostics`, and a workspace-wide toggle that refuses
+  above its size gate rather than freezing the editor.
+- **Formatter** — conform-first with an LSP fallback, and a format-on-save
+  toggle this plugin owns rather than conform.
+- **In-buffer indicators** — inlay hints and a code-action indicator, each
+  global plus per-filetype, and both filtered so they carry information.
+- **Roots and workspace folders** — a scope switch for the servers that resolve
+  a root themselves, and LSP's own multi-root mechanism for the rest.
+- **`:LspDoctor`** — six per-buffer reports. Five observe; `probe` provokes,
+  which is the only way to tell a clean file from a dead pipeline.
+- **Tools and integrations** — ESLint/Prettier, signature help, type lookup,
+  deprecation help, one picker backend, a context menu built from the resolved
+  keymap catalogue.
 
-Every closed argument set completes with `<Tab>`, and `[server]` completes from
-the live set rather than a list frozen at startup.
-
-The ~25 flat commands the migration brought along (`:LspStatus`, `:LspFormat*`,
-`:LspWorkspaceDiagnostics*`, `:Diag*`, …) are still registered as aliases onto
-the same functions; `usrcmds.legacy_aliases = false` drops them. `:LspDoctor`
-and `:LspMdHints` are not aliases and stay either way.
-
-## Configuration
-
-Every option has a default; `setup()` with no arguments is a complete setup.
-
-```lua
-require("lsp").setup({
-  -- Option profile the rest starts from: "default" | "lean" | "full".
-  -- One word instead of ~20 fields; anything you name below still wins over it.
-  preset = "default",
-
-  -- Per-project override file, found by walking up from the working directory
-  -- at setup() time. JSON, and only an allowlist of keys -- see below.
-  project = { enable = true, file = ".nvim-lsp.json" },
-
-  -- Servers to set up and enable. Each resolves to `lsp.servers.<name>`, with
-  -- `lsp.servers.webdev.<name>` as a fallback for dotless names.
-  servers = { "lua_ls", "gopls", "bashls", "marksman", "html", "ts_ls" },
-
-  diagnostics = {
-    update_in_insert = false,
-    severity_sort = true,
-    virtual_text = { spacing = 2, prefix = "●" },
-    float = { border = "rounded", source = "if_many" },
-    ui = "auto",                   -- "auto" | "native" | "trouble" -- ]d/[d's sink
-    debounce_ms = 150,             -- publishDiagnostics throttle, leading-edge; 0 = off
-  },                                -- the rest passed straight to vim.diagnostic.config()
-
-  formatter = {
-    on_save = false,               -- startup default; the runtime toggle owns it after
-    timeout_ms = 1500,
-  },
-
-  inlay_hints = {
-    enable = false,                -- global startup default; the runtime toggle owns it after
-    filetypes = {},                -- per-filetype override; absent inherits, false overrides
-  },
-
-  lightbulb = {                    -- code-action indicator
-    enable = true,                 -- global startup default; the runtime toggle owns it after
-    filetypes = {},                -- per-filetype override; absent inherits, false overrides
-    kinds = { "quickfix", "source" }, -- what lights it; {} = everything, add "refactor" for more
-    render = "sign",               -- or "virtual_text" (right-aligned, clear of the eol text)
-    text = "󰌵",
-    debounce_ms = 150,             -- window between the last cursor move and the request
-    priority = 20,                 -- extmark priority; above vim.diagnostic's signs (10)
-  },
-
-  auto_restart = {                 -- bring a crashed server back
-    enable = true,
-    max_attempts = 4,              -- then it says so and stops
-    initial_delay_ms = 1000,       -- doubling: 1s, 2s, 4s, 8s
-    max_delay_ms = 30000,
-    reset_after_ms = 60000,        -- survival clears the counter, not attach
-  },
-
-  attach = {
-    use_workspace_diagnostics = true,
-    use_lazydev = true,
-  },
-
-  mason = { ensure_install = false, overrides = {} },
-  tools = {                        -- each extra tool has its own switch
-    eslint_prettier = { enable = true, filetypes = { "javascript", "typescript" } },
-    lsp_signature = { enable = true },
-    ts_type_lookup = { enable = true },
-    deprecated_help = { enable = true },
-  },
-  languages = { enable = true },   -- filetype setup under lsp/languages/**
-
-  keymaps = {
-    enable = true,        -- master switch for every key this plugin binds
-    preset = "default",   -- "default" | "minimal" | "none"
-    map = {},             -- per-action override: "<lhs>" replaces, false disables
-  },
-  usrcmds = { enable = true },   -- register the `:Lsp` verb
-  which_key = { enable = true }, -- label bound prefixes as which-key groups
-  menu = { enable = true },      -- <RightMouse> context menu mirroring the
-                                  -- keymap catalogue (nvzone/menu, soft dependency)
-})
-```
-
-The server list used to be a hardcoded `ACTIVE` table inside
-`core/registry.lua`, where turning a server on or off meant editing the
-plugin. An empty or malformed list falls back to the defaults rather than
-leaving you with no language server at all.
-
-Keymaps are data, not code: `lua/lsp/config/KEYMAPS.lua` holds the catalogue,
-and `keymaps.map` overrides any entry by name without touching the plugin. The
-`default` preset binds 42 entries, `minimal` the 26 with no native equivalent,
-`none` nothing. `docs/BINDINGS.md` is generated from the same table, so the two
+Everything the plugin binds is data: `lua/lsp/config/KEYMAPS.lua` is the
+catalogue, `keymaps.map` overrides any entry by name without touching the
+plugin, and `docs/BINDINGS.md` is generated from that same table, so the two
 cannot drift.
-
-```lua
-keymaps = {
-  map = {
-    goto_definition = "gd",   -- rebind
-    rename_leader = false,    -- drop
-  },
-},
-rename = { provider = "auto" }, -- "auto" | "inc_rename" | "native"
-```
-
-An out-of-range value degrades to the documented default and shows up in
-`:checkhealth lsp` rather than raising at startup. With more than one layer in
-play, each warning also names the layer the bad value came from.
-
-### Presets
-
-`preset` picks how much of the plugin runs on this machine. `lean` turns down
-the work paid per keystroke, per attach and per redraw -- virtual text, the
-signature-help round trip, the workspace-diagnostics scan, the legacy command
-aliases; on-demand actions (`gd`, hover, rename) are untouched. `full` is the
-inverse trade. Neither ever sets `mason.ensure_install` or
-`formatter.on_save`: a profile is a performance dial, not consent to install
-software or rewrite your files.
-
-Not to be confused with `keymaps.preset`, which picks a set of *keys*. This one
-picks a set of *options*, and one of the options it sets is `keymaps.preset`.
-
-### Per-project overrides
-
-A `.nvim-lsp.json` at or above the working directory is merged over your
-`setup()` options, so a single checkout can differ from your global config:
-
-```jsonc
-{
-  "servers": ["lua_ls", "gopls"],
-  "formatter": { "on_save": true },
-  "attach": { "use_workspace_diagnostics": false }
-}
-```
-
-JSON rather than Lua on purpose: cloning a repository must not be enough to run
-its code, and JSON cannot express a function. Only these keys are accepted --
-`servers`, `diagnostics`, `formatter`, `inlay_hints`, `lightbulb`, `attach`,
-`workspace`, `tools`, `languages`. They are the ones the *repository* knows the answer to.
-Keymaps, `:Lsp` registration and `mason` are yours; a checkout does not get to
-move your keys or install packages, and anything else in the file is dropped
-with a warning.
-
-The file is read once, at `setup()`, because that is when servers are enabled
-and tools are set up -- re-reading it after a `:cd` would report a config that
-is not the one running. `:Lsp status` and `:checkhealth lsp` name the file that
-was used, so "why is `ts_ls` not attaching here" has a one-line answer.
-
-## Health
-
-```vim
-:checkhealth lsp
-```
-
-Five sections: the environment, what `setup()` registered (including every
-warning it had to work around), the servers, the ecosystem around the plugin,
-and a pointer to `:LspDoctor` for per-buffer diagnosis.
-
-The servers section runs along four numbers — installed (what Mason has on
-disk, whatever `servers` says), configured, set up, attached — plus which of
-the running clients serve the buffer you came from. The gap between any two of
-them is usually the answer when a server "does not work", and the last two are
-also the cost picture: an installed server that is attached to nothing costs
-nothing. The section warns about exactly one thing, a server whose cost scales
-with attached buffers (`ts_ls`, `pyright`, `jdtls`, `omnisharp`) held open
-across many of them — never on a count alone.
-
-## Architecture
-
-```
-lua/lsp/
-  init.lua            -- setup() and status(); orchestration only
-  health.lua          -- :checkhealth lsp
-  @types/init.lua     -- shared annotations
-  config/
-    DEFAULTS.lua      -- the single source of default values
-    KEYMAPS.lua       -- the declarative keymap catalogue
-    init.lua          -- merge, normalize, hand out via get()
-  bindings/
-    init.lua          -- one entry point for everything the plugin claims
-    keymaps.lua       -- catalogue -> vim.keymap.set, with user overrides
-    usrcmds.lua       -- the `:Lsp` verb
-    autocmds.lua      -- augroup owner (no handlers yet)
-    which_key.lua     -- group labels, soft dependency
-  core/               -- registry, attach, capabilities, handlers, diagnostics, inlay hints, lightbulb, supervisor
-  servers/            -- one module per language server
-  languages/          -- filetype-specific quality-of-life setup
-  formatter/          -- on-save toggle, conform strategy, view preservation
-  diagnostics/        -- commands, quickfix/loclist, navigation
-  lspdoctor/          -- :LspDoctor, six reports
-  tools/              -- eslint/prettier, signature help, type lookup, deprecations
-  usercmds/           -- the migrated :Lsp* command family
-  completion/         -- nvim-cmp source for the config's own plugin names
-  integrations/        -- one adapter per third-party plugin, plus the registry
-  pack/                -- LazySpec export: what `import = "lsp.pack"` installs
-```
-
-The adapters own every third-party `require`. The core does not reach into
-them: they hand capability contributors and attach hooks to `lsp/init.lua`,
-which passes them into the core as plain functions — so `core/attach.lua` does
-not know lazydev or NvChad exist, and `core/capabilities.lua` does not know
-which completion engine is installed. `:checkhealth lsp` lists them straight
-from the registry rather than a second, hand-kept list.
-
-`pack/` holds specifications and nothing else. Each spec's `config` is a single
-call into the matching adapter, so what a plugin is configured *to* never sits
-in the layer that decides *whether* it is installed.
 
 ## Documentation
 
-| Page | Covers |
-| ---- | ------ |
-| [installation.md](docs/installation.md) | Managers, the pack, and the two things that will bite you |
-| [configuration.md](docs/configuration.md) | Why the options are shaped this way; the field list is `:h lsp.nvim-config` |
-| [FEATURES.md](docs/FEATURES.md) | What the plugin does, by area |
-| [commands.md](docs/commands.md) | The shape of `:Lsp`, and where to start when something is wrong |
-| [WORKFLOW.md](docs/WORKFLOW.md) | How the pieces combine day to day, and which route answers which question |
-| [BINDINGS.md](docs/BINDINGS.md) | Every keymap and command, generated from the catalogue |
-| [architecture.md](docs/architecture.md) | The three layers, and which way the arrows point |
-| [health.md](docs/health.md) | Reading `:checkhealth lsp` |
+Start with the [documentation index](docs/README.md) — it lists every page and
+says what each one answers.
+
+- [Documentation index](docs/README.md) — the full map of what is written down.
+- [Features](docs/FEATURES/README.md) — what the plugin does, one page per area, with the reasoning.
+- [Installation](docs/installation.md) — the pack, the two channels, and the two things that will bite you.
+- [Configuration](docs/configuration.md) — why the options are shaped this way; the field list is `:h lsp.nvim-config`.
+- [Command reference](docs/commands.md) — the shape of `:Lsp`, and where to start when something is wrong.
+- [Workflow](docs/WORKFLOW.md) — how the pieces combine day to day, and which route answers which question.
+- [Bindings cheatsheet](docs/BINDINGS.md) — every keymap, command and autocommand, generated from the catalogue.
+- [Architecture](docs/architecture.md) — the three layers, and which way the arrows point.
+- [Health](docs/health.md) — reading `:checkhealth lsp`.
 
 `:h lsp.nvim` has the same material as a vimdoc.
 
