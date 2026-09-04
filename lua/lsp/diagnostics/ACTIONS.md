@@ -6,7 +6,6 @@
     - [Quickfix (workspace)](#quickfix-workspace)
     - [Loclist (buffer-local)](#loclist-buffer-local)
   - [Keymaps](#keymaps)
-  - [Updated ASCII architecture diagram](#updated-ascii-architecture-diagram)
 
 ---
 

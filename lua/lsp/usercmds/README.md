@@ -2,7 +2,7 @@
 
 ## Table of content
 
-- [LSP UserCommands - Refactored](#lsp-usercommands-refactored)
+- [LSP UserCommands - Refactored](#lsp-usercommands---refactored)
   - [Commands](#commands)
     - [LspStartHere](#lspstarthere)
     - [LspStopHere](#lspstophere)

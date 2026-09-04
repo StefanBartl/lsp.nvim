@@ -10,7 +10,7 @@ While language servers such as `marksman` are excellent at cross-project link an
 
 - [md_words.nvim (`markdown_words.lua`)](#md_wordsnvim-markdown_wordslua)
   - [Features](#features)
-  - [🚀 Installation & integration](#installation-integration)
+  - [🚀 Installation & integration](#installation--integration)
     - [1. Place the file](#1-place-the-file)
     - [2. Wire it into the Markdown setup](#2-wire-it-into-the-markdown-setup)
   - [⚙️ Configuration](#configuration)
