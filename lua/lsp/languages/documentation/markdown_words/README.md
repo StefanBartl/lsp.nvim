@@ -10,12 +10,12 @@ While language servers such as `marksman` are excellent at cross-project link an
 
 - [md_words.nvim (`markdown_words.lua`)](#md_wordsnvim-markdown_wordslua)
   - [Features](#features)
-  - [🚀 Installation & integration](#installation--integration)
+  - [Installation & integration](#installation--integration)
     - [1. Place the file](#1-place-the-file)
     - [2. Wire it into the Markdown setup](#2-wire-it-into-the-markdown-setup)
-  - [⚙️ Configuration](#configuration)
-  - [🎮 User commands](#user-commands)
-  - [🛠️ How it works in the background](#how-it-works-in-the-background)
+  - [Configuration](#configuration)
+  - [User commands](#user-commands)
+  - [How it works in the background](#how-it-works-in-the-background)
 
 ---
 
@@ -29,7 +29,7 @@ While language servers such as `marksman` are excellent at cross-project link an
 
 ---
 
-## 🚀 Installation & integration
+## Installation & integration
 
 ### 1. Place the file
 
@@ -52,7 +52,7 @@ end
 
 ---
 
-## ⚙️ Configuration
+## Configuration
 
 The module works *out of the box* with sensible defaults. If needed, you can pass a table of your own options to the `setup()` function:
 
@@ -70,7 +70,7 @@ require("lsp.languages.documentation.markdown_words").setup({
 
 ---
 
-## 🎮 User commands
+## User commands
 
 The module automatically registers three useful commands in Neovim:
 
@@ -85,7 +85,7 @@ The module automatically registers three useful commands in Neovim:
 
 ---
 
-## 🛠️ How it works in the background
+## How it works in the background
 
 1. **Trigger:** as soon as a buffer with the filetype `markdown` or `mdx` is opened, the module wakes up.
 2. **Scan:** it recursively collects all relevant files, strips them of Markdown syntax characters (such as `*`, `#`, `_`) and extracts pure text tokens.
