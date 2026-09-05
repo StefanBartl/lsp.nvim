@@ -227,6 +227,5 @@ autocommands belong to the subsystems that own them.
 Beyond these, `formatter/`, `languages/`, `tools/` and `servers/` each register
 their own groups (format-on-save, per-filetype setup, the signature popup's
 per-window group, lua_ls's root recompute). They are not listed here because
-they are not bindings — the complete inventory lives in the config's
-`docs/NOTES/PersonelPlugins/BINDINGS/Autocmds/lsp.nvim.md`, and a second copy
-here would be a second thing to keep in sync.
+they are not bindings — the complete inventory is [autocmds.md](autocmds.md),
+kept as a separate page so a second copy here does not need to stay in sync.
