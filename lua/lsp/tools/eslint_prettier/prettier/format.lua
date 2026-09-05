@@ -54,8 +54,20 @@ function M.prettier_format(bufnr)
     end)
   end
 
+  -- Resolve the project root and run from there, same as eslint_fix: leaving
+  -- cwd unset would fall back to the global editor cwd instead of the
+  -- buffer's own project, which is wrong whenever they differ (e.g. a
+  -- monorepo, or Neovim started outside the project root).
+  local find_root = require("lsp.tools.eslint_prettier.core.find_root")
+  local root = find_root(bufnr)
+  if not root then
+    notify.warn("Could not determine project root, using current directory.")
+    root = vim.fn.getcwd()
+  end
+
   local args = { bin, "--write", filename }
   run_cmd_collect(args, {
+    cwd = root,
     on_exit = function(code, _, err)
       if code == 0 then
         vim.cmd("checktime")
