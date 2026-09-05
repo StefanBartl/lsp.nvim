@@ -38,7 +38,9 @@ local function check_environment()
   if vim.fn.has("nvim-0.11") == 1 then
     health.ok("Neovim " .. tostring(vim.version()))
   else
-    health.error("Neovim 0.11+ required, found " .. tostring(vim.version()))
+    health.error("Neovim 0.11+ required, found " .. tostring(vim.version()), {
+      "Upgrade Neovim to 0.11+",
+    })
   end
 
   if has("lib.nvim.bindings.keymap") then
@@ -336,7 +338,8 @@ local function check_servers()
         #status.servers,
         #configured,
         table.concat(missing, ", ")
-      )
+      ),
+      { "See the setup warnings above for why each name failed to resolve" }
     )
   else
     health.ok(("set up: %d"):format(#status.servers))
@@ -423,7 +426,7 @@ local function check_ecosystem()
 
   local rows = require("lsp.integrations").report()
   if #rows == 0 then
-    health.warn("no integration adapter loaded")
+    health.warn("no integration adapter loaded", { "Reinstall lsp.nvim" })
     return
   end
 
@@ -449,7 +452,7 @@ local function check_doctor()
     health.ok("`:LspDoctor startup|resolve|buffer|capabilities|all` available")
     health.info("This report covers the plugin; :LspDoctor covers the current buffer.")
   else
-    health.warn("lsp.lspdoctor did not load")
+    health.warn("lsp.lspdoctor did not load", { "Reinstall lsp.nvim" })
   end
 end
 
