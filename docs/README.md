@@ -29,6 +29,7 @@ as the commented source of every default value.
 | Page | What it answers |
 |---|---|
 | [architecture.md](architecture.md) | What are the three layers, and which way do the arrows point? |
+| [autocmds.md](autocmds.md) | Every autocommand the plugin registers, not just the four that back keymaps — 33 across 25 groups |
 | Module `README.md`s under `lua/lsp/**` | How does *this* module work, in the detail only its author needs? |
 
 The per-module READMEs are the fifth layer and the deepest one — `lspdoctor/`,
