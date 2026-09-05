@@ -148,7 +148,7 @@ return function(root)
   -- fires). This gives value completion in the plugin specs — e.g.
   -- `ColorMyAscii.Config` / `Mkdn.Config`, so `preset = "…"` suggests the fence
   -- presets. Guarded by fs_stat, so it's a no-op when the repos aren't present.
-  local repos = vim.env.REPOS_DIR
+  local repos = require("lib.nvim.system.env").get().repo_base
   if type(repos) == "string" and repos ~= "" then
     repos = repos:gsub("\\", "/")
     local dev_type_dirs = {
