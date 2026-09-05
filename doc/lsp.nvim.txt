@@ -1,4 +1,5 @@
 *lsp.nvim.txt*                          One roof for the whole LSP setup
+                                                                    *lsp.nvim*
 
 ==============================================================================
 CONTENTS                                                  *lsp.nvim-contents*
