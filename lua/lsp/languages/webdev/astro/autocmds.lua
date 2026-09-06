@@ -2,8 +2,17 @@
 --- Astro QoL autocmds: format-on-save (conform, falling back to
 --- `vim.lsp.buf.format`), organize-imports-on-save, 2-space indent plus
 --- `{/* %s */}` commentstring, and frontmatter (`---`) syntax highlighting.
+---
+--- The organize-imports request runs through `lsp.core.util.organize_imports_sync`
+--- rather than `vim.lsp.buf.code_action({ apply = true })`: that call is
+--- asynchronous, so on `BufWritePre` it returned before the server's response
+--- (and the edit it carries) ever arrived -- the file was written to disk
+--- first, and the import reorganization landed one save late, against
+--- whatever the buffer had become by the time the response showed up. See
+--- that function's docstring for the full explanation.
 
 local Autocmd = require("lib.nvim.bindings.autocmd")
+local util = require("lsp.core.util")
 
 local M = {}
 
@@ -26,17 +35,8 @@ function M.setup()
   })
 
   -- Auto-organize imports on save
-  Autocmd.create("BufWritePre", function(_)
-    vim.lsp.buf.code_action({
-      -- Neovim's meta declares `diagnostics` required on lsp.CodeActionContext,
-      -- but vim.lsp.buf.code_action fills it from the current position.
-      -- `only` is a server-specific kind; CodeActionKind is an open
-      -- string enum in the protocol, Neovim's meta lists the standard
-      -- ones.
-      ---@diagnostic disable-next-line: missing-fields, assign-type-mismatch
-      context = { only = { "source.organizeImports.astro" } },
-      apply = true,
-    })
+  Autocmd.create("BufWritePre", function(ev)
+    pcall(util.organize_imports_sync, ev.buf, "source.organizeImports.astro")
   end, {
     group = grp,
     pattern = "*.astro",
