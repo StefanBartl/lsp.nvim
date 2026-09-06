@@ -9,13 +9,13 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: stylua --check
         uses: JohnnyMorganz/stylua-action@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          version: latest
+          version: v2.5.2
           args: --check lua/ scripts/ TESTS/
 
       - uses: leafo/gh-actions-lua@v13
@@ -24,7 +24,7 @@ jobs:
           # also fails to load under newer Lua.
           luaVersion: "5.1"
       - uses: leafo/gh-actions-luarocks@v6
-      - run: luarocks install luacheck
+      - run: luarocks install luacheck 1.2.0
       - run: luacheck lua scripts TESTS
 
       - uses: rhysd/action-setup-vim@v1
@@ -39,12 +39,12 @@ jobs:
     # dependency of the plugin itself.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5
         with:
           repository: nvim-lua/plenary.nvim
           path: .deps/plenary.nvim
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           repository: StefanBartl/lib.nvim
           path: .deps/lib.nvim
@@ -63,8 +63,8 @@ jobs:
     # stubbed specs cannot check.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5
         with:
           repository: StefanBartl/lib.nvim
           path: .deps/lib.nvim
