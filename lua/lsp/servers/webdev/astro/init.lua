@@ -1,6 +1,5 @@
 ---@module 'lsp.servers.webdev.astro'
 --- Astro language server, for .astro components.
---- FIXED: Consistent server name across config/enable
 
 local notify = require("lib.nvim.notify").create("[lsp.servers.webdev.astro]")
 
@@ -18,7 +17,7 @@ function M.setup(shared, opts)
     return
   end
 
-  -- Erweitere capabilities mit Astro-spezifischen Features
+  -- Extend capabilities with Astro-specific features.
   local caps = shared.capabilities or vim.lsp.protocol.make_client_capabilities()
 
   -- Auto-close tags support
@@ -34,7 +33,6 @@ function M.setup(shared, opts)
 
   caps.textDocument.completion.completionItem.snippetSupport = true
 
-  -- FIXED: Use "astro" as server name consistently
   vim.lsp.config("astro", {
     cmd = { "astro-ls", "--stdio" },
 

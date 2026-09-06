@@ -1,4 +1,4 @@
----@module 'config.mason.ensure_install.defaults.linter'
+---@module 'lsp.integrations.mason.ensure_install.defaults.linter'
 -- =====================================================================================
 -- Tool set (defaults): true = ensure install, false = ignore
 -- =====================================================================================

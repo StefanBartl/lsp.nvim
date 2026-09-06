@@ -80,8 +80,8 @@ function M.setup(shared, opts)
     return
   end
 
-  -- bashls understands POSIX sh and bash; for zsh, completion/diagnostics are useful
-  -- but not 100% semantisch exakt. Das ist ein pragmatischer Kompromiss.
+  -- bashls understands POSIX sh and bash; for zsh, completion/diagnostics are
+  -- useful but not fully semantically accurate -- a pragmatic compromise.
   vim.lsp.config("bashls", {
     cmd = { "bash-language-server", "start" },
     filetypes = { "sh", "bash", "zsh", "ksh" },

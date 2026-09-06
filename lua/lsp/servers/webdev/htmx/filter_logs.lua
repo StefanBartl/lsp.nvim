@@ -1,6 +1,6 @@
 ---@module 'lsp.servers.webdev.htmx.filter_logs'
---- Filtert JSON-Logs aus LSP-Server stderr basierend auf Log-Level.
---- Verhindert, dass INFO/DEBUG-Logs als [ERROR] in Neovim's LSP-Log erscheinen.
+--- Filters JSON logs from an LSP server's stderr by log level, so INFO/DEBUG
+--- lines no longer show up as [ERROR] in Neovim's LSP log.
 
 local M = {}
 
