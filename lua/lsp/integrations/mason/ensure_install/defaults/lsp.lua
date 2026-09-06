@@ -1,4 +1,4 @@
----@module 'config.mason.ensure_install.defaults.lsp'
+---@module 'lsp.integrations.mason.ensure_install.defaults.lsp'
 -- =====================================================================================
 -- Tool set (defaults): true = ensure install, false = ignore
 -- =====================================================================================
@@ -49,10 +49,10 @@ return {
   ["tailwindcss-language-server"] = true,
   ["css-lsp"] = true,
   ["htmx-lsp"] = true,
-  -- ["wasm-language-tools"] = true, -- oft manuell installiert
+  -- ["wasm-language-tools"] = true, -- often installed manually
   -- ["unocss-language-server"] = true,
-  ["vtsls"] = true, -- besserer TS/JS Server
-  --["biome"] = true, -- schneller Formatter/Linter
+  ["vtsls"] = true, -- better TS/JS server
+  --["biome"] = true, -- faster formatter/linter
   ["vue-language-server"] = true,
   ["svelte-language-server"] = true,
   --["svlangserver"] = true,

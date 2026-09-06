@@ -1,4 +1,4 @@
----@module 'config.mason.ensure_install.defaults.dap'
+---@module 'lsp.integrations.mason.ensure_install.defaults.dap'
 -- =====================================================================================
 -- Tool set (defaults): true = ensure install, false = ignore
 -- =====================================================================================

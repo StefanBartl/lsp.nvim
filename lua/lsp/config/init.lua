@@ -190,10 +190,10 @@ end
 --- merged table.
 ---
 --- `vim.tbl_deep_extend` merges two arrays index by index, which is wrong for
---- every list option here: `{ "lua_ls" }` over a six-entry default yields
---- `{ "lua_ls", <defaults 2..6> }`, so a config asking for one server silently
---- gets six. A list is a replacement, not an overlay -- there is no sensible
---- reading of "half the default markers".
+--- every list option here: `{ "lua_ls" }` over the multi-entry default yields
+--- `{ "lua_ls", <rest of the defaults> }`, so a config asking for one server
+--- silently gets the whole default set. A list is a replacement, not an
+--- overlay -- there is no sensible reading of "half the default markers".
 ---
 --- The highest layer that says anything wins outright, including when what it
 --- says is malformed: a stray `"servers": "lua_ls"` in a project file must not

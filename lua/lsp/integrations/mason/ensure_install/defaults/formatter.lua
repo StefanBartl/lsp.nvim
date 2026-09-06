@@ -1,4 +1,4 @@
----@module 'config.mason.ensure_install.defaults.formatter'
+---@module 'lsp.integrations.mason.ensure_install.defaults.formatter'
 -- =====================================================================================
 -- Tool set (defaults): true = ensure install, false = ignore
 -- =====================================================================================

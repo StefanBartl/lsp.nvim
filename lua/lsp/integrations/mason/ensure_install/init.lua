@@ -1,4 +1,4 @@
----@module 'config.mason.ensure_install'
+---@module 'lsp.integrations.mason.ensure_install'
 --- Ensure-install facade around mason.nvim (and its registry) for LSPs, DAP adapters,
 --- linters and formatters. The module exposes granular entry points
 --- (`enable_lsp`, `enable_dap`, `enable_linters`, `enable_formatters`) plus a
@@ -201,6 +201,8 @@ local function ensure_tools(tools, log_prefix, seen)
 
     -- gate by system deps
     local allowed, reason = (function()
+      --- CDX: self-require path is stale ("config.mason.ensure_install"); it never resolves in
+      --- this repo, so this always falls through to the local gate_by_system_deps below.
       local ok_gate, gate = pcall(require, "config.mason.ensure_install") -- self-require is safe
       if ok_gate and type(gate.gate_by_system_deps) == "function" then
         return gate.gate_by_system_deps(name)

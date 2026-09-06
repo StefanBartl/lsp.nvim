@@ -44,11 +44,12 @@ direction one asks for far more often.
 
 ## Completion source
 
-An nvim-cmp source that completes dotted plugin names as one atomic candidate
-each, ranked by a disk-persisted use counter. The name list is supplied by the
-host through `setup({ completion = { personal_names = { labels = fn } } })` —
-it is the config's data, not the plugin's. Without a reader the source falls
-back to its own `extra.lua` word list.
+An engine-neutral completion source (nvim-cmp or blink) that completes dotted
+plugin names as one atomic candidate each, ranked by a disk-persisted use
+counter. The name list is supplied by the host through
+`setup({ completion = { personal_names = { labels = fn } } })` — it is the
+config's data, not the plugin's. Without a reader the source falls back to its
+own `extra.lua` word list.
 
 - **Module:** `completion/personal_names/`
 - **Config:** `completion.personal_names.enable`,

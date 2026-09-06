@@ -447,7 +447,7 @@ means adding a catalogue entry; nothing is hardcoded at the binding site.
 `scripts/gen_bindings.lua`, which CI checks, so the list cannot drift from the
 code.
 
-The `default` preset binds 47 entries; `minimal` binds the 31 that have no
+The `default` preset binds 49 entries; `minimal` binds the 33 that have no
 Neovim 0.11 equivalent (it drops `grn`, `grt` and `]d`/`[d`, and the prefixless
 `ls*` family); `none` binds nothing.
 

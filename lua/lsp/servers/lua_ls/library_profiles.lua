@@ -14,7 +14,7 @@ local M = {}
 
 ---@type table<LibraryProfile, LibraryProfileConfig>
 local PROFILES = {
-  -- Minimal: Nur Third-Party + explizite Type-Dirs
+  -- Minimal: third-party libraries plus explicit type dirs only.
   minimal = {
     max_results = 50,
     max_depth = 5,
@@ -72,6 +72,7 @@ end
 --- would only exempt them from diagnostics (`diagnostics.libraryFiles` is
 --- "Disable" in .luarc.json), which does not justify a 197ms scan on the
 --- startup path.
+--- CDX: scan cost is quoted as both ~157ms and 197ms here; likely the same measurement.
 ---
 --- Returned as an array, which is what lua_ls' `workspace.library` expects.
 ---@return string[]
