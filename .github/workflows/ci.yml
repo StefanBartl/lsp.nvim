@@ -48,6 +48,7 @@ jobs:
         with:
           repository: StefanBartl/lib.nvim
           path: .deps/lib.nvim
+          ref: ci-verified
       - uses: rhysd/action-setup-vim@v1
         with: { neovim: true, version: stable }
       - name: plenary specs
@@ -68,9 +69,25 @@ jobs:
         with:
           repository: StefanBartl/lib.nvim
           path: .deps/lib.nvim
+          ref: ci-verified
       - uses: rhysd/action-setup-vim@v1
         with: { neovim: true, version: stable }
       - run: |
           nvim --headless -u NONE \
             -c "set rtp^=." -c "set rtp^=.deps/lib.nvim" \
             -c "luafile TESTS/smoke.lua" -c "qa!"
+
+  # See lib.nvim's own templates/README.md ("Pinning lib.nvim in CI") for why:
+  # ci-verified only moves once lint+test+smoke are green here, so this
+  # repo's own consumers can pin ref: ci-verified instead of main and never
+  # see a red build that's actually this repo's WIP.
+  publish-ci-verified:
+    name: publish ci-verified branch
+    needs: [lint, test, smoke]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - run: git push origin HEAD:refs/heads/ci-verified --force
