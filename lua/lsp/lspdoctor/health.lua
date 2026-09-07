@@ -208,8 +208,8 @@ function M.check(bufnr)
   local expected = get_expected_servers(bufnr)
 
   if #expected == 0 then
-    table.insert(lines, "⚠️  No LSP servers configured for this buffer")
-    table.insert(lines, "   Filetype: " .. vim.bo[bufnr].filetype)
+    lines[#lines + 1] = "⚠️  No LSP servers configured for this buffer"
+    lines[#lines + 1] = "   Filetype: " .. vim.bo[bufnr].filetype
     return lines, results
   end
 
@@ -224,58 +224,52 @@ function M.check(bufnr)
     local has_config = config_exists(name)
     local attempts, last_error = get_server_state(name)
 
-    table.insert(results, {
+    results[#results + 1] = {
       name = name,
       running = running,
       config_exists = has_config,
       attempts = attempts,
       last_error = last_error,
-    })
+    }
 
     if detailed < limit then
       detailed = detailed + 1
 
       -- Build status line
-      table.insert(lines, "")
-      table.insert(lines, string.format("**%s**", name))
-      table.insert(lines, string.format("  Running: %s", running and "✅ Yes" or "❌ No"))
-      table.insert(lines, string.format("  Config: %s", has_config and "✅ Yes" or "❌ No"))
-      table.insert(lines, string.format("  Attempts: %d", attempts))
+      lines[#lines + 1] = ""
+      lines[#lines + 1] = string.format("**%s**", name)
+      lines[#lines + 1] = string.format("  Running: %s", running and "✅ Yes" or "❌ No")
+      lines[#lines + 1] = string.format("  Config: %s", has_config and "✅ Yes" or "❌ No")
+      lines[#lines + 1] = string.format("  Attempts: %d", attempts)
 
       if Opts.show_tools ~= false then
         local found, detail = executable_for(name)
-        table.insert(lines, string.format("  Executable: %s %s", found and "✅" or "❌", detail))
+        lines[#lines + 1] = string.format("  Executable: %s %s", found and "✅" or "❌", detail)
       end
 
       if last_error then
-        table.insert(lines, string.format("  Error: `%s`", last_error))
+        lines[#lines + 1] = string.format("  Error: `%s`", last_error)
       end
 
       if running then
         local probe = semantic_tokens_probe(name, bufnr)
         if probe then
-          table.insert(lines, probe)
+          lines[#lines + 1] = probe
         end
       end
 
       -- Diagnostic hints
       if not running then
         if not has_config then
-          table.insert(
-            lines,
-            "  💡 **Action**: Server not configured - check `lsp.config` or registry"
-          )
+          lines[#lines + 1] = "  💡 **Action**: Server not configured - check `lsp.config` or registry"
         elseif Opts.show_tools ~= false and not executable_for(name) then
           -- Checked before the generic hints: "the binary is not on $PATH" is
           -- both the commonest cause and the only one with a different fix.
-          table.insert(
-            lines,
-            "  💡 **Action**: Executable not found - install it (`:Mason`) or fix $PATH"
-          )
+          lines[#lines + 1] = "  💡 **Action**: Executable not found - install it (`:Mason`) or fix $PATH"
         elseif attempts > 0 then
-          table.insert(lines, "  💡 **Action**: Start failed - check `:LspLog` or `:messages`")
+          lines[#lines + 1] = "  💡 **Action**: Start failed - check `:LspLog` or `:messages`"
         else
-          table.insert(lines, "  💡 **Action**: Not started - use `:Lsp start " .. name .. "`")
+          lines[#lines + 1] = "  💡 **Action**: Not started - use `:Lsp start " .. name .. "`"
         end
       end
     end
