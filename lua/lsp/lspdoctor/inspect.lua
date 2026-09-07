@@ -111,7 +111,7 @@ local function check_offset_encoding(clients_by_name)
     if not set[enc] then
       set[enc] = {}
     end
-    table.insert(set[enc], name)
+    set[enc][#set[enc] + 1] = name
   end
   for enc, _ in pairs(set) do
     order[#order + 1] = enc
@@ -120,7 +120,7 @@ local function check_offset_encoding(clients_by_name)
   local mismatches = {}
   if #order > 1 then
     for _, enc in ipairs(order) do
-      table.insert(mismatches, string.format("%s: %s", enc, table.concat(set[enc], ", ")))
+      mismatches[#mismatches + 1] = string.format("%s: %s", enc, table.concat(set[enc], ", "))
     end
   end
   return order, mismatches
@@ -234,99 +234,85 @@ local function generate_report(mode, bufnr)
   local counts, total = collect_diagnostics(bufnr)
 
   -- Clients
-  table.insert(lines, "### LSP Clients (current buffer)")
+  lines[#lines + 1] = "### LSP Clients (current buffer)"
   if #names == 0 then
-    table.insert(lines, "No LSP client attached")
+    lines[#lines + 1] = "No LSP client attached"
   else
     local display = mode == "buffer" and take(names, Opts.list_limit or 10) or names
     for _, n in ipairs(display) do
-      table.insert(lines, string.format("- `%s`", n))
+      lines[#lines + 1] = string.format("- `%s`", n)
     end
   end
-  table.insert(lines, "")
+  lines[#lines + 1] = ""
 
   -- Diagnostics
-  table.insert(lines, "### Diagnostics (current buffer)")
-  table.insert(
-    lines,
-    string.format(
-      "Total: **%d** [ERROR: %d, WARN: %d, INFO: %d, HINT: %d]",
-      total,
-      counts.ERROR,
-      counts.WARN,
-      counts.INFO,
-      counts.HINT
-    )
+  lines[#lines + 1] = "### Diagnostics (current buffer)"
+  lines[#lines + 1] = string.format(
+    "Total: **%d** [ERROR: %d, WARN: %d, INFO: %d, HINT: %d]",
+    total,
+    counts.ERROR,
+    counts.WARN,
+    counts.INFO,
+    counts.HINT
   )
-  table.insert(lines, "")
+  lines[#lines + 1] = ""
 
   -- Conflicts
   if Opts.show_conflicts and #names > 1 then
     local conf = detect_conflicts(clients_by_name)
-    table.insert(lines, "### Provider Conflicts")
+    lines[#lines + 1] = "### Provider Conflicts"
     if #conf > 0 then
       for _, c in ipairs(conf) do
-        table.insert(lines, "⚠️  " .. c)
+        lines[#lines + 1] = "⚠️  " .. c
       end
     else
-      table.insert(lines, "✅ No obvious overlaps detected")
+      lines[#lines + 1] = "✅ No obvious overlaps detected"
     end
-    table.insert(lines, "")
+    lines[#lines + 1] = ""
   end
 
   -- Offset encoding
   local encs, mismatches = check_offset_encoding(clients_by_name)
   if #encs > 0 then
-    table.insert(lines, "### Offset Encodings")
+    lines[#lines + 1] = "### Offset Encodings"
     if #mismatches > 0 then
-      table.insert(lines, "⚠️  **Mismatch detected:**")
+      lines[#lines + 1] = "⚠️  **Mismatch detected:**"
       for _, m in ipairs(mismatches) do
-        table.insert(lines, "   - " .. m)
+        lines[#lines + 1] = "   - " .. m
       end
       report.ok = false
     else
-      table.insert(lines, "✅ All clients: `" .. encs[1] .. "`")
+      lines[#lines + 1] = "✅ All clients: `" .. encs[1] .. "`"
     end
-    table.insert(lines, "")
+    lines[#lines + 1] = ""
   end
 
   -- Formatter: what actually runs first, then what this report merely ranks.
   local winner, all, reason = pick_formatter(clients_by_name)
-  table.insert(lines, "### Formatter")
+  lines[#lines + 1] = "### Formatter"
 
   local chain, lsp_after = conform_chain(bufnr)
   if chain == nil then
-    table.insert(lines, "Runs: *(conform.nvim not installed -- LSP formatting only)*")
+    lines[#lines + 1] = "Runs: *(conform.nvim not installed -- LSP formatting only)*"
   elseif #chain == 0 then
-    table.insert(
-      lines,
-      ("Runs: %s"):format(
-        lsp_after and "the LSP client below (no conform formatter for this filetype)"
-          or "*(nothing -- no conform formatter and no LSP formatting provider)*"
-      )
+    lines[#lines + 1] = ("Runs: %s"):format(
+      lsp_after and "the LSP client below (no conform formatter for this filetype)"
+        or "*(nothing -- no conform formatter and no LSP formatting provider)*"
     )
   else
-    table.insert(
-      lines,
-      ("Runs: **%s** (conform)%s"):format(
-        table.concat(chain, " -> "),
-        lsp_after and ", then the LSP client below" or ""
-      )
+    lines[#lines + 1] = ("Runs: **%s** (conform)%s"):format(
+      table.concat(chain, " -> "),
+      lsp_after and ", then the LSP client below" or ""
     )
   end
 
-  table.insert(lines, "")
-  table.insert(
-    lines,
-    "LSP clients able to format: " .. (#all == 0 and "*(none)*" or table.concat(all, ", "))
-  )
-  table.insert(lines, ("Preferred among them: **%s** (%s)"):format(winner or "(none)", reason))
-  table.insert(
-    lines,
-    "*Report only.* `lspdoctor.formatter_priority` ranks this line and nothing "
-      .. "else -- it does not choose what formats the buffer. The `Runs:` line above does."
-  )
-  table.insert(lines, "")
+  lines[#lines + 1] = ""
+  lines[#lines + 1] = "LSP clients able to format: "
+    .. (#all == 0 and "*(none)*" or table.concat(all, ", "))
+  lines[#lines + 1] = ("Preferred among them: **%s** (%s)"):format(winner or "(none)", reason)
+  lines[#lines + 1] = "*Report only.* `lspdoctor.formatter_priority` ranks this line and nothing "
+    .. "else -- it does not choose what formats the buffer. The `Runs:` line above does."
+  lines[#lines + 1] = ""
 
   -- `capabilities` only: everything the capped `buffer` report leaves out
   if mode == "capabilities" then
@@ -334,9 +320,9 @@ local function generate_report(mode, bufnr)
     if Opts.show_workspace and #names > 0 then
       for _, n in ipairs(names) do
         local c = clients_by_name[n]
-        table.insert(lines, string.format("### Workspace: %s", n))
+        lines[#lines + 1] = string.format("### Workspace: %s", n)
         local root = (c.config and c.config.root_dir) or c.root_dir
-        table.insert(lines, "  root_dir: `" .. tostring(root) .. "`")
+        lines[#lines + 1] = "  root_dir: `" .. tostring(root) .. "`"
 
         local ws = {}
         if c.workspace_folders and type(c.workspace_folders) == "table" then
@@ -346,14 +332,14 @@ local function generate_report(mode, bufnr)
         end
 
         if #ws > 0 then
-          table.insert(lines, "  workspace_folders:")
+          lines[#lines + 1] = "  workspace_folders:"
           for _, w in ipairs(ws) do
-            table.insert(lines, "    - " .. w)
+            lines[#lines + 1] = "    - " .. w
           end
         else
-          table.insert(lines, "  workspace_folders: *(none)*")
+          lines[#lines + 1] = "  workspace_folders: *(none)*"
         end
-        table.insert(lines, "")
+        lines[#lines + 1] = ""
       end
     end
 
@@ -362,34 +348,16 @@ local function generate_report(mode, bufnr)
       for _, n in ipairs(names) do
         local c = clients_by_name[n]
         local caps = c.server_capabilities or {}
-        table.insert(lines, string.format("### Capabilities: %s", n))
-        table.insert(
-          lines,
-          string.format("  offsetEncoding: `%s`", tostring(c.offset_encoding or "nil"))
-        )
-        table.insert(
-          lines,
-          string.format("  completionProvider: %s", yesno(caps.completionProvider ~= nil))
-        )
-        table.insert(
-          lines,
-          string.format("  definitionProvider: %s", yesno(caps.definitionProvider ~= nil))
-        )
-        table.insert(
-          lines,
-          string.format("  documentFormatting: %s", yesno(caps.documentFormattingProvider == true))
-        )
-        table.insert(
-          lines,
-          string.format("  codeAction: %s", yesno(caps.codeActionProvider ~= nil))
-        )
-        table.insert(
-          lines,
-          string.format("  semanticTokens: %s", yesno(caps.semanticTokensProvider ~= nil))
-        )
-        table.insert(lines, string.format("  inlayHints: %s", yesno(caps.inlayHintProvider ~= nil)))
-        table.insert(lines, string.format("  codeLens: %s", yesno(caps.codeLensProvider ~= nil)))
-        table.insert(lines, "")
+        lines[#lines + 1] = string.format("### Capabilities: %s", n)
+        lines[#lines + 1] = string.format("  offsetEncoding: `%s`", tostring(c.offset_encoding or "nil"))
+        lines[#lines + 1] = string.format("  completionProvider: %s", yesno(caps.completionProvider ~= nil))
+        lines[#lines + 1] = string.format("  definitionProvider: %s", yesno(caps.definitionProvider ~= nil))
+        lines[#lines + 1] = string.format("  documentFormatting: %s", yesno(caps.documentFormattingProvider == true))
+        lines[#lines + 1] = string.format("  codeAction: %s", yesno(caps.codeActionProvider ~= nil))
+        lines[#lines + 1] = string.format("  semanticTokens: %s", yesno(caps.semanticTokensProvider ~= nil))
+        lines[#lines + 1] = string.format("  inlayHints: %s", yesno(caps.inlayHintProvider ~= nil))
+        lines[#lines + 1] = string.format("  codeLens: %s", yesno(caps.codeLensProvider ~= nil))
+        lines[#lines + 1] = ""
       end
     end
   end
