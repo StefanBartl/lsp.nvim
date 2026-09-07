@@ -119,6 +119,22 @@ describe("lsp.core.diagnostics", function()
       assert.is_false(vim.diagnostic.config().underline)
     end)
 
+    it("does not let lsp.nvim's own defaults outrank a contribution", function()
+      -- The ordering bug this arrangement had at first: lsp.nvim's
+      -- presentation lived in config/DEFAULTS.lua, which is merged LAST, so a
+      -- contributor's virtual-text style was overruled by lsp.nvim's default
+      -- rather than by anything a user asked for. The presentation belongs in
+      -- `baseline()`; DEFAULTS.diagnostics holds only `ui`/`debounce_ms` now.
+      local defaults = require("lsp.config.DEFAULTS").diagnostics
+      local keys = vim.tbl_keys(defaults)
+      table.sort(keys)
+      assert.same({ "debounce_ms", "ui" }, keys)
+
+      diag.contribute("plugin.a", { virtual_text = { prefix = "from a" } })
+      local eff = diag.apply(vim.deepcopy(defaults))
+      assert.equals("from a", eff.virtual_text.prefix)
+    end)
+
     it("records what it applied", function()
       assert.is_nil(diag.applied())
       local eff = diag.apply({ underline = true })
@@ -131,15 +147,15 @@ describe("lsp.core.diagnostics", function()
       assert.equals("lsp.nvim (baseline)", diag.sources()[1].name)
     end)
 
-    it("names the user layer only once one was given", function()
+    it("names the opts layer only once one was given", function()
       diag.apply(nil)
       for _, src in ipairs(diag.sources()) do
-        assert.is_not.equals("user config", src.name)
+        assert.is_not.equals("opts.diagnostics", src.name)
       end
 
       diag.apply({ underline = true })
       local last = diag.sources()[#diag.sources()]
-      assert.equals("user config", last.name)
+      assert.equals("opts.diagnostics", last.name)
     end)
   end)
 end)

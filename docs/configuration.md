@@ -205,6 +205,13 @@ layers where later wins:
 | 2 | contributions, in registration order |
 | 3 | your `opts.diagnostics` — last, so a config always wins |
 
+lsp.nvim's own look is layer **1**, not layer 3. That is deliberate and it was
+briefly wrong: the presentation used to live in `config/DEFAULTS.lua`, which is
+merged last — so a plugin contributing a virtual-text style was overruled by
+lsp.nvim's *default* rather than by anything you asked for. `diagnostics` in
+DEFAULTS now holds only `ui` and `debounce_ms`, neither of which is
+presentation.
+
 ### Contributing from another plugin
 
 A plugin that would otherwise call `vim.diagnostic.config()` itself registers

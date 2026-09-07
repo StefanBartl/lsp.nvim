@@ -17,8 +17,10 @@
 ---   2. **Contributions**, in registration order. Any plugin with a diagnostic
 ---      opinion calls `M.contribute(name, spec)` before `lsp.setup()` runs.
 ---      This module does not know who they are and does not require them.
----   3. **The user's `opts.diagnostics`.** Last, so a configuration can always
----      override both.
+---   3. **`opts.diagnostics`.** Last, so a configuration can always override
+---      both. It holds only what a user set: lsp.nvim's own presentation is
+---      layer 1, not layer 3, precisely so that a contribution is overruled
+---      by the user and not by this plugin's defaults.
 ---
 --- `M.sources()` reports the layers by name, so `:checkhealth lsp` can answer
 --- "where did this icon come from" — which is the question the silent-merge
@@ -28,7 +30,9 @@
 --- `lsp/init.lua` called it a second time with `cfg.diagnostics`. Both writes
 --- landed, the second only overriding the keys it named — so lsp.nvim's own
 --- signs came from here and its virtual text from DEFAULTS, which is the
---- confusion described above, inside one plugin.
+--- confusion described above, inside one plugin. Consolidating the two put the
+--- presentation in `baseline()` and left `DEFAULTS.diagnostics` with the two
+--- keys that are not presentation at all.
 ---@see lsp.core.capabilities
 
 local M = {}
@@ -134,7 +138,10 @@ function M.baseline()
     underline = true,
     update_in_insert = false,
     severity_sort = true,
-    virtual_text = true,
+    -- A table, not `true`: `spacing`/`prefix` were in config/DEFAULTS.lua and
+    -- moved here with the rest of the presentation, so this is what a session
+    -- actually rendered before the move.
+    virtual_text = { spacing = 2, prefix = "●" },
     signs = {
       text = {
         [vim.diagnostic.severity.ERROR] = "■",
@@ -220,7 +227,11 @@ function M.sources()
     out[#out + 1] = { name = entry.name, spec = entry.spec }
   end
   if _applied and _applied.__user then
-    out[#out + 1] = { name = "user config", spec = _applied.__user }
+    -- "opts.diagnostics", not "user config": it is the resolved option table,
+    -- which is only what a user set now that lsp.nvim's own presentation has
+    -- moved into `baseline()`. Naming it after the option rather than after
+    -- an assumed author is the honest label.
+    out[#out + 1] = { name = "opts.diagnostics", spec = _applied.__user }
   end
   return out
 end

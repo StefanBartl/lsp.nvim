@@ -64,12 +64,19 @@ local DEFAULTS = {
     -- "dartls",                  -- Dart/Flutter
   },
 
-  -- Passed to `vim.diagnostic.config()` after the servers are enabled.
+  -- Only the two keys that are NOT diagnostic presentation.
+  --
+  -- The look itself lives in `lsp.core.diagnostics.baseline()`, not here, and
+  -- that is a correctness point rather than tidiness: everything in this table
+  -- is merged LAST, after any contribution from another plugin, so that a user
+  -- override always wins. Leaving lsp.nvim's own defaults in it meant they
+  -- were merged last too -- and a plugin contributing its virtual-text style
+  -- would have been silently overruled by lsp.nvim's default rather than by
+  -- anything the user asked for.
+  --
+  -- Anything a user adds here still merges last and still wins. See
+  -- docs/configuration.md "diagnostics -- who owns vim.diagnostic.config()".
   diagnostics = {
-    update_in_insert = false,
-    severity_sort = true,
-    virtual_text = { spacing = 2, prefix = "●" },
-    float = { border = "rounded", source = "if_many" },
     -- Where "]d"/"[d" send you. "trouble" and "auto" behave identically at
     -- runtime (see lsp.bindings.actions.diagnostics_use_trouble); "auto" only
     -- exists so a config can say "whichever is available" without naming
