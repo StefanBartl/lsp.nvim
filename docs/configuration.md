@@ -188,6 +188,62 @@ because an option that changes behaviour has no business in a reporting
 namespace — and it would change nothing observable until a filetype has two
 formatting LSP clients and no conform formatter.
 
+## diagnostics — who owns `vim.diagnostic.config()`
+
+`vim.diagnostic.config()` is one global surface with no notion of an owner.
+Every caller merges into the same table, the last one wins **per key**, and
+nobody is told. Two plugins with opinions about signs end up with the icons
+from one and the virtual text from the other, decided by startup order.
+
+lsp.nvim owns the call. It happens exactly once, from
+`lsp.core.diagnostics.apply`, after the servers are enabled, out of three
+layers where later wins:
+
+| Layer | Source |
+| --- | --- |
+| 1 | `lsp.core.diagnostics.baseline()` — lsp.nvim's own presentation |
+| 2 | contributions, in registration order |
+| 3 | your `opts.diagnostics` — last, so a config always wins |
+
+### Contributing from another plugin
+
+A plugin that would otherwise call `vim.diagnostic.config()` itself registers
+instead, before `lsp.setup()` runs:
+
+```lua
+require("lsp.core.diagnostics").contribute("my.nvim", {
+  signs = {
+    text = { [vim.diagnostic.severity.ERROR] = " " },
+  },
+})
+```
+
+Registering the same name twice replaces the earlier spec and keeps its
+position, so a plugin re-running its own `setup()` does not stack.
+`forget(name)` drops one.
+
+lsp.nvim does not know who its contributors are and never requires them — the
+registry is a plain list of names and tables.
+
+**Sign tables merge key by key.** Severity values are `1..4`, so a full sign
+table looks like a list to `vim.tbl_deep_extend`, which would replace it
+wholesale: contributing one icon would silently delete the other three.
+`signs.text`, `signs.numhl`, `signs.linehl` and `signs.texthl` are merged per
+severity instead.
+
+### Seeing where a setting came from
+
+```vim
+:checkhealth lsp
+```
+
+The **Diagnostics** section lists every layer by name with the keys it
+contributed. A plugin that still calls `vim.diagnostic.config()` directly will
+not appear there and will override these per key — that is the situation the
+registry exists to end, and the section says so.
+
+---
+
 ## diagnostics.debounce_ms
 
 A chatty language server publishes diagnostics several times per keystroke

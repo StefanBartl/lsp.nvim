@@ -443,6 +443,46 @@ local function check_ecosystem()
 end
 
 ---@internal
+--- Who contributed to `vim.diagnostic.config()`.
+---
+--- The surface has no notion of an owner -- every caller merges into the same
+--- table and the last one wins per key, silently. lsp.nvim owns the call
+--- (`lsp.core.diagnostics`), so this is the one place that can answer "where
+--- did this icon come from".
+---@return nil
+local function check_diagnostics()
+  health.start("Diagnostics")
+
+  local ok_mod, diag = pcall(require, "lsp.core.diagnostics")
+  if not ok_mod then
+    health.error("lsp.core.diagnostics did not load", { "Reinstall lsp.nvim" })
+    return
+  end
+
+  if diag.applied() == nil then
+    health.warn("vim.diagnostic.config() has not been applied", {
+      "lsp.setup() has not run, or it failed before the diagnostic step",
+    })
+  else
+    health.ok("vim.diagnostic.config() applied once, from lsp.core.diagnostics")
+  end
+
+  for _, src in ipairs(diag.sources()) do
+    local keys = vim.tbl_keys(src.spec)
+    table.sort(keys)
+    health.info(("%s -- %s"):format(src.name, table.concat(keys, ", ")))
+  end
+
+  -- Anything still calling the API directly is invisible from here; naming
+  -- the symptom is the most this report can honestly do about it.
+  health.info(
+    "A plugin that calls vim.diagnostic.config() itself is not listed above "
+      .. "and will silently override these per key. Have it call "
+      .. "lsp.core.diagnostics.contribute(name, spec) instead."
+  )
+end
+
+---@internal
 --- Point at the per-buffer diagnosis rather than repeating it.
 ---@return nil
 local function check_doctor()
@@ -463,6 +503,7 @@ function M.check()
   check_plugin()
   check_servers()
   check_ecosystem()
+  check_diagnostics()
   check_doctor()
 end
 

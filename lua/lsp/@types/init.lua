@@ -177,7 +177,7 @@ require("lsp.@types.subsystem")
 ---@field preset LspNvim.Preset # Option profile the rest starts from.
 ---@field project LspNvim.ProjectOpts # Per-project override file lookup.
 ---@field servers string[] # Server names to set up and enable.
----@field diagnostics table # Passed straight to `vim.diagnostic.config()`.
+---@field diagnostics table # Merged last into `lsp.core.diagnostics`' single `vim.diagnostic.config()` call, after the baseline and any contributions -- so a user config always wins.
 ---@field formatter LspNvim.FormatterOpts
 ---@field workspace LspNvim.Workspace
 ---@field inlay_hints LspNvim.InlayHintsOpts
@@ -200,7 +200,7 @@ require("lsp.@types.subsystem")
 ---@field preset? LspNvim.Preset # Option profile the rest starts from.
 ---@field project? LspNvim.ProjectOpts # Per-project override file lookup.
 ---@field servers? string[] # Server names to set up and enable.
----@field diagnostics? table # Passed straight to `vim.diagnostic.config()`.
+---@field diagnostics? table # Merged last into `lsp.core.diagnostics`' single `vim.diagnostic.config()` call. See `lsp.core.diagnostics.contribute` for the layer another plugin uses.
 ---@field formatter? LspNvim.FormatterOpts
 ---@field workspace? LspNvim.WorkspaceOpts
 ---@field inlay_hints? LspNvim.InlayHintsOpts
