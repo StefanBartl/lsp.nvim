@@ -38,6 +38,12 @@ each `tools/` subtree — sitting next to the code they describe. Nothing on thi
 page duplicates them; go there when the pages above have answered the *what* and
 you need the *how*.
 
+## Working on it
+
+| Page | What it answers |
+|---|---|
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Ground rules, project layout, and how to add a server, an integration or a keymap |
+
 ## Two things worth knowing once
 
 **The module root is `lsp`.** A Neovim config with its own `lua/lsp/**` wins on
