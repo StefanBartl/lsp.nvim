@@ -386,6 +386,8 @@ local function trouble_move(direction, count)
   if not ok then
     return
   end
+  -- A partial filter, not a full trouble.Mode -- is_open() only reads mode.
+  ---@diagnostic disable-next-line: missing-fields
   if not trouble.is_open({ mode = "diagnostics" }) then
     require("lib.nvim.notify").create("[lsp.nvim]").info("Trouble diagnostics list is not open")
     return
