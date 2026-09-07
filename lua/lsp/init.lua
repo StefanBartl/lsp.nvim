@@ -237,9 +237,6 @@ local function bootstrap(cfg)
   step("handlers", function()
     require("lsp.core.handlers").setup({ debounce_ms = cfg.diagnostics.debounce_ms })
   end)
-  step("core diagnostics", function()
-    require("lsp.core.diagnostics").setup()
-  end)
   -- Before the servers, so the LspAttach handler is in place for the first
   -- attach rather than one buffer late.
   step("inlay hints", function()
@@ -313,15 +310,17 @@ local function bootstrap(cfg)
     formatter = formatter,
   })
 
-  -- After the servers are enabled, so a server config cannot overwrite it.
+  -- After the servers are enabled, so a server config cannot overwrite it,
+  -- and exactly once: `core.diagnostics` merges its own baseline, whatever
+  -- other plugins contributed, and `cfg.diagnostics` (last, so a user config
+  -- always wins) into a single `vim.diagnostic.config()` call.
+  --
+  -- There used to be a second call, from a `core.diagnostics.setup()` step
+  -- before the servers. Both landed and each only overrode the keys it named,
+  -- so lsp.nvim's signs came from one and its virtual text from the other --
+  -- the silent per-key merge that owning the surface is meant to end.
   step("diagnostic config", function()
-    -- `ui` picks ]d/[d's sink (lsp.bindings.actions) and `debounce_ms` sizes
-    -- the publish throttle (lsp.core.handlers); vim.diagnostic.config() has
-    -- neither option and would receive them verbatim otherwise.
-    local diag_opts = vim.tbl_extend("force", {}, cfg.diagnostics)
-    diag_opts.ui = nil
-    diag_opts.debounce_ms = nil
-    vim.diagnostic.config(diag_opts)
+    require("lsp.core.diagnostics").apply(cfg.diagnostics)
   end)
 
   if cfg.mason.ensure_install then

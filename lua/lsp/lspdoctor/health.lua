@@ -261,11 +261,13 @@ function M.check(bufnr)
       -- Diagnostic hints
       if not running then
         if not has_config then
-          lines[#lines + 1] = "  💡 **Action**: Server not configured - check `lsp.config` or registry"
+          lines[#lines + 1] =
+            "  💡 **Action**: Server not configured - check `lsp.config` or registry"
         elseif Opts.show_tools ~= false and not executable_for(name) then
           -- Checked before the generic hints: "the binary is not on $PATH" is
           -- both the commonest cause and the only one with a different fix.
-          lines[#lines + 1] = "  💡 **Action**: Executable not found - install it (`:Mason`) or fix $PATH"
+          lines[#lines + 1] =
+            "  💡 **Action**: Executable not found - install it (`:Mason`) or fix $PATH"
         elseif attempts > 0 then
           lines[#lines + 1] = "  💡 **Action**: Start failed - check `:LspLog` or `:messages`"
         else

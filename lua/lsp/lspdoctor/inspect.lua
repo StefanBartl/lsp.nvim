@@ -349,12 +349,17 @@ local function generate_report(mode, bufnr)
         local c = clients_by_name[n]
         local caps = c.server_capabilities or {}
         lines[#lines + 1] = string.format("### Capabilities: %s", n)
-        lines[#lines + 1] = string.format("  offsetEncoding: `%s`", tostring(c.offset_encoding or "nil"))
-        lines[#lines + 1] = string.format("  completionProvider: %s", yesno(caps.completionProvider ~= nil))
-        lines[#lines + 1] = string.format("  definitionProvider: %s", yesno(caps.definitionProvider ~= nil))
-        lines[#lines + 1] = string.format("  documentFormatting: %s", yesno(caps.documentFormattingProvider == true))
+        lines[#lines + 1] =
+          string.format("  offsetEncoding: `%s`", tostring(c.offset_encoding or "nil"))
+        lines[#lines + 1] =
+          string.format("  completionProvider: %s", yesno(caps.completionProvider ~= nil))
+        lines[#lines + 1] =
+          string.format("  definitionProvider: %s", yesno(caps.definitionProvider ~= nil))
+        lines[#lines + 1] =
+          string.format("  documentFormatting: %s", yesno(caps.documentFormattingProvider == true))
         lines[#lines + 1] = string.format("  codeAction: %s", yesno(caps.codeActionProvider ~= nil))
-        lines[#lines + 1] = string.format("  semanticTokens: %s", yesno(caps.semanticTokensProvider ~= nil))
+        lines[#lines + 1] =
+          string.format("  semanticTokens: %s", yesno(caps.semanticTokensProvider ~= nil))
         lines[#lines + 1] = string.format("  inlayHints: %s", yesno(caps.inlayHintProvider ~= nil))
         lines[#lines + 1] = string.format("  codeLens: %s", yesno(caps.codeLensProvider ~= nil))
         lines[#lines + 1] = ""
