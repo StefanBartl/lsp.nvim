@@ -48,7 +48,6 @@ local function find_omnisharp()
     return mason_pkg_run_cmd
   end
 
-  notify.warn("C#: omnisharp not found in PATH or Mason")
   return nil
 end
 

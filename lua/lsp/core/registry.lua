@@ -7,25 +7,31 @@
 --- it used to be a hardcoded `ACTIVE` table, which made turning a server on or
 --- off an edit to this module (roadmap finding B7).
 
-local notify = require("lib.nvim.notify").create("[lsp.core.registry]")
-
 local M = {}
 
 local desc_tag = "[lsp.registry] "
 
 --- Set up every configured server with the shared capabilities/attach table.
+---
+--- Failures are returned rather than notified here: with many configured
+--- servers on a fresh machine, notifying per server used to fire a wall of
+--- warnings on every startup. The caller (`lsp.init`) folds them into
+--- `status().warnings` (`:checkhealth lsp`) and raises at most one summary
+--- notification.
 ---@param shared table # capabilities, on_attach, on_init, formatter
 ---@param servers string[] # server names, from `config.get().servers`
 ---@return string[] enabled # the names whose module loaded and set up cleanly
+---@return string[] warnings # one entry per name that did not set up, why
 function M.setup_all(shared, servers)
   if type(shared) ~= "table" or type(servers) ~= "table" then
-    return {}
+    return {}, {}
   end
 
   -- macOS used to append "mobiledev.sourcekit" here. That belongs in the
   -- `servers` option now, per platform, not in this loop.
 
   local enabled = {}
+  local warnings = {}
 
   for _, name in ipairs(servers) do
     -- Try both spellings: the bare name and the webdev-prefixed one.
@@ -62,7 +68,10 @@ function M.setup_all(shared, servers)
 
     if not loaded then
       if last_error then
-        notify.warn((desc_tag .. "setup failed for '%s': %s"):format(name, last_error or "?"))
+        warnings[#warnings + 1] = (desc_tag .. "setup failed for '%s': %s"):format(
+          name,
+          last_error or "?"
+        )
       else
         -- This used to read `("… '%s' unavailable"):format()):format(name)` --
         -- an inner `format()` with no argument for its `%s`, which raises
@@ -70,12 +79,12 @@ function M.setup_all(shared, servers)
         -- single configured server without a module aborted the whole loop and
         -- took `setup()` with it. It never fired only because every configured
         -- name happened to resolve.
-        notify.info((desc_tag .. "server module '%s' unavailable"):format(name))
+        warnings[#warnings + 1] = (desc_tag .. "server module '%s' unavailable"):format(name)
       end
     end
   end
 
-  return enabled
+  return enabled, warnings
 end
 
 return M

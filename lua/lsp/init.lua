@@ -177,11 +177,30 @@ local function setup_servers(cfg, shared)
     return {}
   end
 
-  local names = registry.setup_all(shared, cfg.servers)
+  local names, setup_warnings = registry.setup_all(shared, cfg.servers)
+  for _, w in ipairs(setup_warnings or {}) do
+    _warnings[#_warnings + 1] = w
+  end
+
   if type(names) ~= "table" or #names == 0 then
     _warnings[#_warnings + 1] = "no server was configured"
     notify.warn("No LSP servers configured!")
     return {}
+  end
+
+  -- One summary notification instead of one per failed server: with several
+  -- configured servers missing their module (a fresh machine, nothing set up
+  -- yet), this used to fire a warning per server on every startup. The
+  -- specific reason for each is still available -- :checkhealth lsp lists
+  -- status().warnings, which now includes these.
+  if #setup_warnings > 0 then
+    notify.warn(
+      string.format(
+        "%d/%d LSP server(s) failed to set up -- see :checkhealth lsp for details",
+        #setup_warnings,
+        #cfg.servers
+      )
+    )
   end
 
   for _, name in ipairs(names) do
