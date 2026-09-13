@@ -7,7 +7,10 @@ The [repository README](../README.md) is the short version; this is the index.
 
 | Page | What it answers |
 |---|---|
-| [installation.md](installation.md) | How do I install it, what does it need, and what is the pack? |
+| [requirements.md](requirements.md) | What does it need, required and optional? |
+| [installation.md](installation.md) | How do I install it, and what is the pack? |
+| [quickstart.md](quickstart.md) | What's the first thing to run after installing? |
+| [what-you-get.md](what-you-get.md) | The full `:Lsp` route surface at a glance |
 | [FEATURES/](FEATURES/README.md) | What can it actually do, area by area? |
 | [WORKFLOW.md](WORKFLOW.md) | Which of the near-identical routes answers which question, day to day? |
 
