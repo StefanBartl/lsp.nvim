@@ -1,8 +1,6 @@
 # Installation
 
-Requires Neovim 0.11+ and [lib.nvim](https://github.com/StefanBartl/lib.nvim),
-which is a **hard** dependency: `:Lsp` is built on its user-command composer and
-does not register without it.
+See [requirements.md](requirements.md) for the full required/optional list.
 
 ```lua
 -- lazy.nvim

@@ -1,5 +1,20 @@
 # Features
 
+Everything LSP-related lives under one root and answers to one verb, in three
+layers — core, integrations, pack — with the arrows pointing one way only.
+[architecture.md](../architecture.md) has the argument.
+
+| Area | Does |
+| --- | --- |
+| **Servers** | A registry resolving configured names to modules, merging capabilities, owning attach, and bringing a crashed server back with a bounded backoff |
+| **Configuration** | Four layers — defaults, a `preset` profile, your `setup()` options, a per-project `.nvim-lsp.json` — and every warning names the layer the bad value came from |
+| **Diagnostics** | Into the quickfix or location list, with a leading-edge throttle on `publishDiagnostics`, and a workspace-wide toggle that refuses above its size gate rather than freezing the editor |
+| **Formatter** | conform-first with an LSP fallback, and a format-on-save toggle this plugin owns rather than conform |
+| **In-buffer indicators** | Inlay hints and a code-action indicator, each global plus per-filetype, both filtered so they carry information |
+| **Roots and workspaces** | A scope switch for the servers that resolve a root themselves, and LSP's own multi-root mechanism for the rest |
+| **`:LspDoctor`** | Six per-buffer reports. Five observe; `probe` provokes, which is the only way to tell a clean file from a dead pipeline |
+| **Tools and integrations** | ESLint/Prettier, signature help, type lookup, deprecation help, one picker backend, and a context menu built from the resolved keymap catalogue |
+
 What lsp.nvim actually does, by area — and, where it matters, why it is shaped
 that way. Each page below is one theme; the reference detail lives elsewhere:
 [configuration.md](../configuration.md) for the options,
