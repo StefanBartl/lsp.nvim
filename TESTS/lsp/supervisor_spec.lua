@@ -186,6 +186,96 @@ describe("lsp.core.supervisor", function()
     end)
   end)
 
+  describe("start", function()
+    --- `M.start` reads `vim.lsp.config[name]` and calls `vim.lsp.start`
+    --- directly (see `M.config_for`), so both are stubbed here rather than
+    --- going through a real language server.
+    ---@param config table The `vim.lsp.config[name]` entry to serve.
+    ---@return table sup, table calls, table restore
+    local function reload_with_config(name, config)
+      local sup = reload()
+      local real_config, real_start = vim.lsp.config, vim.lsp.start
+      local calls = { start = {} }
+
+      vim.lsp.config = { [name] = config }
+      vim.lsp.start = function(cfg, opts)
+        calls.start[#calls.start + 1] = { config = cfg, opts = opts }
+        return 42
+      end
+
+      return sup,
+        calls,
+        function()
+          vim.lsp.config = real_config
+          vim.lsp.start = real_start
+        end
+    end
+
+    -- The bug this block exists for: `vim.lsp.start` never resolves a
+    -- function-valued `root_dir` -- only `vim.lsp.enable`'s own attach path
+    -- does that -- so handing it the resolver as-is starts the client with
+    -- `root_dir` still a function, and the server falls back to single-file
+    -- mode despite attaching successfully.
+    it("resolves a function root_dir before calling vim.lsp.start", function()
+      local sup, calls, restore = reload_with_config("lua_ls", {
+        cmd = { "lua-language-server" },
+        root_dir = function(_bufnr, on_dir)
+          on_dir("/repo/root")
+        end,
+      })
+
+      local ok = sup.start("lua_ls", vim.api.nvim_get_current_buf())
+      restore()
+
+      assert.is_true(ok)
+      assert.are.equal(1, #calls.start)
+      assert.are.equal("/repo/root", calls.start[1].config.root_dir)
+    end)
+
+    it("passes a string root_dir through unchanged", function()
+      local sup, calls, restore = reload_with_config("lua_ls", {
+        cmd = { "lua-language-server" },
+        root_dir = "/repo/root",
+      })
+
+      sup.start("lua_ls", vim.api.nvim_get_current_buf())
+      restore()
+
+      assert.are.equal("/repo/root", calls.start[1].config.root_dir)
+    end)
+
+    -- A resolver that never calls `on_dir` (e.g. marksman skipping a buffer
+    -- with no real backing file) is declining to activate, not returning a
+    -- root worth starting a client against.
+    it("does not start when the resolver never calls on_dir", function()
+      local sup, calls, restore = reload_with_config("marksman", {
+        cmd = { "marksman", "server" },
+        root_dir = function(_bufnr, _on_dir) end,
+      })
+
+      local ok = sup.start("marksman", vim.api.nvim_get_current_buf())
+      restore()
+
+      assert.is_false(ok)
+      assert.are.equal(0, #calls.start)
+    end)
+
+    it("leaves the registered config's root_dir function untouched", function()
+      local root_dir = function(_bufnr, on_dir)
+        on_dir("/repo/root")
+      end
+      local registered = { cmd = { "lua-language-server" }, root_dir = root_dir }
+      local sup, _, restore = reload_with_config("lua_ls", registered)
+
+      sup.start("lua_ls", vim.api.nvim_get_current_buf())
+      restore()
+
+      -- Not deepcopy-then-discard: a later buffer must still get a live
+      -- resolver, not whatever root the first buffer happened to resolve.
+      assert.are.equal(root_dir, registered.root_dir)
+    end)
+  end)
+
   describe("backoff", function()
     it("doubles from the initial delay", function()
       local sup = reload()

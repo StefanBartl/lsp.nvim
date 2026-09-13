@@ -252,6 +252,19 @@ end
 --- `vim.lsp.start` reuses a client with the same name and root rather than
 --- spawning a second one, so calling this when the server is already back is
 --- an attach, not a duplicate.
+---
+--- `vim.lsp.start` does *not* resolve a function-valued `root_dir` -- that
+--- resolution only happens inside `vim.lsp.enable`'s own FileType-driven
+--- attach path (`lsp_enable_callback` in `vim/lsp.lua`), which calls it as
+--- `root_dir(bufnr, on_dir)` before ever handing the config to
+--- `vim.lsp.start`. Handed the function itself, `vim.lsp.start` passes it
+--- straight through to the client as `root_dir`; that is neither a string
+--- nor a table, so `workspaceFolders`/`rootUri` come out empty and the
+--- server starts in single-file mode -- silently, since attach still
+--- succeeds. Every resolver this plugin registers (`lsp.servers.*.
+--- rootresolver`, built on `lib.nvim.fs.polymorphic_rootresolver`) calls
+--- `on_dir` synchronously, so it is resolved here the same way
+--- `lsp_enable_callback` does, before `vim.lsp.start` ever sees the config.
 ---@param name string
 ---@param bufnr integer
 ---@return boolean started
@@ -268,10 +281,25 @@ function M.start(name, bufnr)
     return false
   end
 
+  local config = server_config
+  if type(config.root_dir) == "function" then
+    config = vim.deepcopy(config)
+    local root_dir, resolved = nil, false
+    config.root_dir(bufnr, function(dir)
+      root_dir, resolved = dir, true
+    end)
+    -- Not called at all (resolver declined, e.g. no real backing file) or
+    -- called with nil: neither is a root worth starting a client against.
+    if not resolved or not root_dir then
+      return false
+    end
+    config.root_dir = root_dir
+  end
+
   -- The resolved config is built elsewhere; LuaLS still checks it against
   -- `vim.lsp.start`'s meta, the same case as in `servers/lua_ls/reload.lua`.
   ---@diagnostic disable-next-line: missing-fields
-  local ok, client_id = pcall(lsp.start, server_config, { bufnr = bufnr })
+  local ok, client_id = pcall(lsp.start, config, { bufnr = bufnr })
   return ok and client_id ~= nil
 end
 
