@@ -34,3 +34,9 @@ lspsaga has written it: path items plus a per-filetype number of symbols.
   `M.set_winbar_max_symbols`, `M.trim_winbar`)
 - **Default:** `markdown = 1` — the file's own top heading and nothing below
   it. A filetype not named there keeps the full chain.
+
+`M.configure()` also sets `ui.winbar_prefix = " "` in the `lspsaga.setup()`
+call — lspsaga's own default there is `""`, which leaves the folder icon
+flush against the window's left edge, one column tighter than every other
+glyph in the breadcrumb (each already carries a leading space baked into its
+own icon string).

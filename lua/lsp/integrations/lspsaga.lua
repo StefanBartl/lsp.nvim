@@ -215,6 +215,13 @@ function M.configure()
     lightbulb = { enable = false },
     rename = { enable = false },
     term_toggle = { enable = false },
+    -- `winbar_prefix` defaults to "" (lspsaga's own lua/lspsaga/init.lua) --
+    -- with no separate left-margin option, the folder icon sits flush
+    -- against the window's left edge, one column tighter than every other
+    -- glyph in the breadcrumb (each already has a leading space baked into
+    -- its own icon string). One space here matches that spacing instead of
+    -- leaving the first glyph the only one without it.
+    ui = { winbar_prefix = " " },
   })
 
   watch_winbar()
