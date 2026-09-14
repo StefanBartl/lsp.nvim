@@ -164,3 +164,37 @@ describe("lsp.integrations.lspsaga winbar depth", function()
     end)
   end)
 end)
+
+--- `M.configure()` itself -- the call that actually reaches lspsaga's own
+--- `setup()`, as opposed to `trim_winbar`'s post-processing above.
+describe("lsp.integrations.lspsaga configure", function()
+  ---@return table
+  local function reload()
+    package.loaded["lsp.integrations.lspsaga"] = nil
+    return require("lsp.integrations.lspsaga")
+  end
+
+  it("passes a left margin through to lspsaga's own winbar_prefix", function()
+    local saga = reload()
+    local captured
+
+    local original = package.loaded["lspsaga"]
+    package.loaded["lspsaga"] = {
+      setup = function(opts)
+        captured = opts
+      end,
+    }
+
+    local ok = pcall(saga.configure)
+
+    package.loaded["lspsaga"] = original
+
+    assert.is_true(ok)
+    assert.is_not_nil(captured)
+    -- lspsaga's own default (lua/lspsaga/init.lua) is "" -- with no
+    -- separate left-margin option, that leaves the folder icon flush
+    -- against the window's edge, one column tighter than every other
+    -- glyph in the breadcrumb. One space here matches that spacing.
+    assert.are.equal(" ", captured.ui.winbar_prefix)
+  end)
+end)
