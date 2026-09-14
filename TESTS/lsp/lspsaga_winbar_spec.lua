@@ -197,4 +197,30 @@ describe("lsp.integrations.lspsaga configure", function()
     -- glyph in the breadcrumb. One space here matches that spacing.
     assert.are.equal(" ", captured.ui.winbar_prefix)
   end)
+
+  it("replaces lspsaga's boxed-letter String icon with a hashtag for headings", function()
+    local saga = reload()
+    local captured
+
+    local original = package.loaded["lspsaga"]
+    package.loaded["lspsaga"] = {
+      setup = function(opts)
+        captured = opts
+      end,
+    }
+
+    local ok = pcall(saga.configure)
+
+    package.loaded["lspsaga"] = original
+
+    assert.is_true(ok)
+    assert.is_not_nil(captured)
+    -- Markdown headings arrive as LSP SymbolKind "String" (no "Heading" kind
+    -- exists in the protocol) -- overriding that one kind's icon is what
+    -- actually changes the heading badge in the breadcrumb.
+    local override = captured.ui.kind.String
+    assert.are.equal(2, #override)
+    assert.are.equal("\xEF\x8A\x92 ", override[1])
+    assert.are.equal("Title", override[2])
+  end)
 end)
