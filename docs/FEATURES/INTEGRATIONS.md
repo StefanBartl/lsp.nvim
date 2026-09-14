@@ -40,3 +40,10 @@ call — lspsaga's own default there is `""`, which leaves the folder icon
 flush against the window's left edge, one column tighter than every other
 glyph in the breadcrumb (each already carries a leading space baked into its
 own icon string).
+
+Same `ui` table overrides lspsaga's icon for LSP SymbolKind `String` with a
+hashtag glyph (`ui.kind.String = { "\xEF\x8A\x92 ", "Title" }`, nf-fa-hashtag
+U+F292). Headings have no SymbolKind of their own in the LSP protocol, so
+marksman reports them as `String` — lspsaga's own default icon for that kind
+is a boxed-letter badge ("S"), which reads as a data-type marker rather than
+"this is a heading". A hashtag reads as Markdown's own `#` syntax instead.

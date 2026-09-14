@@ -19,6 +19,14 @@ local M = {}
 
 local api = vim.api
 
+-- Nerd Font hashtag glyph (nf-fa-hashtag, U+F292), written as an explicit
+-- byte escape rather than a literal glyph -- same reason `ui.tabline.utils`'s
+-- LEFT_CAP/RIGHT_CAP do: an editor/encoding pass has silently dropped a
+-- literal private-use-area glyph before. Used below to replace lspsaga's
+-- default icon for LSP SymbolKind "String" (see `ui.kind.String` in
+-- `M.configure`).
+local HASHTAG_GLYPH = "\xEF\x8A\x92"
+
 ---@type string
 M.plugin = "lspsaga.nvim"
 
@@ -221,7 +229,19 @@ function M.configure()
     -- glyph in the breadcrumb (each already has a leading space baked into
     -- its own icon string). One space here matches that spacing instead of
     -- leaving the first glyph the only one without it.
-    ui = { winbar_prefix = " " },
+    ui = {
+      winbar_prefix = " ",
+      -- lspsaga's own default for LSP SymbolKind "String" is a boxed-letter
+      -- icon (lua/lspsaga/lspkind.lua: `{ 'String', '󰅳 ', 'String' }`) --
+      -- generic for the kind it names, and the kind Markdown headings
+      -- actually arrive as: the LSP protocol has no "Heading" SymbolKind, so
+      -- marksman reports them as String, the closest fit it has. A hashtag
+      -- reads as "this is a heading" (Markdown's own `#` syntax) rather than
+      -- as a data-type badge. `{icon, hlgroup}`, not a bare string: a bare
+      -- string only overrides lspsaga's highlight group for the kind, not
+      -- the icon -- see `merge_custom` in that same file.
+      kind = { String = { HASHTAG_GLYPH .. " ", "Title" } },
+    },
   })
 
   watch_winbar()
