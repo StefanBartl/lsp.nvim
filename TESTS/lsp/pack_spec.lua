@@ -121,7 +121,7 @@ describe("lsp.config.pack", function()
     end)
 
     it("keeps completion out of nofile buffers", function()
-      -- lib.nvim.ui.kit's floats are buftype=nofile, and blink's own guard
+      -- ui.kit's floats are buftype=nofile, and blink's own guard
       -- only covers buftype=prompt. With <CR> bound to accept, a rename
       -- prompt would otherwise submit a completion instead of what was typed.
       with(nil)

@@ -4,23 +4,24 @@ Two layers, run by CI and both runnable locally.
 
 | What | File(s) | Needs |
 | ---- | ------- | ----- |
-| Spec suite | `TESTS/lsp/*_spec.lua` | plenary.nvim, lib.nvim |
-| Smoke test | `TESTS/smoke.lua` | lib.nvim |
+| Spec suite | `TESTS/lsp/*_spec.lua` | plenary.nvim, lib.nvim, ui.nvim (`pack_spec.lua`) |
+| Smoke test | `TESTS/smoke.lua` | lib.nvim, ui.nvim (`step("lspdoctor", ...)` runs unconditionally) |
 
 ## Run
 
-The suite resolves plenary.nvim and lib.nvim from environment variables, so the
-same command works locally and in CI:
+The suite resolves plenary.nvim, lib.nvim and ui.nvim from environment
+variables, so the same command works locally and in CI:
 
 ```sh
 PLENARY_PATH=~/.local/share/nvim/lazy/plenary.nvim \
 LIB_NVIM_PATH=../lib.nvim \
+UI_NVIM_PATH=../ui.nvim \
 nvim --headless --noplugin -u TESTS/minimal_init.lua \
   -c "PlenaryBustedDirectory TESTS/lsp { minimal_init = 'TESTS/minimal_init.lua', sequential = true }"
 ```
 
 ```sh
-nvim --headless -u NONE -c "set rtp^=." -c "set rtp^=../lib.nvim" \
+nvim --headless -u NONE -c "set rtp^=." -c "set rtp^=../lib.nvim" -c "set rtp^=../ui.nvim" \
   -c "luafile TESTS/smoke.lua" -c "qa!"
 ```
 

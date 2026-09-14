@@ -93,7 +93,7 @@ function M.attach()
 
   -- Add import statement
   map("n", "<leader>aI", function()
-    require("lib.nvim.ui.kit").input({
+    require("ui.kit").input({
       title = "Component name: ",
       on_submit = function(component)
         if component ~= "" then
@@ -121,7 +121,7 @@ function M.attach()
     local lines = vim.fn.getline(start_line, end_line)
     ---@cast lines string[]
 
-    require("lib.nvim.ui.kit").input({
+    require("ui.kit").input({
       title = "Component name: ",
       on_submit = function(name)
         if name == "" then

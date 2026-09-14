@@ -3,7 +3,7 @@
 ---@description
 --- lsp.nvim does not depend on a menu plugin. It *provides* a list of
 --- entries in the shape nvzone/menu expects, built with
---- `lib.nvim.contextmenu`'s helpers, and a host — typically the user's own
+--- `ui.contextmenu`'s helpers, and a host — typically the user's own
 --- RightMouse dispatcher — composes them into its own menu, e.g.:
 --- >
 ---   local items = require("lsp.integrations.menu").items()
@@ -24,7 +24,7 @@
 --- actively looking at, so one that would just error on click is worse
 --- than one that doesn't appear. Opt-out via `config.menu.enable`.
 
-local contextmenu = require("lib.nvim.contextmenu")
+local contextmenu = require("ui.contextmenu")
 
 local M = {}
 
@@ -76,7 +76,7 @@ end
 --- Returns `{}` when the integration is disabled or nothing is registered
 --- yet (`require("lsp").setup()` hasn't run), so a host can safely
 --- `vim.list_extend`/compose this unconditionally.
----@return Lib.ContextMenu.Item[]
+---@return Ui.ContextMenu.Item[]
 function M.items()
   local cfg = require("lsp.config").get()
   local mcfg = cfg and cfg.menu
@@ -117,7 +117,7 @@ end
 --- hosts that prefer an "LSP ▸" fly-out instead of top-level group entries.
 --- Returns nil when there is nothing to show.
 ---@param label? string submenu label (default "  LSP")
----@return Lib.ContextMenu.Item|nil
+---@return Ui.ContextMenu.Item|nil
 function M.submenu(label)
   return contextmenu.submenu(label or "  LSP", M.items())
 end

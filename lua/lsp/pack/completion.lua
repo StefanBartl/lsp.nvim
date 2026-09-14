@@ -14,7 +14,7 @@
 --- - suppressing completion in utility buffers.
 ---
 --- The second is a bug fix, not a preference. Any buffer with a non-empty
---- 'buftype' is a scratch/prompt/terminal surface, and `lib.nvim.ui.kit`'s
+--- 'buftype' is a scratch/prompt/terminal surface, and `ui.kit`'s
 --- floating input, chooser and confirm dialogs are all `buftype=nofile`. With
 --- cmp's popup open over one, `<CR>` is bound to "confirm the visible
 --- completion" (nvchad.configs.cmp sets `select = true`), so submitting a

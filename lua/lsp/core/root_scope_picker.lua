@@ -4,7 +4,7 @@
 --- `User LspRootScopeChanged` so lua_ls recomputes root_dir for open buffers
 --- (see lsp.servers.lua_ls.reload).
 
-local select = require("lib.nvim.ui.kit.select")
+local select = require("ui.kit.select")
 local root_scope = require("lsp.core.root_scope")
 local notify = require("lib.nvim.notify").create("[lsp.core.root_scope_picker]")
 
