@@ -36,7 +36,8 @@ jobs:
 
   test:
     # The spec suite. plenary provides the busted harness; lib.nvim is a hard
-    # dependency of the plugin itself.
+    # dependency of the plugin itself. ui.nvim is a soft one (lspdoctor, the
+    # root/workspace pickers, ...) that TESTS/lsp/pack_spec.lua exercises.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -49,19 +50,26 @@ jobs:
           repository: StefanBartl/lib.nvim
           path: .deps/lib.nvim
           ref: ci-verified
+      - uses: actions/checkout@v5
+        with:
+          repository: StefanBartl/ui.nvim
+          path: .deps/ui.nvim
       - uses: rhysd/action-setup-vim@v1
         with: { neovim: true, version: stable }
       - name: plenary specs
         env:
           PLENARY_PATH: .deps/plenary.nvim
           LIB_NVIM_PATH: .deps/lib.nvim
+          UI_NVIM_PATH: .deps/ui.nvim
         run: |
           nvim --headless --noplugin -u TESTS/minimal_init.lua             -c "PlenaryBustedDirectory TESTS/lsp { minimal_init = 'TESTS/minimal_init.lua', sequential = true }"
 
   smoke:
     # End-to-end, and deliberately separate from the specs above: this one runs
     # the real `setup()` against the real modules, which is exactly what the
-    # stubbed specs cannot check.
+    # stubbed specs cannot check. Needs ui.nvim too: `step("lspdoctor", ...)`
+    # runs unconditionally, and the smoke test asserts zero setup warnings
+    # under the default config -- a missing ui.kit would push one.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -70,11 +78,15 @@ jobs:
           repository: StefanBartl/lib.nvim
           path: .deps/lib.nvim
           ref: ci-verified
+      - uses: actions/checkout@v5
+        with:
+          repository: StefanBartl/ui.nvim
+          path: .deps/ui.nvim
       - uses: rhysd/action-setup-vim@v1
         with: { neovim: true, version: stable }
       - run: |
           nvim --headless -u NONE \
-            -c "set rtp^=." -c "set rtp^=.deps/lib.nvim" \
+            -c "set rtp^=." -c "set rtp^=.deps/lib.nvim" -c "set rtp^=.deps/ui.nvim" \
             -c "luafile TESTS/smoke.lua" -c "qa!"
 
   # See lib.nvim's own templates/README.md ("Pinning lib.nvim in CI") for why:

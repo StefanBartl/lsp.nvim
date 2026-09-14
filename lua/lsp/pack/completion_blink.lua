@@ -52,7 +52,7 @@ return {
       },
       -- Suppress completion in utility buffers -- the same fix the nvim-cmp
       -- fragment carries, and what makes `<CR>` safe to default to. blink's
-      -- own guard stops at `buftype = "prompt"`, but `lib.nvim.ui.kit`'s
+      -- own guard stops at `buftype = "prompt"`, but `ui.kit`'s
       -- floating input, chooser and confirm dialogs are `buftype = "nofile"`:
       -- with the menu open over one and Enter bound to accept, submitting a
       -- filename in a rename prompt would take a fuzzy-matched completion

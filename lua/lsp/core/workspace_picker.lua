@@ -14,7 +14,7 @@
 ---@see lsp.core.workspace_folders
 ---@see lsp.core.root_scope_picker
 
-local select = require("lib.nvim.ui.kit.select")
+local select = require("ui.kit.select")
 local workspace = require("lsp.core.workspace_folders")
 local notify = require("lib.nvim.notify").create("[lsp.core.workspace_picker]")
 

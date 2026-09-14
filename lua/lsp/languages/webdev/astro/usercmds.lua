@@ -67,7 +67,7 @@ function M.setup()
     if opts.args ~= "" then
       create(opts.args)
     else
-      require("lib.nvim.ui.kit").input({ title = "Component name: ", on_submit = create })
+      require("ui.kit").input({ title = "Component name: ", on_submit = create })
     end
   end, {
     nargs = "?",
@@ -105,7 +105,7 @@ function M.setup()
     if opts.args ~= "" then
       create(opts.args)
     else
-      require("lib.nvim.ui.kit").input({
+      require("ui.kit").input({
         title = "Page name (e.g., about.astro): ",
         on_submit = create,
       })

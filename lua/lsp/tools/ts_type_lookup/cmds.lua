@@ -3,7 +3,7 @@
 --- Commands accept an optional argument; when omitted the current word (`<cword>`) is used.
 local notify = require("lib.nvim.notify").create("[lsp.tools.ts_type_lookup.cmds]")
 local usercmd = require("lib.nvim.bindings.usercmd")
-local viewer = require("lib.nvim.ui.kit.viewer")
+local viewer = require("ui.kit.viewer")
 
 local api = vim.api
 local lsp = vim.lsp

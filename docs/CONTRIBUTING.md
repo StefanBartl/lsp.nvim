@@ -124,6 +124,7 @@ nvim --headless --noplugin -u TESTS/minimal_init.lua \
 
 ```
 nvim --headless -u NONE -c "set rtp^=." -c "set rtp^=/path/to/lib.nvim" \
+  -c "set rtp^=/path/to/ui.nvim" \
   -c "luafile TESTS/smoke.lua" -c "qa!"
 ```
 

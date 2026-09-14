@@ -108,7 +108,7 @@ function M.execute()
     table.insert(lines, "  (none)")
   end
 
-  require("lib.nvim.ui.kit").viewer({
+  require("ui.kit").viewer({
     lines = lines,
     title = " LSP Info ",
     width = math.min(80, vim.o.columns - 4),

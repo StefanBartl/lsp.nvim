@@ -22,5 +22,9 @@ end
 
 prepend_env("PLENARY_PATH")
 prepend_env("LIB_NVIM_PATH")
+-- ui.kit/ui.contextmenu moved out of lib.nvim.ui.kit/lib.nvim.contextmenu
+-- in the 2026-09 migration -- needed by TESTS/lsp/pack_spec.lua and
+-- anything touching lspdoctor/the root/workspace pickers.
+prepend_env("UI_NVIM_PATH")
 
 vim.cmd("runtime plugin/plenary.vim")
