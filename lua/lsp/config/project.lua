@@ -97,38 +97,23 @@ local function display(path)
 end
 
 ---@internal
---- Read and decode the file. Every failure is a warning, never an error: a
---- broken project file must cost the override, not the startup.
----@param path string
----@param label string # Short path, for the warnings.
----@return table|nil data
----@return string[] warnings
-local function decode(path, label)
-  local ok, content = pcall(vim.fn.readfile, path)
-  if not ok or type(content) ~= "table" then
-    return nil, { ("%s: cannot be read, ignoring"):format(label) }
+--- Turn a `lib.nvim.config.repo_file.load` failure into this module's own
+--- warning wording. `"empty"` is deliberately absent: a placeholder file is
+--- not a mistake worth reporting, so it is handled inline in `M.read`
+--- instead of routed through here.
+---@param reason Lib.Config.RepoFile.Reason
+---@param detail string|nil
+---@param label string
+---@return string
+local function warning_for(reason, detail, label)
+  if reason == "read_failed" then
+    return ("%s: cannot be read, ignoring"):format(label)
   end
-
-  local text = table.concat(content, "\n")
-  if text:match("^%s*$") then
-    -- An empty file is a plausible placeholder ("I will fill this in"), not a
-    -- mistake worth reporting.
-    return nil, {}
+  if reason == "invalid_json" then
+    return ("%s: invalid JSON (%s), ignoring"):format(label, tostring(detail))
   end
-
-  -- `luanil` turns JSON `null` into an absent key instead of `vim.NIL`. In a
-  -- config file `null` reads as "no opinion", and letting `vim.NIL` through
-  -- would put a sentinel userdata where every consumer expects a value.
-  local decoded
-  ok, decoded = pcall(vim.json.decode, text, { luanil = { object = true, array = true } })
-  if not ok then
-    return nil, { ("%s: invalid JSON (%s), ignoring"):format(label, tostring(decoded)) }
-  end
-  if type(decoded) ~= "table" or vim.islist(decoded) then
-    return nil, { ("%s: expected a JSON object, ignoring"):format(label) }
-  end
-
-  return decoded, {}
+  -- reason == "not_object"
+  return ("%s: expected a JSON object, ignoring"):format(label)
 end
 
 --- Find, read and filter the project file.
@@ -151,41 +136,34 @@ function M.read(opts, start)
   end
 
   local label = display(path)
-  local data, warnings = decode(path, label)
-  if data == nil then
-    return nil, warnings
-  end
-
-  ---@type table
-  local clean = {}
-  ---@type string[]
-  local refused = {}
-  for key, value in pairs(data) do
-    if M.ALLOWED[key] then
-      clean[key] = value
-    else
-      refused[#refused + 1] = tostring(key)
+  local result, reason, detail = require("lib.nvim.config.repo_file").load(path, M.ALLOWED)
+  if not result then
+    if reason == "empty" then
+      return nil, {}
     end
+    ---@cast reason "read_failed"|"invalid_json"|"not_object"
+    return nil, { warning_for(reason, detail, label) }
   end
 
-  if #refused > 0 then
-    table.sort(refused)
+  ---@type string[]
+  local warnings = {}
+  if #result.refused > 0 then
     local allowed = vim.tbl_keys(M.ALLOWED)
     table.sort(allowed)
     -- One line for all of them: a file that sets five refused keys has one
     -- mistaken idea about this feature, not five separate problems.
     warnings[#warnings + 1] = ("%s: %s cannot be set from a project file, ignoring (allowed: %s)"):format(
       label,
-      table.concat(refused, ", "),
+      table.concat(result.refused, ", "),
       table.concat(allowed, ", ")
     )
   end
 
-  if next(clean) == nil then
+  if next(result.data) == nil then
     return nil, warnings
   end
 
-  return { path = path, label = label, data = clean }, warnings
+  return { path = path, label = label, data = result.data }, warnings
 end
 
 return M
