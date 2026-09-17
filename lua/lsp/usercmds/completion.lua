@@ -1,84 +1,34 @@
 ---@module 'lsp.usercmds.completion'
 --- Intelligent completion for LSP usercommands
 --- Filters suggestions based on filetype and running state
+---
+--- Everything offered for `:Lsp start` comes from the registered configs, for
+--- one reason: `lsp.usercmds.start` refuses any other name ("No registered LSP
+--- configuration for '%s'"), so offering a name it cannot start is offering a
+--- dead end. Two sources used to feed this list and neither was the registry.
+---
+--- The first was `lsp.core.registry.ACTIVE`, which does not exist -- that
+--- module exports `setup_all` and nothing else, so the `type(reg.ACTIVE) ==
+--- "table"` guard never held and the "fallback" list of six names was the only
+--- thing this ever returned. The second was a hardcoded filetype table, a copy
+--- of the one `lsp.usercmds.start` was rewritten to get rid of. Measured on an
+--- `html` buffer: the list offered `emmet_ls` (unconfigured, unstartable) and
+--- never offered `tailwindcss`, which is configured for `html` and was the
+--- server the user was reaching for. `omnisharp` and `tailwindcss` were
+--- unreachable from completion at every filetype.
 
 local M = {}
 
 local lsp = vim.lsp
+local start = require("lsp.usercmds.start")
+local supervisor = require("lsp.core.supervisor")
 
---- Get all configured servers from registry
+--- Every server this plugin has a configuration for, sorted.
 ---@return string[]
 local function get_configured_servers()
-  local ok, reg = pcall(require, "lsp.core.registry")
-  if ok and type(reg) == "table" and type(reg.ACTIVE) == "table" then
-    return vim.deepcopy(reg.ACTIVE)
-  end
-  -- Fallback
-  return { "lua_ls", "ts_ls", "gopls", "marksman", "html", "bashls" }
-end
-
---- Get filetype-to-server mapping
----@return table<string, string[]>
-local function get_filetype_server_map()
-  return {
-    lua = { "lua_ls" },
-    javascript = { "ts_ls", "eslint" },
-    typescript = { "ts_ls", "eslint" },
-    javascriptreact = { "ts_ls", "eslint" },
-    typescriptreact = { "ts_ls", "eslint" },
-    go = { "gopls" },
-    markdown = { "marksman" },
-    ["markdown.mdx"] = { "marksman" },
-    html = { "html", "emmet_ls" },
-    css = { "cssls" },
-    json = { "jsonls" },
-    sh = { "bashls" },
-    bash = { "bashls" },
-    zsh = { "bashls" },
-    c = { "clangd" },
-    cpp = { "clangd" },
-    cs = { "omnisharp" },
-    zig = { "zls" },
-  }
-end
-
---- Get servers for current buffer's filetype
----@param bufnr integer|nil
----@return string[]
-local function get_servers_for_filetype(bufnr)
-  bufnr = bufnr or 0
-  local ft = vim.bo[bufnr].filetype
-  if not ft or ft == "" then
-    return {}
-  end
-
-  local map = get_filetype_server_map()
-  return map[ft] or {}
-end
-
---- Get list of installed LSPs via Mason
----@return string[]
-local function get_installed_lsps()
-  local ok, registry = pcall(require, "mason-registry")
-  if not ok then
-    return {}
-  end
-
-  local lsps = {}
-  for _, pkg in ipairs(registry.get_installed_packages()) do
-    if pkg:is_installed() then
-      local categories = pkg.spec.categories or {}
-      for _, cat in ipairs(categories) do
-        if cat == "LSP" then
-          lsps[#lsps + 1] = pkg.name
-          break
-        end
-      end
-    end
-  end
-
-  table.sort(lsps)
-  return lsps
+  local names = vim.deepcopy(supervisor.registered_names())
+  table.sort(names)
+  return names
 end
 
 --- Get clients attached to buffer
@@ -121,7 +71,7 @@ local function filter_by_arglead(candidates, arglead)
 end
 
 --- Completion for LspStartHere
---- Shows: filetype-relevant servers + configured servers + mason servers
+--- Shows: filetype-relevant servers first, then the rest of the configured ones
 --- Excludes: already running servers
 ---@param arglead string
 ---@param _cmdline string
@@ -135,27 +85,20 @@ function M.complete_start(arglead, _cmdline, _cursorpos)
     local candidates = {}
     local seen = {}
 
-    -- Priority 1: Servers for current filetype (not running)
-    local ft_servers = get_servers_for_filetype(bufnr)
-    for _, name in ipairs(ft_servers) do
+    -- Priority 1: Servers registered for this buffer's filetype (not running).
+    -- Same answer `:Lsp start` with no argument acts on, and the same answer
+    -- `:Lsp info` and `:LspDoctor startup` report.
+    for _, name in ipairs(start.get_servers_for_buffer(bufnr)) do
       if not is_server_running(name, bufnr) and not seen[name] then
         candidates[#candidates + 1] = name
         seen[name] = true
       end
     end
 
-    -- Priority 2: Configured servers (not running)
-    local configured = get_configured_servers()
-    for _, name in ipairs(configured) do
-      if not is_server_running(name, bufnr) and not seen[name] then
-        candidates[#candidates + 1] = name
-        seen[name] = true
-      end
-    end
-
-    -- Priority 3: Mason servers (not running)
-    local installed = get_installed_lsps()
-    for _, name in ipairs(installed) do
+    -- Priority 2: Every other configured server (not running). Starting a
+    -- server outside the buffer's filetype is unusual but legitimate, and it
+    -- is the only other name `start_lsp` accepts.
+    for _, name in ipairs(get_configured_servers()) do
       if not is_server_running(name, bufnr) and not seen[name] then
         candidates[#candidates + 1] = name
         seen[name] = true
@@ -184,9 +127,15 @@ end
 function M.complete_stop(arglead, _cmdline, _cursorpos)
   local clients = get_buffer_clients(0)
   local names = {}
+  local seen = {}
 
+  -- Deduplicated: two clients can share a name, and the command takes a name,
+  -- so offering it twice offers the same command twice.
   for _, c in ipairs(clients) do
-    names[#names + 1] = c.name
+    if not seen[c.name] then
+      names[#names + 1] = c.name
+      seen[c.name] = true
+    end
   end
 
   table.sort(names)

@@ -154,6 +154,15 @@ function M.force_restart(name, bufnr)
 
   if #stopped_ids == 0 then
     notify.info(string.format("'%s' not running, starting fresh", name))
+    -- Reset first, exactly as the path below does after the stop, and for the
+    -- reason `auto_recover` spells out: the counter is shared with
+    -- `lsp.core.supervisor`, so a server that crash-looped until the
+    -- supervisor gave up arrives here past every cap. Measured with four
+    -- recorded attempts on `lua_ls` and nothing attached, `:Lsp force-restart
+    -- lua_ls` answered "Max retry attempts (1) reached" and never called
+    -- `supervisor.start` -- and "not running after a crash loop" is the state
+    -- this command exists for.
+    supervisor.reset(name)
     return M.retry_start(name, bufnr, 1)
   end
 

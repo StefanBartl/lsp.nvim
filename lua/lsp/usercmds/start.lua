@@ -143,14 +143,35 @@ function M.execute(args)
       return
     end
 
-    local started = 0
+    local started, already = 0, 0
     for _, name in ipairs(servers) do
+      -- Asked before the start, because `start_lsp` returns true for a server
+      -- that was already attached. Counting those as started made `:Lsp start`
+      -- on a fully attached buffer report "Started 1/1 LSP server(s)" one line
+      -- after "LSP 'lua_ls' already running" -- measured on a lua buffer with
+      -- lua_ls attached -- which is a command claiming work it did not do.
+      local running = is_server_running(name, bufnr)
       if start_lsp(name, bufnr) then
-        started = started + 1
+        if running then
+          already = already + 1
+        else
+          started = started + 1
+        end
       end
     end
 
-    notify.info(string.format("Started %d/%d LSP server(s)", started, #servers))
+    if already > 0 then
+      notify.info(
+        string.format(
+          "Started %d/%d LSP server(s) (%d already running)",
+          started,
+          #servers,
+          already
+        )
+      )
+    else
+      notify.info(string.format("Started %d/%d LSP server(s)", started, #servers))
+    end
   end
 end
 
