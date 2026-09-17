@@ -54,6 +54,29 @@ describe("lsp.lspdoctor.probe (live)", function()
   local INIT_TIMEOUT_MS = 30000
   local PROBE_TIMEOUT_MS = 30000
 
+  --- Argv for running `npm`, so a caller does not have to spell out the same
+  --- Windows exception `resolve()` below already knows about.
+  ---
+  --- `vim.fn.system({ "npm", ... })` -- a bare list, no shell -- fails to spawn
+  --- on Windows: npm installs an extension-less shim *and* a `.cmd`, and only
+  --- the `.cmd` is directly executable. Measured on this machine:
+  --- `vim.fn.system({ "npm", "root", "-g" })` returns `shell_error == -1` and
+  --- empty output; the same call with `"npm.cmd"` returns 0 and the real path.
+  --- The `ts_ls` candidate's `prepare()` used the bare form, so on Windows it
+  --- silently did nothing -- `isdirectory(target)` failed on the resulting
+  --- empty path and the guard just returned, no error, no symlink. Invisible
+  --- here because `lua_ls` is tried first and answers before `ts_ls` is ever
+  --- reached; a Windows machine without `lua_ls` would depend entirely on
+  --- ts_ls's own "bundled" sibling-package fallback, which is not guaranteed
+  --- once `typescript-language-server` and `typescript` are not installed as
+  --- siblings under one global `node_modules`.
+  ---@param args string[]
+  ---@return string[]
+  local function npm_argv(args)
+    local bin = (vim.fn.has("win32") == 1) and "npm.cmd" or "npm"
+    return vim.list_extend({ bin }, args)
+  end
+
   --- The servers this gate will run against, cheapest first.
   ---
   --- `needs` is for companions the server cannot work without: `gopls` starts
@@ -91,7 +114,7 @@ describe("lsp.lspdoctor.probe (live)", function()
       -- says CI's `npm install -g typescript` actually put it.
       ---@param dir string
       prepare = function(dir)
-        local out = vim.fn.system({ "npm", "root", "-g" })
+        local out = vim.fn.system(npm_argv({ "root", "-g" }))
         if vim.v.shell_error ~= 0 then
           return
         end
