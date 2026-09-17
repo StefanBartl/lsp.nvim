@@ -488,6 +488,28 @@ function M.setup(opts)
 
   M.detach()
 
+  -- Seeded from what is already running, because `detach()` just cleared the
+  -- bookkeeping and `LspAttach` has long since fired for every live client.
+  -- Without this, the second `setup()` this function documents as harmless --
+  -- a config reload -- leaves every attached client untracked, and
+  -- `handle_exit` drops its crash on `info == nil`: auto-restart goes on
+  -- reporting itself as on while covering nothing. Measured across a second
+  -- `setup()`, the recorded attempts for a crashing client went from 1 to 0.
+  for _, client in ipairs(lsp.get_clients()) do
+    ---@type table<integer, true>
+    local buffers = {}
+    for bufnr in pairs(client.attached_buffers or {}) do
+      buffers[bufnr] = true
+    end
+    tracked[client.id] = {
+      name = client.name,
+      buffers = buffers,
+      -- Not the client's real start time, which Neovim does not expose: this
+      -- field only ever feeds "how long has it been up since we noticed".
+      started_at = vim.uv.now(),
+    }
+  end
+
   -- Through lib.nvim rather than `vim.api.nvim_create_autocmd`, which is what
   -- every autocommand in this plugin does -- see
   -- docs/NOTES/PersonelPlugins/BINDINGS/Autocmds/lsp.nvim.md, which states it

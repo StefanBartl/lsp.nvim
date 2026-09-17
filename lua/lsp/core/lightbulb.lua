@@ -209,13 +209,39 @@ end
 -- ------------------------------------------------------------------- drawing
 
 ---@internal
---- Remove the indicator from one buffer.
----@param bufnr integer|nil # nil clears wherever it currently is.
+--- Remove the indicator from one buffer, and from wherever it actually is.
+---
+--- Both, not either. The two differ the moment the cursor leaves the buffer
+--- carrying the mark: `refresh` erases the *current* buffer when it is not
+--- drawable, and this then cleared a buffer holding nothing while setting
+--- `placed = nil` -- dropping the only record of the real mark, which no later
+--- refresh could find.
+---
+--- Measured: a bulb drawn in a file, then a switch to a scratch buffer, left
+--- the mark behind; coming back drew a second one, so the indicator claimed
+--- two lines at once ("2 at rows {0,1}") until a later refresh happened to
+--- clear the namespace wholesale.
+---@param bufnr integer|nil # nil clears only wherever it currently is.
 ---@return nil
 local function erase(bufnr)
-  bufnr = bufnr or (placed and placed.bufnr)
-  if bufnr and api.nvim_buf_is_valid(bufnr) then
-    api.nvim_buf_clear_namespace(bufnr, NS, 0, -1)
+  local here = placed and placed.bufnr or nil
+
+  -- Built without holes rather than iterated as `{ bufnr, here }`: `ipairs`
+  -- stops at the first nil, so an `erase(nil)` -- which is every call that
+  -- means "wherever it is" -- would clear nothing at all.
+  ---@type integer[]
+  local targets = {}
+  if bufnr ~= nil then
+    targets[#targets + 1] = bufnr
+  end
+  if here ~= nil and here ~= bufnr then
+    targets[#targets + 1] = here
+  end
+
+  for _, target in ipairs(targets) do
+    if api.nvim_buf_is_valid(target) then
+      api.nvim_buf_clear_namespace(target, NS, 0, -1)
+    end
   end
   placed = nil
 end
