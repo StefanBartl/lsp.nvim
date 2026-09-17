@@ -437,16 +437,6 @@ function M.setup(user_opts)
   normalize_switch(cfg, "usrcmds")
   normalize_switch(cfg, "which_key")
   normalize_servers(cfg)
-  if cfg.rename.provider ~= "inc_rename" and cfg.rename.provider ~= "native" then
-    if cfg.rename.provider ~= "auto" and cfg.rename.provider ~= nil then
-      warn(
-        ('rename.provider: unknown value %q, using "auto"'):format(tostring(cfg.rename.provider)),
-        "rename",
-        "provider"
-      )
-    end
-    cfg.rename.provider = "auto"
-  end
   for _, key in ipairs({
     "rename",
     "diagnostics",
@@ -465,6 +455,24 @@ function M.setup(user_opts)
     normalize_table(cfg, key)
   end
   normalize_workspace(cfg)
+
+  -- After the loop above, not before it. `rename` was the one top-level option
+  -- of seventeen that raised instead of degrading: `rename = false` reached
+  -- `cfg.rename.provider` while `cfg.rename` was still a boolean, so
+  -- `config.setup()` -- and with it plugin startup -- died on
+  -- "attempt to index field 'rename' (a boolean value)". Every other key
+  -- answered with "expected a table, using defaults", which is the contract
+  -- this module states: a typo should degrade the feature, not break startup.
+  if cfg.rename.provider ~= "inc_rename" and cfg.rename.provider ~= "native" then
+    if cfg.rename.provider ~= "auto" and cfg.rename.provider ~= nil then
+      warn(
+        ('rename.provider: unknown value %q, using "auto"'):format(tostring(cfg.rename.provider)),
+        "rename",
+        "provider"
+      )
+    end
+    cfg.rename.provider = "auto"
+  end
 
   -- `labels` is the one option that is a function rather than data. Anything
   -- else there would blow up at the call site inside the source, far from the

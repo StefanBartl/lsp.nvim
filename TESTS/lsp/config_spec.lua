@@ -188,6 +188,48 @@ describe("lsp.config", function()
     end)
   end)
 
+  -- Every top-level option must degrade rather than raise -- the contract this
+  -- module states in its own header: "a typo in a config file should degrade
+  -- the feature, not break startup". `rename` was the one key of seventeen
+  -- that did not. Its `provider` was normalized *above* the loop that puts a
+  -- non-table key back to its default, so `rename = false` reached
+  -- `cfg.rename.provider` while `cfg.rename` was still a boolean and
+  -- `config.setup()` died on "attempt to index field 'rename' (a boolean
+  -- value)" -- taking plugin startup with it. Asserted over the whole set, so
+  -- the next option normalized out of order is caught by this case rather than
+  -- by a user.
+  describe("a non-table where a table belongs", function()
+    local KEYS = {
+      "rename",
+      "diagnostics",
+      "formatter",
+      "inlay_hints",
+      "lightbulb",
+      "auto_restart",
+      "attach",
+      "mason",
+      "lspdoctor",
+      "tools",
+      "languages",
+      "completion",
+      "workspace",
+      "keymaps",
+      "project",
+      "usrcmds",
+      "which_key",
+    }
+
+    for _, key in ipairs(KEYS) do
+      it(("degrades %s = false instead of raising"):format(key), function()
+        local config = reload()
+        local ok, cfg = pcall(config.setup, { [key] = false })
+        assert.is_true(ok, ("setup() raised on %s = false: %s"):format(key, tostring(cfg)))
+        assert.are.equal("table", type(cfg[key]), key .. " was not put back to a table")
+        assert.is_true(#config.warnings() > 0, "the bad value was accepted silently")
+      end)
+    end
+  end)
+
   describe("diagnostics.ui", function()
     for _, ui in ipairs({ "auto", "native", "trouble" }) do
       it(("accepts %q"):format(ui), function()

@@ -175,4 +175,116 @@ describe("usrcmds.legacy_aliases", function()
     assert.is_true(cfg.usrcmds.enable)
     assert.is_true(cfg.usrcmds.legacy_aliases)
   end)
+
+  -- Running them, not reading the table. Everything above asserts what the
+  -- route tree *says*; none of it calls a `run`. That is the shape of the
+  -- regression `lspdoctor_spec.lua` was written for: a rename left `M.all`
+  -- calling `inspect.deep`, 230 specs passed, and the command's own pcall
+  -- swallowed it -- because no spec invoked the thing. A route that raises and
+  -- a route that was never wired up look identical from the outside, and both
+  -- look like a working plugin.
+  --
+  -- Read-only and idempotent routes only, plus the toggles, which are put back
+  -- by toggling again. `force-restart` and `doctor probe` are left out: the
+  -- first tears a client down, the second blocks on real servers and has its
+  -- own live gate in `probe_live_spec.lua`.
+  describe("every route runs", function()
+    ---@type integer|nil
+    local base_win
+
+    before_each(function()
+      -- `botright new` needs somewhere to go: several routes render into a
+      -- scratch split, and the headless default of 24 lines runs out after a
+      -- handful of them with `E36: Not enough room` -- which would read as a
+      -- plugin failure and is not one.
+      vim.o.lines = 200
+      vim.o.columns = 200
+      require("lsp").setup({})
+      base_win = vim.api.nvim_get_current_win()
+    end)
+
+    after_each(function()
+      for _, win in ipairs(vim.api.nvim_list_wins()) do
+        if win ~= base_win and vim.api.nvim_win_is_valid(win) then
+          pcall(vim.api.nvim_win_close, win, true)
+        end
+      end
+      for _, client in ipairs(vim.lsp.get_clients()) do
+        pcall(function()
+          client:stop(true)
+        end)
+      end
+    end)
+
+    ---@type string[]
+    local ROUTES = {
+      "Lsp status",
+      "Lsp servers",
+      "Lsp info",
+      "Lsp doctor",
+      "Lsp doctor startup",
+      "Lsp doctor resolve",
+      "Lsp doctor buffer",
+      "Lsp doctor capabilities",
+      "Lsp doctor all",
+      "Lsp stop",
+      "Lsp restart",
+      "Lsp format status",
+      "Lsp format which",
+      "Lsp format on",
+      "Lsp format off",
+      "Lsp format toggle",
+      "Lsp format toggle",
+      "Lsp hints status",
+      "Lsp hints on",
+      "Lsp hints off",
+      "Lsp hints toggle",
+      "Lsp hints toggle",
+      "Lsp hints clear",
+      "Lsp autorestart status",
+      "Lsp autorestart on",
+      "Lsp autorestart off",
+      "Lsp autorestart on",
+      "Lsp lightbulb status",
+      "Lsp lightbulb on",
+      "Lsp lightbulb off",
+      "Lsp lightbulb toggle",
+      "Lsp lightbulb toggle",
+      "Lsp lightbulb clear",
+      "Lsp diag qf",
+      "Lsp diag loc",
+      "Lsp diag next",
+      "Lsp diag prev",
+      "Lsp diag next qf",
+      "Lsp diag prev qf",
+      "Lsp workspace status",
+      "Lsp workspace on",
+      "Lsp workspace off",
+      "Lsp workspace toggle",
+      "Lsp workspace toggle",
+      "Lsp workspace now",
+      "Lsp root show",
+      "Lsp root list",
+      "Lsp root add",
+      "Lsp root remove",
+      "Lsp log open",
+    }
+
+    for _, level in ipairs({ "trace", "debug", "info", "warn", "error", "off" }) do
+      -- Every level the enum offers, because `vim.lsp.log.set_level` is the
+      -- one route argument handed straight to an API that validates it itself.
+      ROUTES[#ROUTES + 1] = "Lsp log level " .. level
+    end
+
+    it("without raising", function()
+      local failures = {}
+      for _, route in ipairs(ROUTES) do
+        local ok, err = pcall(vim.cmd, route)
+        if not ok then
+          failures[#failures + 1] = (":%s -> %s"):format(route, tostring(err))
+        end
+      end
+      assert.are.same({}, failures)
+    end)
+  end)
 end)
