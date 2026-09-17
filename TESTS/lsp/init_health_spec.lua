@@ -491,3 +491,30 @@ describe("lsp.init / lsp.health defects", function()
     end)
   end)
 end)
+
+describe("the doctor modes :checkhealth advertises", function()
+  -- `check_doctor` spelled the mode list out by hand and named five, omitting
+  -- `probe` -- the one a user would not guess, and the only report that answers
+  -- "are diagnostics actually arriving". It was the single place in the plugin
+  -- that wrote the list rather than reading `MODES`; the two command composers
+  -- pass `MODES` through, which is why their completion never drifted.
+  it("names every mode the doctor actually has", function()
+    require("lsp").setup({})
+    vim.cmd("checkhealth lsp")
+
+    local line
+    for _, l in ipairs(vim.api.nvim_buf_get_lines(0, 0, -1, false)) do
+      if l:find("LspDoctor", 1, true) and l:find("available", 1, true) then
+        line = l
+      end
+    end
+    assert.is_not_nil(line, "the doctor line is gone from :checkhealth lsp")
+
+    for _, mode in ipairs(require("lsp.lspdoctor").MODES) do
+      assert.is_not_nil(
+        line:find(mode, 1, true),
+        ("%q is a real doctor mode and :checkhealth does not mention it"):format(mode)
+      )
+    end
+  end)
+end)
