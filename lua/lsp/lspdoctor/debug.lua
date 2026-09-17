@@ -116,7 +116,7 @@ end
 
 --- Generate debug info
 ---@param bufnr integer
----@return string[] lines, table info
+---@return string[] lines, Lsp.Doctor.ResolveInfo info
 function M.info(bufnr)
   local lines = {}
   local ft = vim.bo[bufnr].filetype

@@ -289,31 +289,43 @@ doctor.all(0, false)           -- { startup = …, resolve = …, capabilities =
 doctor.MODES                -- { "startup", "resolve", "buffer", "capabilities", "probe", "all" }
 ```
 
-`doctor.buffer` and `doctor.capabilities` return an `Lsp.Doctor.Report`:
+Each report returns `lines, result`. The lines are what `:LspDoctor` prints;
+the result is the same answer in a shape a caller can read. There is no single
+`Report` class over all of them, because they do not answer the same kind of
+question — `startup` has something to say about every *expected server*,
+`resolve` about the *chain*, and only `buffer`/`capabilities` are the
+summary-plus-verdict shape a shared class would describe. The classes live in
+[`@types.lua`](@types.lua) and are attached to the `---@return` annotations, so
+they cannot drift from what the functions actually build.
 
-```lua
----@class Lsp.Doctor.Report
----@field mode '"buffer"'|'"capabilities"'
----@field ok boolean
----@field summary string
----@field sections Lsp.Doctor.Section[]
----@field extras table<string, any>  -- machine-readable extras for tooling
-```
+| Report | Result |
+| ------ | ------ |
+| `startup` | `Lsp.Doctor.StartupEntry[]` — one per expected server: `name`, `running`, `config_exists`, `attempts`, `last_error`. A *list*, and an empty one means no server is configured for this filetype at all |
+| `resolve` | `Lsp.Doctor.ResolveInfo` — `filetype`, plus `expected`, `configured`, `registered`, `running` and `completion` as name lists |
+| `buffer`, `capabilities` | `Lsp.Doctor.InspectReport` — `mode`, `ok`, `summary`. The detail is in the lines |
+| `probe` | `Lsp.Doctor.ProbeReport`, below |
+| `all` | `Lsp.Doctor.CombinedReport` — `{ startup = …, resolve = …, capabilities = … }`. No `probe`: it is not part of `all` |
 
-`doctor.probe` returns its own shape, because it answers a different kind of
+`doctor.probe` has its own shape, because it answers a different kind of
 question:
 
 ```lua
 {
   mode = "probe",
-  ok = true,                  -- every attached client answered
+  ok = true,                  -- every client that was *asked* answered
   filetype = "lua",
   timeout = 5000,
+  asked = 1,                  -- clients that accepted the probe buffer
   path = "…/lspdoctor_probe.lua",   -- named, never written
   summary = "Summary: 1/1 client(s) delivered diagnostics within 5000ms",
   clients = { { name = "lua_ls", id = 1, attached = true, count = 1, elapsed_ms = 21 } },
 }
 ```
+
+`asked` is not `#clients`: a client that refused the probe buffer was sent
+nothing, so counting it would let it hold `ok` down while the report says in
+the same breath that nothing was asked of it. When some refused, the summary
+says how many.
 
 When it cannot probe at all it says why in `reason` (`"no snippet"`,
 `"no clients"`, `"no probe buffer"`) and leaves `ok` false.

@@ -47,10 +47,10 @@ local lsp = vim.lsp
 local diag = vim.diagnostic
 local uv = vim.uv or vim.loop
 
----@type table
+---@type Lsp.Doctor.Options
 local Opts = {}
 
----@param opts table
+---@param opts Lsp.Doctor.Options
 ---@return nil
 function M.setup(opts)
   Opts = opts or {}
@@ -243,13 +243,13 @@ end
 
 --- Provoke an error and report whether it came back.
 ---@param bufnr integer
----@return string[] lines, table report
+---@return string[] lines, Lsp.Doctor.ProbeReport report
 function M.run(bufnr)
   bufnr = (type(bufnr) == "number" and bufnr ~= 0) and bufnr or api.nvim_get_current_buf()
 
   local timeout = Opts.probe_timeout or 5000
   local filetype = api.nvim_buf_is_valid(bufnr) and vim.bo[bufnr].filetype or ""
-  ---@type table
+  ---@type Lsp.Doctor.ProbeReport
   local report =
     { mode = "probe", ok = false, filetype = filetype, timeout = timeout, clients = {} }
   local lines = { "### Probe", "" }

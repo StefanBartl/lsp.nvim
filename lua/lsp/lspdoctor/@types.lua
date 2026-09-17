@@ -1,7 +1,7 @@
 ---@meta
 ---@module 'lsp.lspdoctor.@types'
---- Pure LuaCATS type scaffolding for lspdoctor's `Lsp.Doctor.Options` --
---- no runtime code, `---@meta` only.
+--- Pure LuaCATS type scaffolding for lspdoctor -- its options, and the result
+--- each report returns alongside its lines. No runtime code, `---@meta` only.
 
 ---@class Lsp.Doctor.Options
 ---@field use_notify? boolean Render via vim.notify instead of print (default: false)
@@ -17,13 +17,81 @@
 ---@field scratch_threshold? number
 ---@field auto_open_scratch? boolean
 
----@class Lsp.Doctor.Section
----@field title string
----@field lines string[]
+--- The second return value of each report.
+---
+--- Every report returns `lines, result`: the lines are what `:LspDoctor`
+--- prints, the result is the same answer in a shape a caller can read. There
+--- is deliberately no single `Report` class covering all of them, because the
+--- reports do not answer the same kind of question -- `startup` has something
+--- to say about every *expected server*, `resolve` about the *chain*, and only
+--- `buffer`/`capabilities` are the summary-plus-verdict shape a shared class
+--- would describe.
+---
+--- There used to be one: `Lsp.Doctor.Report`, with `sections` and `extras`.
+--- No report ever returned either field, nothing referenced the class, and no
+--- `---@return` pointed at it -- so it described a module that never existed
+--- and nothing could notice. The classes below are attached to the actual
+--- `---@return` annotations, which is the only thing that keeps a type honest.
 
----@class Lsp.Doctor.Report
----@field mode '"buffer"'|'"capabilities"'|'"probe"'
----@field ok boolean
----@field summary string
----@field sections Lsp.Doctor.Section[]
----@field extras table<string, any> -- extended machine-readable info for tooling
+--- One expected server, as `startup` (`lspdoctor.health.check`) judges it.
+---
+--- `startup` returns a *list* of these, not a report object: the question is
+--- per server, and an empty list means no server is configured for this
+--- buffer's filetype at all.
+---@class Lsp.Doctor.StartupEntry
+---@field name string Server name as the registry spells it
+---@field running boolean Whether a client of that name is attached to the buffer
+---@field config_exists boolean Whether `vim.lsp.config[name]` resolves
+---@field attempts integer Start attempts the supervisor has spent on it
+---@field last_error string|nil The supervisor's last recorded failure, if any
+
+--- Where the filetype -> server chain stands, as `resolve`
+--- (`lspdoctor.debug.info`) walks it. Each list is server names.
+---@class Lsp.Doctor.ResolveInfo
+---@field filetype string The buffer's filetype, the input to the whole chain
+---@field expected string[] Servers this filetype should get
+---@field configured string[] Servers in `registry.ACTIVE`
+---@field registered string[] Names registered with `vim.lsp.config`
+---@field running string[] Clients actually attached to the buffer
+---@field completion string[] What `:Lsp start` would offer, i.e. expected minus running
+
+--- What `buffer` and `capabilities` (`lspdoctor.inspect`) report.
+---
+--- The detail lives in the lines; this carries the verdict and the one-line
+--- summary that is also prepended to them.
+---@class Lsp.Doctor.InspectReport
+---@field mode '"buffer"'|'"capabilities"'
+---@field ok boolean False when no client is attached
+---@field summary string Client and diagnostic counts, or "No LSP client attached"
+
+--- One client's answer to the `probe`.
+---@class Lsp.Doctor.ProbeClient
+---@field name string
+---@field id integer
+---@field attached boolean False means it refused the probe buffer and was asked nothing
+---@field count integer Diagnostics it returned; 0 when it was asked and stayed silent
+---@field elapsed_ms integer|nil Time to the first diagnostic; nil when none came
+
+--- What `probe` (`lspdoctor.probe.run`) reports.
+---
+--- `ok` is `answered == asked`, and `asked` is not `#clients`: a client that
+--- refused the probe buffer was sent nothing, so counting it would let it
+--- hold `ok` down while the report says in the same breath that nothing was
+--- asked of it.
+---@class Lsp.Doctor.ProbeReport
+---@field mode '"probe"'
+---@field ok boolean Every client that was asked delivered diagnostics
+---@field filetype string The buffer's filetype, which picks the snippet
+---@field timeout integer The `probe_timeout` this run used, in ms
+---@field clients Lsp.Doctor.ProbeClient[] One entry per client on the probed buffer
+---@field asked integer|nil How many of them accepted the probe buffer; nil when it never got that far
+---@field summary string|nil Absent when the run stopped early -- see `reason`
+---@field path string|nil The probe buffer's name; never written to disk
+---@field reason '"no snippet"'|'"no clients"'|'"no probe buffer"'|nil Why nothing was probed
+
+--- What `all` returns: the three observing reports it runs, keyed by name.
+--- `probe` is deliberately absent -- it is not part of `all`.
+---@class Lsp.Doctor.CombinedReport
+---@field startup Lsp.Doctor.StartupEntry[]
+---@field resolve Lsp.Doctor.ResolveInfo
+---@field capabilities Lsp.Doctor.InspectReport
