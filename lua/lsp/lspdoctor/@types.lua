@@ -51,7 +51,8 @@
 ---@field filetype string The buffer's filetype, the input to the whole chain
 ---@field expected string[] Servers this filetype should get
 ---@field configured string[] Servers in `registry.ACTIVE`
----@field registered string[] Names registered with `vim.lsp.config`
+---@field registered string[] Names registered with `vim.lsp.config`, enabled or not
+---@field enabled string[] The subset of them `vim.lsp.enable` will attach on `FileType`
 ---@field running string[] Clients actually attached to the buffer
 ---@field completion string[] What `:Lsp start` would offer, i.e. expected minus running
 

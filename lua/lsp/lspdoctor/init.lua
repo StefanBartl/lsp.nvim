@@ -130,12 +130,37 @@ local function show_help()
   })
 end
 
+---@internal
+---A report name no live buffer is holding.
+---
+---`nvim_buf_set_name` fails on a name that is taken, and the previous report
+---is still holding "LSP Doctor Report" whenever it is open -- which is the
+---normal case, because reading one is why you opened it. So a second
+---`:LspDoctor!`, the obvious move when comparing two reports, raised
+---`E95: Buffer with this name already exists` and left the empty split from
+---`botright new` behind. `bufhidden = "wipe"` does not help: the buffer is
+---visible, not hidden.
+---@return string
+local function free_report_name()
+  local base = "LSP Doctor Report"
+  for i = 1, 32 do
+    local name = (i == 1) and base or ("%s (%d)"):format(base, i)
+    if vim.fn.bufexists(name) == 0 then
+      return name
+    end
+  end
+  return ("%s (%s)"):format(base, os.date("%H:%M:%S"))
+end
+
 ---@param lines string[]
 ---@return integer bufnr
 local function render_to_scratch(lines)
   vim.cmd("botright new")
   local scratch = api.nvim_get_current_buf()
-  api.nvim_buf_set_name(scratch, "LSP Doctor Report")
+  -- Named through a pcall as well: the report is the point, and an unnamed
+  -- scratch buffer still carries it. Losing the whole report to a naming
+  -- collision is the failure this is here to prevent.
+  pcall(api.nvim_buf_set_name, scratch, free_report_name())
   api.nvim_set_option_value("buftype", "nofile", { buf = scratch })
   api.nvim_set_option_value("bufhidden", "wipe", { buf = scratch })
   api.nvim_set_option_value("swapfile", false, { buf = scratch })
