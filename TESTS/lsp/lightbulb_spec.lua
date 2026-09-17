@@ -306,6 +306,43 @@ describe("lsp.core.lightbulb", function()
       assert.are.equal("󰌵 ", found[1][4].sign_text)
     end)
 
+    -- `erase(bufnr)` cleared the buffer it was handed and then set `placed =
+    -- nil` regardless -- dropping the only record of a mark living in another
+    -- buffer. The two differ on every `BufEnter` into a buffer the indicator
+    -- may not draw in, which is `refresh`'s "not drawable -> erase the current
+    -- one" path.
+    --
+    -- Measured: a bulb drawn in a file, a switch to a scratch buffer, and the
+    -- mark stayed behind with nothing owning it; coming back drew a second,
+    -- so the indicator claimed two lines at once ("2 at rows {0,1}").
+    it("takes its mark with it when the cursor leaves for a buffer it cannot draw in", function()
+      local lb = reload()
+      lb.setup({ enable = true, kinds = {}, debounce_ms = 0 })
+
+      local drawn = vim.api.nvim_get_current_buf()
+      with_client({ { title = "Fix it", kind = "quickfix" } }, tick)
+      assert.are.equal(1, #marks(), "precondition: the indicator is drawn")
+
+      -- A scratch buffer is `buftype = "nofile"`, so `drawable()` refuses it
+      -- and `refresh` erases "the current buffer" -- which is not the one
+      -- holding the mark.
+      local scratch = vim.api.nvim_create_buf(true, true)
+      vim.api.nvim_set_current_buf(scratch)
+      with_client({}, tick)
+
+      local left_behind = vim.api.nvim_buf_get_extmarks(
+        drawn,
+        vim.api.nvim_get_namespaces()["lsp_nvim_lightbulb"],
+        0,
+        -1,
+        {}
+      )
+      vim.api.nvim_set_current_buf(drawn)
+      pcall(vim.api.nvim_buf_delete, scratch, { force = true })
+
+      assert.are.equal(0, #left_behind, "the indicator was orphaned in the buffer it was drawn in")
+    end)
+
     it("places nothing when only filtered-out kinds come back", function()
       local lb = reload()
       lb.setup({ enable = true, kinds = { "quickfix" }, debounce_ms = 0 })

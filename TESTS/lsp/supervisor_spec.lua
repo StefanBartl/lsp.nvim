@@ -429,4 +429,40 @@ describe("lsp.core.supervisor", function()
       assert.are.equal(60000, cfg.auto_restart.reset_after_ms)
     end)
   end)
+
+  -- `setup()` calls `detach()`, which clears the attach bookkeeping -- and
+  -- `LspAttach` has already fired for everything currently up, so it never
+  -- fires again for those clients. A second `setup()`, which this module's own
+  -- docstring calls harmless ("idempotent: a second setup() resets the augroup
+  -- rather than stacking"), therefore left every running client untracked, and
+  -- `handle_exit` dropped its crash on `info == nil`.
+  --
+  -- The damage is that it is silent: `:Lsp autorestart status` still says on,
+  -- and a crash after a config reload is simply not recovered. Measured, the
+  -- recorded attempts for a crashing client went 1 -> 0 across the reload.
+  describe("a second setup()", function()
+    it("keeps covering the clients that were already attached", function()
+      local sup = reload()
+      sup.setup({ enable = true, initial_delay_ms = NEVER })
+      attach(sup, 77, "already_up")
+
+      -- A config reload. The client is still there, so `setup()` has to find
+      -- it again rather than wait for an `LspAttach` that will never come.
+      local real = vim.lsp.get_clients
+      vim.lsp.get_clients = function()
+        return { { id = 77, name = "already_up", attached_buffers = { [0] = true } } }
+      end
+      sup.setup({ enable = true, initial_delay_ms = NEVER })
+      vim.lsp.get_clients = real
+
+      sup.reset("already_up")
+      sup._handle_exit(1, 15, 77)
+
+      assert.are.equal(
+        1,
+        sup.attempts("already_up"),
+        "the crash was ignored: the client fell out of the bookkeeping on reload"
+      )
+    end)
+  end)
 end)
