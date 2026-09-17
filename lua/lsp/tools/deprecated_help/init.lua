@@ -21,11 +21,17 @@ function M.setup(opts)
   opts = opts or {}
 
   -- setup lua_ls module first (registers server callback)
-  if opts.lua_ls then
-    lua_ls.setup(opts.lua_ls)
-  else
-    lua_ls.setup() -- default
-  end
+  --
+  -- A top-level `keymap` is the form this file's own example uses, and the
+  -- one in the module README -- `setup({ keymap = "<leader>lh" })`. It was
+  -- read by nobody: only `opts.lua_ls.keymap` reached `defaults`, so the
+  -- documented call measured `<leader>oh` afterwards, unchanged. lua_ls is
+  -- the only server with a module here, so the top-level key means it; an
+  -- explicit `lua_ls.keymap` still wins over it.
+  local lua_ls_opts = vim.tbl_extend("keep", opts.lua_ls or {}, {
+    keymap = opts.keymap,
+  })
+  lua_ls.setup(lua_ls_opts)
 
   -- install the common publishDiagnostics wrapper
   lsp_common.setup()

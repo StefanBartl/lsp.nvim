@@ -32,19 +32,33 @@ local function run_cmd_collect(argv, opts)
   end)
 end
 
+--- Run `eslint_d --fix` over the buffer's file.
+---
+--- `on_done` exists because prettier has to wait for this: both tools rewrite
+--- the same path, so started together the slower one's write lands last and
+--- the other's is gone. It is called exactly once, on every exit -- including
+--- the ones where nothing was run at all -- so a caller can chain on it
+--- without having to guess whether eslint was reached.
 ---@param bufnr number|nil
-function M.eslint_fix(bufnr)
+---@param on_done fun(code: integer)|nil # called once, after eslint has exited
+function M.eslint_fix(bufnr, on_done)
+  local function done(code)
+    if on_done then
+      on_done(code)
+    end
+  end
+
   bufnr = bufnr or api.nvim_get_current_buf()
   local filename = api.nvim_buf_get_name(bufnr)
   if filename == "" then
     notify.warn("No file to lint")
-    return
+    return done(-1)
   end
 
   local bin = eslint.get_eslint_bin()
   if not bin then
     notify.error("eslint_d not found (PATH or mason).")
-    return
+    return done(-1)
   end
 
   -- Write buffer before running eslint
@@ -90,6 +104,7 @@ function M.eslint_fix(bufnr)
 
         notify.error(table.concat(msg, "\n"))
       end
+      done(code)
     end,
   })
 end

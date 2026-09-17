@@ -26,9 +26,19 @@ function M.setup(opts)
     M._enabled = opts.enable_on_setup
   end
   -- optional: provide custom binary paths
+  --
+  -- These used to go to `eslint_fix.set_bins` / `prettier_format.set_bins`,
+  -- neither of which exists: `setup({ binaries = { eslint = "..." } })` raised
+  -- "attempt to call field 'set_bins' (a nil value)" on line 30 and took the
+  -- whole `setup` with it. The setters live on the two bin-resolver modules,
+  -- next to the cache they write.
   if opts.binaries then
-    eslint_fix.set_bins(opts.binaries.eslint or nil)
-    prettier_format.set_bins(opts.binaries.prettier or nil)
+    if opts.binaries.eslint then
+      require("lsp.tools.eslint_prettier.eslint").set_eslint_bin(opts.binaries.eslint)
+    end
+    if opts.binaries.prettier then
+      require("lsp.tools.eslint_prettier.prettier").set_prettier_bin(opts.binaries.prettier)
+    end
   end
   -- create usercommands and attach autocmds immediately
   usercmds.attach(M)

@@ -81,10 +81,17 @@ function M.set_buf_keymap_once(bufnr, lhs, rhs, opts)
   opts.noremap = true
   opts.silent = true
 
-  -- Use keymap.set which will overwrite if exists; to avoid duplicates, check mapexists
+  -- The comparison has to happen on the resolved key sequence. Neovim stores a
+  -- mapping under the expanded lhs -- `<leader>oh` comes back out of
+  -- `nvim_buf_get_keymap` as `\oh` -- so comparing against the notation the
+  -- caller passed never matched, and "once" was never once: measured with a
+  -- user's own buffer-local `<leader>oh` in place, the guard fell through and
+  -- the mapping was replaced. `nvim_replace_termcodes` expands `<leader>` the
+  -- same way the mapping did.
+  local resolved = vim.api.nvim_replace_termcodes(lhs, true, true, true)
   local existing = vim.api.nvim_buf_get_keymap(bufnr, "n")
   for _, m in ipairs(existing) do
-    if m.lhs == lhs then
+    if m.lhs == resolved then
       return -- mapping already exists; do nothing
     end
   end
