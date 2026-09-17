@@ -199,16 +199,49 @@ function M.filter_diagnostics(diagnostics)
   return out
 end
 
+---@internal
+--- The loaded buffer holding `uri`, if one is still open.
+---
+--- Compared through `vim.uri_from_bufnr` rather than resolved through
+--- `vim.uri_to_bufnr`: that one *creates* a buffer when none exists, which is
+--- the whole problem below.
+---@param uri string
+---@return boolean
+local function still_open(uri)
+  for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_loaded(bufnr) then
+      local ok, buf_uri = pcall(vim.uri_from_bufnr, bufnr)
+      if ok and buf_uri == uri then
+        return true
+      end
+    end
+  end
+  return false
+end
+
 --- Re-run M.filter_diagnostics against the last raw diagnostics for every
---- known URI and re-publish. Called by lsp.servers.marksman.hints when the
+--- open URI and re-publish. Called by lsp.servers.marksman.hints when the
 --- toggle flips, so already-open buffers update immediately instead of
 --- waiting for the next server push.
+---
+--- Only the ones still open. This used to republish every URI it had ever
+--- cached, and `vim.uri_to_bufnr` inside Neovim's handler *creates* a buffer
+--- for a name that has none -- so one `:LspMdHints` brought back a buffer for
+--- every markdown file the session had visited, diagnostics included.
+--- Measured: close a file, toggle, and it is back with its diagnostic on it.
+---
+--- Closing one also drops it from the cache, which is what keeps `last_raw`
+--- and `last_meta` from growing for the whole session -- they are keyed by URI
+--- and nothing else ever removed an entry.
 ---@return nil
 function M.republish_all()
   local default_handler = vim.lsp.handlers["textDocument/publishDiagnostics"]
   for uri, diags in pairs(last_raw) do
     local meta = last_meta[uri]
-    if meta then
+    if not still_open(uri) then
+      last_raw[uri] = nil
+      last_meta[uri] = nil
+    elseif meta then
       local filtered = M.filter_diagnostics(diags)
       local new_result = vim.tbl_deep_extend("force", {}, meta.result, { diagnostics = filtered })
       default_handler(meta.err, new_result, meta.ctx, meta.config)

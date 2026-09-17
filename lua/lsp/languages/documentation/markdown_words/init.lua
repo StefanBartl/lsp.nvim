@@ -147,6 +147,14 @@ local function collect_files(root)
           local stat = uv.fs_stat(full)
           if stat and stat.size <= cfg.max_filesize then
             files[#files + 1] = full
+            -- Also here, not only in the outer loop. The bound used to be
+            -- tested once per *directory*, so a single directory was always
+            -- drained in full: measured, 600 files in one directory were all
+            -- collected against a `max_files` of 500. It is the only bound on
+            -- a scan that blocks the editor, so it has to hold per file.
+            if #files >= cfg.max_files then
+              break
+            end
           end
         end
       end
@@ -266,7 +274,18 @@ local function words_to_items(word_set)
   return items
 end
 
---- Kick off an async rebuild.  Guards against concurrent runs.
+--- Kick off a rebuild on the next tick. Guards against concurrent runs.
+---
+--- Deferred, not backgrounded: `build_word_set` walks the tree and reads every
+--- file synchronously, so the editor is blocked for the whole scan, one tick
+--- later. Measured at 82ms for 400 small files -- during which a 10ms timer
+--- got one tick instead of eight. `cfg.max_files` and `cfg.max_filesize` are
+--- what keep that bounded, which is why the cap in `collect_files` has to
+--- actually hold.
+---
+--- It runs once per session unless the root changes or `:MdRebuildWords` asks,
+--- so the freeze is a one-off rather than something felt while typing -- but
+--- "async" is what this was called, and it is not that.
 ---@param root    string
 ---@param on_done fun()|nil
 ---@return nil
