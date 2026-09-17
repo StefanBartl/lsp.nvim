@@ -56,10 +56,19 @@ function M.setup(cfg, registered)
     return 0
   end
 
+  -- Sorted for the reason `keymaps.setup` sorts its catalogue names: the loop
+  -- above walks `KEYMAPS.groups` with `pairs`, and the list it produced here
+  -- handed which-key `<leader>xl` before `<leader>x` -- neither catalogue
+  -- order nor any order a second run has to repeat.
+  table.sort(groups, function(a, b)
+    return a[1] < b[1]
+  end)
+
   -- which-key v3 takes a flat list of specs; v2 wants a keyed table passed to
   -- `register`. Try v3 first, since `add` does not exist on v2.
+  local accepted
   if type(wk.add) == "function" then
-    pcall(wk.add, groups)
+    accepted = pcall(wk.add, groups)
   ---@diagnostic disable-next-line: deprecated
   elseif type(wk.register) == "function" then
     ---@type table<string, table>
@@ -68,12 +77,16 @@ function M.setup(cfg, registered)
       v2[g[1]] = { name = g.group }
     end
     ---@diagnostic disable-next-line: deprecated
-    pcall(wk.register, v2)
+    accepted = pcall(wk.register, v2)
   else
     return 0
   end
 
-  return #groups
+  -- The `pcall` result is what the count reports, rather than `#groups`
+  -- unconditionally. Measured against a which-key whose `add` raises: this
+  -- returned 2 while nothing had been registered, and a count that cannot be
+  -- wrong is the only reason to return one.
+  return accepted and #groups or 0
 end
 
 return M

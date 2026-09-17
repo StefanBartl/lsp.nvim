@@ -96,11 +96,22 @@ function M.format_off()
 end
 
 --- Report whether format-on-save is active.
+---
+--- "no engine" is reported as itself, not folded into "off". With
+--- `lsp.formatter` unloadable, `(api ~= nil and api.is_enabled()) and "on" or
+--- "off"` said `format-on-save: off` -- measured, and indistinguishable from
+--- a state that was actually read. The toggles next to it are silent no-ops
+--- in that case (degrading quietly is the point of this module), so the
+--- status line is the only place the user can find out why nothing happened.
 ---@return nil
 function M.format_status()
+  local notify = require("lib.nvim.notify").create("[lsp.nvim]")
   local api = formatter()
-  local state = (api ~= nil and api.is_enabled()) and "on" or "off"
-  require("lib.nvim.notify").create("[lsp.nvim]").info("format-on-save: " .. state)
+  if api == nil then
+    notify.warn("format-on-save: no formatter engine available")
+    return
+  end
+  notify.info("format-on-save: " .. (api.is_enabled() and "on" or "off"))
 end
 
 --- Show which formatter would run for this buffer, and whether it is present.
@@ -152,11 +163,20 @@ function M.workspace_off()
 end
 
 --- Report the current state of the workspace-diagnostics toggle.
+---
+--- Same distinction `format_status` makes, and for the same measurement: with
+--- `lsp.core.workspace_diagnostics` unloadable this reported
+--- `workspace diagnostics on attach: OFF`, which is a state nobody read.
+--- `workspace_now` below already warns in that case; this now agrees with it.
 ---@return nil
 function M.workspace_status()
+  local notify = require("lib.nvim.notify").create("[lsp.nvim]")
   local wd = workspace()
-  local state = (wd ~= nil and wd.enabled()) and "ON" or "OFF"
-  require("lib.nvim.notify").create("[lsp.nvim]").info("workspace diagnostics on attach: " .. state)
+  if wd == nil then
+    notify.warn("workspace diagnostics module unavailable")
+    return
+  end
+  notify.info("workspace diagnostics on attach: " .. (wd.enabled() and "ON" or "OFF"))
 end
 
 --- Populate workspace diagnostics for this buffer now, toggle or not.
@@ -293,12 +313,25 @@ end
 --- inc-rename is driven through `feedkeys` rather than an `expr` mapping so a
 --- single entry can serve both providers -- an `expr` mapping cannot decide at
 --- press time to *not* be one.
+---
+--- The cursor word is resolved before the branch, and through `pcall`, because
+--- `vim.fn.expand("<cword>")` is not total: on a blank or whitespace-only line
+--- it raises `E348: No string under cursor` rather than returning `""`.
+--- Measured on 0.12.2 -- `grn` on an empty line inside an ordinary file threw
+--- E348 out of the keymap callback, both here and inside
+--- `vim.lsp.buf.rename()`, which resolves the same word the same way. Pressing
+--- a rename key off a word is not a malfunction, so it says so and stops.
 ---@return nil
 function M.rename()
   local provider = cfg().rename.provider
 
+  local ok, cword = pcall(vim.fn.expand, "<cword>")
+  if not ok or cword == "" then
+    require("lib.nvim.notify").create("[lsp.nvim]").warn("no symbol under the cursor")
+    return
+  end
+
   if provider ~= "native" and pcall(require, "inc_rename") then
-    local cword = vim.fn.expand("<cword>")
     vim.api.nvim_feedkeys(":IncRename " .. cword, "n", false)
     return
   end

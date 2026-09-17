@@ -104,14 +104,23 @@ function M.rebind_buffer_local(cfg, name, bufnr)
     return false
   end
 
-  local names = KEYMAPS.presets[cfg.keymaps.preset] or {}
-  if not vim.tbl_contains(names, name) then
+  local spec = KEYMAPS.entries[name]
+  local override = (cfg.keymaps.map or {})[name]
+  if spec == nil or override == false then
     return false
   end
 
-  local spec = KEYMAPS.entries[name]
-  local override = cfg.keymaps.map[name]
-  if spec == nil or override == false then
+  -- The same question `setup()` answers, not a second one: out-of-preset
+  -- entries are forced off there only when the user said *nothing* about them
+  -- (`user[name] == nil`), so an explicit lhs re-enables one. Asking "is it in
+  -- the preset" alone disagreed. Measured with
+  -- `preset = "minimal", map = { rename = "grn" }`: `setup()` bound `grn`
+  -- globally, this returned false, and Neovim's own buffer-local `grn` ->
+  -- `vim.lsp.buf.rename` then won in every attached buffer -- which is the one
+  -- thing this function exists to prevent, and it took `rename.provider` down
+  -- with it.
+  local in_preset = vim.tbl_contains(KEYMAPS.presets[cfg.keymaps.preset] or {}, name)
+  if not in_preset and override == nil then
     return false
   end
 
