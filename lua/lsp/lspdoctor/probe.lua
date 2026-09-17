@@ -20,7 +20,13 @@
 ---   does for real work. Nothing is written to disk, at any point.
 --- * Attaches the clients that are already on the current buffer. It does not
 ---   start servers: the question is whether *these* clients deliver, and
----   starting one would answer a different question slowly.
+---   starting one would answer a different question slowly. That takes work to
+---   hold -- giving the buffer a filetype fires `FileType`, which is what
+---   `vim.lsp.enable` starts servers on, so the filetype is set under
+---   `eventignore`. Without it the report started a server every time it ran.
+--- * Judges only the clients it actually reached. One that refuses the probe
+---   buffer is left out of the count entirely rather than held against the
+---   session, and the summary says how many were dropped that way.
 --- * Deletes the buffer again when it is done, which sends `didClose`. The
 ---   probe's own diagnostics go with it.
 ---
@@ -168,7 +174,30 @@ local function make_probe_buffer(bufnr, filetype, snippet)
   -- `didOpen` with whatever the buffer holds at that moment, and a `didOpen`
   -- carrying an empty document is a probe that provokes nothing.
   api.nvim_buf_set_lines(probe_buf, 0, -1, false, snippet.lines)
-  api.nvim_set_option_value("filetype", filetype, { buf = probe_buf })
+
+  -- Under `eventignore`, because setting a filetype fires `FileType`, and
+  -- `vim.lsp.enable`'s own FileType-driven attach path starts a server on the
+  -- strength of that event -- for a file that does not exist. That is the one
+  -- thing this report promises not to do, and it did it: with a server
+  -- configured and enabled but not running, the client count went from 0 to 1
+  -- across a single `:LspDoctor probe`.
+  --
+  -- It is easy to miss, which is presumably why it survived. The start does
+  -- not land inside the FileType callback, nor on the next tick: the config is
+  -- deep-copied, the root resolved and the process spawned, and the new client
+  -- only shows up well after `run()` has returned its report. Measured at the
+  -- callback it looks like nothing happened.
+  --
+  -- Only `FileType`, not `all`: the point is to keep this report from starting
+  -- servers, not to run the buffer in the dark. The probe attaches its clients
+  -- itself, right below, so nothing here needs the event. The option is
+  -- restored through a `pcall` because leaking `eventignore` into the session
+  -- would silence every autocommand the user has.
+  local saved_eventignore = vim.o.eventignore
+  vim.o.eventignore = "FileType"
+  pcall(api.nvim_set_option_value, "filetype", filetype, { buf = probe_buf })
+  vim.o.eventignore = saved_eventignore
+
   api.nvim_set_option_value("swapfile", false, { buf = probe_buf })
 
   return probe_buf, path
@@ -285,12 +314,19 @@ function M.run(bufnr)
     }
   end
 
-  local pending = 0
+  -- `asked` is the denominator everywhere below, and it is not `#targets`. A
+  -- client that refused the probe buffer was never sent anything, so counting
+  -- it would make the report contradict itself: it prints "nothing was asked
+  -- of this server, so this is not a verdict on it" and then let that same
+  -- server hold `ok` down forever.
+  local asked = 0
   for _, target in ipairs(targets) do
     if target.attached then
-      pending = pending + 1
+      asked = asked + 1
     end
   end
+
+  local pending = asked
 
   if pending > 0 then
     vim.wait(timeout, function()
@@ -348,12 +384,24 @@ function M.run(bufnr)
     lines[#lines + 1] = ""
   end
 
-  report.ok = answered > 0 and answered == #targets
+  report.asked = asked
+  report.ok = answered > 0 and answered == asked
   local summary = ("Summary: %d/%d client(s) delivered diagnostics within %dms"):format(
     answered,
-    #targets,
+    asked,
     timeout
   )
+  -- Said out loud, because otherwise the denominator is quietly smaller than
+  -- the number of clients the buffer has, and a reader counting heads would
+  -- take the difference for a rendering bug.
+  local refused = #targets - asked
+  if refused > 0 then
+    summary = summary
+      .. (", %d refused the probe buffer and %s not asked"):format(
+        refused,
+        refused == 1 and "was" or "were"
+      )
+  end
   table.insert(lines, 1, "")
   table.insert(lines, 1, summary)
   table.insert(lines, 1, string.rep("─", 50))

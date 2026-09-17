@@ -190,6 +190,72 @@ describe("lsp.lspdoctor", function()
       assert.are.equal(0, vim.fn.bufexists(report.path))
     end)
 
+    -- The report printed "nothing was asked of this server, so this is not a
+    -- verdict on it" and then let that same server hold `ok` down: `answered`
+    -- was compared against every client, including the ones that refused the
+    -- probe buffer and were therefore sent nothing at all. One refusing client
+    -- made `ok` false forever, however healthy the rest were.
+    it("does not count a client it never reached", function()
+      vim.lsp.get_clients = function()
+        return { { id = 1, name = "good_ls" }, { id = 2, name = "refuses_ls" } }
+      end
+      ---@diagnostic disable-next-line: duplicate-set-field
+      vim.lsp.buf_attach_client = function(_bufnr, id)
+        return id == 1
+      end
+      ---@diagnostic disable-next-line: duplicate-set-field
+      vim.lsp.diagnostic.get_namespace = function(id, is_pull)
+        return (not is_pull) and (100 + id) or nil
+      end
+      ---@diagnostic disable-next-line: duplicate-set-field
+      vim.diagnostic.get = function(_bufnr, opts)
+        if opts and opts.namespace == 101 then
+          return { { message = "boom", severity = vim.diagnostic.severity.ERROR } }
+        end
+        return {}
+      end
+
+      local lines, report = probe().run(buffer_of("lua"))
+      assert.is_true(report.ok, "the one client that was asked answered")
+      assert.are.equal(1, report.asked)
+      -- Still reported, just not counted -- a denominator quietly smaller than
+      -- the client list reads as a rendering bug.
+      local rendered = table.concat(lines, "\n")
+      assert.is_truthy(rendered:find("1/1 client", 1, true), rendered)
+      assert.is_truthy(rendered:find("1 refused the probe buffer", 1, true), rendered)
+    end)
+
+    -- `:LspDoctor probe` documents that it does not start servers -- and then
+    -- started one every run. Giving the probe buffer its filetype fires
+    -- `FileType`, which is the event `vim.lsp.enable` starts servers on, so a
+    -- server that was enabled but not running came up for a file that does not
+    -- exist. Asserted on the event rather than on a real server, because the
+    -- event is the whole mechanism and needs nothing installed.
+    it("does not fire FileType for its own buffer", function()
+      with_client(1)
+      local fired = {}
+      local id = vim.api.nvim_create_autocmd("FileType", {
+        callback = function(ev)
+          fired[#fired + 1] = vim.api.nvim_buf_get_name(ev.buf)
+        end,
+      })
+      local ok, err = pcall(function()
+        probe().run(buffer_of("lua"))
+      end)
+      vim.api.nvim_del_autocmd(id)
+      assert.is_true(ok, tostring(err))
+
+      for _, name in ipairs(fired) do
+        assert.is_nil(
+          name:find("lspdoctor_probe", 1, true),
+          "FileType fired for the probe buffer: " .. name
+        )
+      end
+      -- And the option it borrowed is handed back, or every autocommand in the
+      -- session stays silenced afterwards.
+      assert.are.equal("", vim.o.eventignore)
+    end)
+
     it("names a probe file for every filetype it claims to cover", function()
       local mod = probe()
       local names = mod.filetypes()
