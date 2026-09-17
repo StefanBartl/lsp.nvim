@@ -2,15 +2,22 @@
 
 `lua/lsp/bindings/autocmds.lua`'s own doc comment says "One group, `lsp_nvim`"
 and names only the formatter as an exception. That understates it: this
-plugin registers **33 autocommands across 25 augroups**, spread over
+plugin registers **34 autocommands across 25 augroups**, spread over
 `bindings/`, `core/`, `formatter/`, `languages/`, `tools/`, `servers/` and
 `integrations/`. [BINDINGS.md](BINDINGS.md#autocommands) covers only the four
 groups that back the keymap/rename layer; this page is the complete list.
 
 Counted are call sites (`autocmd.create` / `nvim_create_autocmd`), not event
 registrations — the lightbulb watcher listens on four events from one call
-site, and counts once here. Verified against source on 2026-09-05: still 33
-call sites.
+site, and counts once here. Verified against source on 2026-09-18: 34 call
+sites, up one from the 33 this page carried, because `markdown.lua` grew a
+`ColorScheme` handler on 2026-09-17. Counted two ways and they agree — 34
+call sites in source, against 30 records in `lib.nvim.bindings.autocmd`'s own
+registry after a bare `setup({ formatter = { on_save = true } })`, which is
+the same number once the four that cannot be there are taken out (the two
+lspsaga ones, with lspsaga not installed; the per-window signature popup,
+created only when one opens; and `LangJava`'s nested `BufWritePre`, created
+only when a Java buffer does).
 
 25 groups = 20 named string literals + `lsp_nvim`, `lsp_nvim_inlay_hints`,
 `lsp_nvim_lightbulb`, `lsp_nvim_supervisor` (built from `M.GROUP` constants)
@@ -53,8 +60,12 @@ The toggle (`:Lsp format on/off/toggle`, `<leader>tft`) deletes and
 re-registers rather than checking a flag —
 `create_autocmd_if_enabled()` clears the group first, so when it is off there
 is no autocommand at all, not one that does nothing. Synchronous, not async,
-so the view restore stays deterministic inside the write chain. Registered
-via the raw API, not `lib.nvim.bindings.autocmd`.
+so the view restore stays deterministic inside the write chain. The
+autocommand itself goes through `lib.nvim.bindings.autocmd` like every other
+one in the plugin — this page said "registered via the raw API" long after
+that stopped being true; what is still raw here is the *augroup*
+(`nvim_create_augroup`) and the clear (`nvim_clear_autocmds`). See below for
+what that costs.
 
 ## Languages
 
@@ -66,17 +77,27 @@ via the raw API, not `lib.nvim.bindings.autocmd`.
 | `LangGo` | `FileType` | `go` | No-op stub |
 | `LangZig` | `FileType` | `zig` | No-op stub |
 | `LangDart` | `FileType` | `dart` | Buffer-local "Flutter: Hot Reload" keymap |
-| `LangJava` | `FileType` | `java` | Sets buffer options; registers a `BufWritePre` **nested inside** the callback |
+| `LangJava` | `FileType` | `java` | Sets buffer options; registers a buffer-local `BufWritePre` **nested inside** the callback, in the same group and guarded so one buffer never collects two |
 | `LangHtml` | `FileType` | `html`, `htmldjango`, `djangohtml` | HTML buffer options |
 | `LangTs` | `BufWritePre` | `*.ts`, `*.tsx`, `*.js`, `*.jsx` | TypeScript on-save action |
 | `LangMarkdownQoL` | `FileType` | `markdown`, `mdx` | UTF-8, soft defaults, buffer-local format keymap |
+| `LangMarkdownQoL` | `ColorScheme` | `*` | Re-applies the three `LspReference*` highlight groups. Added 2026-09-17; it used to run inside the `FileType` callback, where opening a markdown buffer restyled references in every other buffer too |
 
 The five no-op stubs are deliberate, not an oversight — `go.lua` says so
 itself: "registers the `go` FileType group but the callback is a no-op, the
 same stub shape as c.lua/zig.lua next to it." Placeholders for future QoL
-additions; they are the only autocommands in the plugin without a `desc`.
+additions. They are not, as this page used to say, the only autocommands in
+the plugin without a `desc`: `nvim_get_autocmds` reports an empty `desc` for
+every registration in `LangC`, `LangCs`, `LangDart`, `LangGo`, `LangHtml`,
+`LangJava`, `LangLua`, `LangTs`, `LangZig`, `MasonEslintPrettier` and
+`ToolsNoiceIntegration` — 24 of the plugin's live autocommands, not five.
+
 `LangJava` is the one case of an autocommand registered *inside* another
 autocommand's callback (`FileType` registers a `BufWritePre` when it fires).
+Since 2026-09-17 that nested one is in `LangJava` too, and guarded by an
+`nvim_get_autocmds` lookup for the same event/group/buffer, so re-reading the
+file does not stack a second copy on the buffer — it used to be groupless,
+which both stacked and put it out of reach of the group's `clear`.
 
 ## Markdown word completion (`markdown_words`)
 
@@ -106,16 +127,22 @@ one-group-per-concern pattern above.
 
 | Augroup (`clear=true`) | Event | Condition | Action |
 | --- | --- | --- | --- |
-| `MasonEslintPrettier` | `BufWritePost` | `ctx._enabled` and filetype ∈ js/jsx/ts/tsx/vue/svelte | ESLint/Prettier on save |
+| `MasonEslintPrettier` | `BufWritePost` | pattern `*.{js,cjs,mjs,jsx,ts,tsx,vue,svelte}`, plus `ctx._enabled` and filetype ∈ js/jsx/ts/tsx/vue/svelte checked in the callback | ESLint/Prettier on save |
 | `ToolsNoiceIntegration` | `BufWinEnter` | Buffer is a Noice preview | Installs type-lookup keymaps in the preview |
-| `LspSignaturePopup_<winid>` (per window) | `BufWipeout`, `BufHidden`, `BufLeave`, `WinClosed` | `once = true`, buffer-local | Closes the signature popup and **deletes its own augroup** |
+| `LspSignaturePopup_<winid>` (per window) | `BufWipeout`, `BufHidden`, `BufLeave` | `once = true`, buffer-local | Closes the signature popup and **deletes its own augroup** |
 | `LspLuaLsRootScope` | `User LspRootScopeChanged` | — | Recomputes `root_dir` for open buffers |
 
 `LspSignaturePopup_<winid>` is the one per-window-augroup pattern, deleting
 itself via `nvim_del_augroup_by_id` — otherwise every popup opened would
-leave a group behind. `ToolsNoiceIntegration` is registered at module level
-(not inside a `setup()` function), so it fires as soon as the module is
-required.
+leave a group behind. `WinClosed` was in that event list on this page and in
+the code until 2026-09-17, and could never have fired: the registration is
+buffer-local, so it compiles to pattern `<buffer=N>`, and `WinClosed`'s
+pattern is a *window id*, which no `<buffer=N>` matches. Nothing was lost by
+dropping it — the popup buffer is `bufhidden=wipe`, so closing the window
+raises `BufWipeout`, which is the event that actually deletes the group.
+
+`ToolsNoiceIntegration` is registered at module level (not inside a `setup()`
+function), so it fires as soon as the module is required.
 
 ## Breadcrumb depth (`integrations/lspsaga.lua`)
 
@@ -170,18 +197,43 @@ list without the group ever existing at runtime.
 
 ## Raw API vs. `lib.nvim.bindings.autocmd`
 
-All autocommands in this plugin go through `lib.nvim.bindings.autocmd`
-**except** the formatter's, which uses the raw API
-(`lua/lsp/formatter/init.lua`). Functionally identical — `autocmd.group`/
-`autocmd.create` wrap the same two API calls and add the registry entry that
-`:checkhealth` and the generated bindings pages read — but it is worth
-tracking because the inconsistency is exactly where two groupless
-autocommands (above) went unnoticed for a while, and where the lspsaga pair
-briefly slipped onto the raw API (also above) before this page's own count
-caught it.
+Every autocommand in this plugin now goes through `lib.nvim.bindings.autocmd`,
+the formatter's included — the "except the formatter's" this section carried
+is stale. What is *not* uniform is augroup creation. Seven modules build their
+group with the raw `nvim_create_augroup` and hand `create()` the integer id:
+`formatter/init.lua` (`LspFormatOnSave`), `languages/app/dart.lua`,
+`languages/app/java.lua`, `languages/documentation/markdown.lua`,
+`languages/webdev/typescript.lua`, `tools/eslint_prettier/autocmds/init.lua`
+and `tools/ts_type_lookup/noice_integration.lua`. The rest use
+`autocmd.group(name, true)`.
+
+That is not cosmetic, and the registry is where it shows. `autocmd.group`
+remembers `id -> name`; `create()` can only fill a record's `group` field from
+that table, so an autocmd registered against a raw id is recorded with **no
+group name at all**. Measured after `setup({ formatter = { on_save = true } })`:
+of the 30 records `autocmd.registered()` returns, 8 have `group = nil` — the
+formatter's `BufWritePre`, both of `LangMarkdownQoL`'s, `LangDart`'s,
+`LangJava`'s, `LangTs`'s, `MasonEslintPrettier`'s and
+`ToolsNoiceIntegration`'s — exactly the seven modules above. Everything
+`:checkhealth` and the generated bindings pages read off that registry is
+therefore blind to which group those eight belong to, which is the same class
+of blindness that let two groupless autocommands (above) stack unnoticed.
 
 ## Changelog
 
+- 2026-09-18: this page re-measured against a live `setup()` rather than read.
+  Four corrections: the `ColorScheme` row below was missing (34 call sites, not
+  33); `LspSignaturePopup_<winid>` no longer registers `WinClosed`;
+  `MasonEslintPrettier` is `BufWritePre` no longer, it is `BufWritePost`; and
+  the formatter has not been on the raw API for some time. The "five no-op
+  stubs are the only autocommands without a `desc`" claim was wrong by a
+  factor of five.
+- 2026-09-17: `LangMarkdownQoL` gained a `ColorScheme` handler (`6fb79b7`);
+  `LangJava`'s nested `BufWritePre` moved into the group and became
+  once-per-buffer (`6fb79b7`); `LspSignaturePopup_<winid>` dropped the
+  `WinClosed` event that its buffer-local pattern could never match
+  (`ea69f4e`); `MasonEslintPrettier` moved from `BufWritePre` to
+  `BufWritePost` (`766d165`). 34 call sites across 25 groups.
 - 2026-09-02: `LspNvimSagaWinbarDepth` moved onto `lib.nvim.bindings.autocmd`
   (`ab79a0b`) after having briefly landed on the raw API (`fa6d97a`) — this
   page's "everything goes through lib.nvim" claim was false for one commit.

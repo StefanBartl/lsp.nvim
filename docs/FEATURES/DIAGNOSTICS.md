@@ -7,9 +7,11 @@ from redrawing the screen twenty times per keystroke pause.
 
 Diagnostics into the quickfix or location list, and navigation within either.
 `vim.diagnostic.config()` is applied *after* the servers are enabled, so a
-server config cannot overwrite it -- everything in `diagnostics` except `ui`,
-which has nothing to do with `vim.diagnostic.config()` and is stripped before
-that call.
+server config cannot overwrite it -- everything in `diagnostics` except `ui`
+and `debounce_ms`. Those two live in `diagnostics` for this plugin's own use
+(`ui` picks where `]d`/`[d` send you, `debounce_ms` sizes the publish
+throttle); `vim.diagnostic.config()` does not know either key, so both are
+stripped before that call.
 
 `ui` picks where `]d`/`[d` send you: `"native"` always uses
 `vim.diagnostic.jump`; `"trouble"` opens (and focuses) Trouble's diagnostics

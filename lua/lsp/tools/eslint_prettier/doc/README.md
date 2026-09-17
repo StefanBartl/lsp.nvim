@@ -5,12 +5,20 @@ This module makes it easy to use `eslint_d` and `prettier` (via Mason) in Neovim
 You get user commands for running them manually, plus an optional autostart on save.
 
 ## Prerequisites
-- Neovim (0.8+ recommended)
+- Neovim 0.11 or newer, as for the rest of `lsp.nvim`
 - Mason (for installing the binaries)
   - `:MasonInstall eslint_d prettier`
 - The project must have an ESLint and/or Prettier configuration file in the project root:
-  - `.eslintrc`, `.eslintrc.json`, `.eslintrc.js`, `package.json` with `eslintConfig`, etc.
-  - `.prettierrc`, `prettier.config.js`, `package.json` with `prettier`, etc.
+  - ESLint **flat config** — `eslint.config.js`, `.mjs`, `.cjs`, `.ts` — which has been the default since ESLint v9 and is the only format v10 reads. Looked for first.
+  - or legacy `.eslintrc`, `.eslintrc.js`, `.eslintrc.cjs`, `.eslintrc.json`, `.eslintrc.yml`, `.eslintrc.yaml`
+  - or `package.json` with a top-level `eslintConfig` key
+  - `.prettierrc`, `.prettierrc.js`, `.prettierrc.cjs`, `.prettierrc.json`, `.prettierrc.yml`, `.prettierrc.yaml`, `prettier.config.js`
+  - or `package.json` with a top-level `prettier` key
+
+`package.json` counts only when it *declares* the tool's own key. The file is
+decoded rather than searched, so `"prettier": "^3.3.3"` under `devDependencies`
+does not make a project a Prettier project, and an `eslintConfig` key does not
+answer for Prettier.
 
 ## Example: minimal project configuration
 
@@ -31,7 +39,7 @@ You get user commands for running them manually, plus an optional autostart on s
     "trailingComma": "es5"
   }
 }
-````
+```
 
 ### .eslintrc.json (alternative)
 
@@ -71,6 +79,11 @@ require("lsp.tools.eslint_prettier").setup({
 })
 ```
 
+`filetypes` **replaces** the default rather than adding to it; the default is
+`{ "javascript", "javascriptreact", "typescript", "typescriptreact", "vue",
+"svelte" }`, so the list above drops Vue and Svelte. `enable_on_setup`
+defaults to `true`.
+
 ## Usage
 
 * Manually:
@@ -80,6 +93,13 @@ require("lsp.tools.eslint_prettier").setup({
   * `:LintAndFormat` — runs both in sequence (ESLint → Prettier)
 * Automatically on save:
   * Active by default (as long as `enable_on_setup = true`)
+  * On `BufWritePost`, i.e. **after** Neovim has written the file — not before.
+    Both tools read and rewrite the file on disk, and starting them ahead of
+    Neovim's own write means editor and child hold the same path open at once,
+    which on Windows is a sharing violation rather than a race someone wins.
+  * Chained, not concurrent: `eslint_d --fix` first, `prettier --write` only
+    once it has exited. Started together the slower one's write is what
+    survives and the other's is lost.
   * `:ToggleLintFormatOnSave` — toggles the autorun behaviour globally
 
 ## Notes & troubleshooting

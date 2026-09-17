@@ -44,7 +44,7 @@ checkout completely. Nothing looks broken; it is simply not the code running.
   `pcall` — blast-radius control, not optionality. A failure is recorded in
   `status().warnings` and surfaced by `:checkhealth lsp`, never swallowed and
   never allowed to take the rest of the setup with it. The same holds in the
-  core: one server module that throws costs that server, not the other eight.
+  core: one server module that throws costs that server, not the other seven.
 - **Keymaps are data.** `lua/lsp/config/KEYMAPS.lua` is the catalogue; nothing
   binds a key outside it. `docs/BINDINGS.md` is generated from that table and
   CI checks it with `--check`, so editing the tables by hand is pointless.
@@ -117,7 +117,15 @@ ecosystem so the core is exercised without a plugin manager; the smoke test
 runs the real `setup()` against the real modules, which is exactly what the
 stubs cannot check.
 
+The suite resolves plenary.nvim, lib.nvim and ui.nvim from environment
+variables rather than hardcoded paths, so the same command works locally and in
+CI. Without them `:PlenaryBustedDirectory` does not exist and `require("lsp")`
+never reaches lib.nvim.
+
 ```
+PLENARY_PATH=~/.local/share/nvim/lazy/plenary.nvim \
+LIB_NVIM_PATH=../lib.nvim \
+UI_NVIM_PATH=../ui.nvim \
 nvim --headless --noplugin -u TESTS/minimal_init.lua \
   -c "PlenaryBustedDirectory TESTS/lsp { minimal_init = 'TESTS/minimal_init.lua', sequential = true }"
 ```

@@ -39,7 +39,7 @@ The name says which question it answers, not how much output to expect.
 | `buffer` | What is going on in this buffer right now? Attached clients, diagnostic counts per severity, provider conflicts, offset encodings, formatter. Lists capped at `list_limit`. |
 | `capabilities` | What can the servers here actually do? The `buffer` report uncapped, plus `root_dir` and workspace folders and the full capability set per client. |
 | `probe` | Do diagnostics actually arrive? Hands the attached clients a buffer they cannot possibly parse and waits. The only report that provokes rather than observes — see below. |
-| `all` | The four observing reports, in that order. What `:LspDoctor` runs with no argument. **Not** `probe`. |
+| `all` | `startup`, `resolve` and `capabilities`, in that order, under `## Startup` / `## Resolve` / `## Buffer and capabilities`. What `:LspDoctor` runs with no argument. `buffer` is not run separately — `capabilities` is the uncapped superset of it. **Not** `probe`. |
 
 ---
 
@@ -70,17 +70,25 @@ So `probe` does that:
 **Nothing is ever written to disk**, at any point. The document exists only as
 the content the client sent over the wire.
 
-```
+````
+──────────────────────────────────────────────────
 Summary: 1/1 client(s) delivered diagnostics within 5000ms
 
 ### Probe
 
 Filetype `lua`, probing through `lspdoctor_probe.lua` (never written to disk).
 
+```lua
+local x =
+```
+
 **lua_ls**
   Diagnostics: ✅ 1 after 21ms
   First: `<exp> expected.` (ERROR)
-```
+````
+
+The snippet is echoed back, because a probe that says "nothing came back"
+without saying what it sent is an answer one cannot check.
 
 Silence is the finding worth having:
 
@@ -128,7 +136,7 @@ filetype, decides whether the document is theirs at all.
 ## Commands
 
 ```
-:LspDoctor                the four observing reports combined
+:LspDoctor                startup + resolve + capabilities, combined
 :LspDoctor startup        is the server running, and if not, why
 :LspDoctor resolve        where the filetype -> server chain breaks
 :LspDoctor buffer         what is going on in this buffer right now
@@ -156,7 +164,12 @@ command. It stays registered even with `usrcmds.legacy_aliases = false`.
 
 Opened by `!`, by `:Lsp doctor`, or automatically when `auto_open_scratch` is
 on and the report is longer than `scratch_threshold` lines. Read-only, with
-buffer-local keys:
+buffer-local keys.
+
+A second `:LspDoctor!` while the first report is still open works: the buffer
+takes the next free name (`LSP Doctor Report`, `LSP Doctor Report (2)`, …), so
+two reports can be compared side by side. Verified: two consecutive
+`:LspDoctor!` calls leave both buffers listed.
 
 | Key | Effect |
 | --- | ------ |
@@ -190,7 +203,7 @@ require("lsp").setup({
 | `list_limit` | integer | `10` | Max items per section in the `buffer` report. `capabilities` is uncapped. |
 | `show_capabilities` | boolean | `true` | Include the per-client capability table in `capabilities`. |
 | `show_workspace` | boolean | `true` | Include workspace folders and `root_dir` checks. |
-| `show_tools` | boolean | `true` | Show the external-tools summary. |
+| `show_tools` | boolean | `true` | Show the external-tools summary in `startup`: whether each expected server's executable resolves. |
 | `show_conflicts` | boolean | `true` | Detect overlapping providers (formatting, diagnostics). |
 | `formatter_priority` | string[] | `{}` | Order in which the report **ranks** the LSP clients that can format. See [Formatter](#formatter) — it chooses nothing. |
 | `semantic_tokens_timeout` | integer (ms) | `300` | Timeout for the semantic-tokens probe in `startup`. |
@@ -218,12 +231,20 @@ ships. The table above is what this module falls back to when nothing is passed.
 
 `capabilities` adds:
 
-- **Workspace** — `root_dir`, workspace folders, whether the buffer is under the
-  root
-- **Capabilities** — the common capability flags per client
-- **CodeLens and inlay hints** — supported flags, and a best-effort "enabled"
-- **Semantic tokens** — a per-client request probe (ok / error / timeout)
-- **Tools** — presence of external binaries and optional plugins
+- **Workspace** — `root_dir` and workspace folders, per client
+- **Capabilities** — the common capability flags per client: `offsetEncoding`,
+  then `completionProvider`, `definitionProvider`, `documentFormatting`,
+  `codeAction`, `semanticTokens`, `inlayHints`, `codeLens` as yes/no. Flags
+  only — whether the server *advertises* the capability, not whether anything
+  is enabled on this buffer.
+
+Two things live in `startup`, not here, though they read like capabilities:
+
+- **Semantic tokens** — the per-client request probe (ok / error / timeout),
+  bounded by `semantic_tokens_timeout`. In `capabilities` semantic tokens are
+  only the yes/no flag above.
+- **Tools** — whether each expected server's executable resolves, gated by
+  `show_tools`.
 
 ---
 

@@ -150,7 +150,8 @@ lua/lsp/
   lspdoctor/          :LspDoctor, six reports (five observe, one provokes)
   tools/              eslint/prettier, signature help, type lookup, deprecations
   usercmds/           the flat command family (aliases onto :Lsp)
-  completion/         nvim-cmp source for the config's own plugin names
+  completion/         source registration against whichever engine runs
+                      (nvim-cmp or blink), plus the config's own plugin names
   integrations/       one adapter per third-party plugin, plus the registry
   pack/               LazySpec export
 ```

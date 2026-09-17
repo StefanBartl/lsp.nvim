@@ -38,16 +38,25 @@ The eight motion keys honour a count: `3]q` moves three quickfix entries,
 ones that mean "move"; the leader-prefixed actions populate a list or toggle a
 setting and have no ordered target for a count to index into.
 
-Three things worth knowing about the left-hand sides:
+Two things worth knowing about the left-hand sides:
 
 - The prefixless `ls*` family costs every Normal-mode `l` a `timeoutlen` wait,
   because Neovim has to see whether an `s` follows. That is the price of a
   prefixless three-character mapping and it is deliberate.
-- `grn` and `grt` collide with Neovim 0.11's own `gr*` maps, which are set
-  **buffer-locally** on `LspAttach` and therefore win over a global mapping.
-  `bindings/autocmds.lua` re-binds those two on `LspAttach` so the catalogue's
-  version is the one that runs — which matters as soon as `rename.provider`
-  selects inc-rename.
+- `grn` and `grt` collide with Neovim 0.11's own `gr*` maps, which are
+  **global**, not buffer-local — this page claimed the opposite until it was
+  measured. `$VIMRUNTIME/lua/vim/_core/defaults.lua` sets all six at startup,
+  "mapped unconditionally to avoid different behavior depending on whether an
+  LSP client is attached", and a `--headless --noplugin` session with no
+  client at all reports `maparg("grn", "n", false, true).buffer == 0` for
+  every one of them. Being global is what makes the catalogue's two entries
+  win: they replace Neovim's outright the moment the binder runs — measured,
+  `maparg("grn").desc` reads `LSP: Rename symbol` after `setup()` where it
+  read `vim.lsp.buf.rename()` before, still with nothing attached. That is
+  what makes `rename.provider` decide the rename for both keys, and it does
+  not need an `LspAttach` hook to get there. `bindings/autocmds.lua` re-binds
+  the pair on `LspAttach` anyway, on the buffer-local premise; see the
+  autocommand table below.
 
 <!-- BEGIN GENERATED KEYMAPS -->
 
@@ -219,7 +228,7 @@ autocommands belong to the subsystems that own them.
 
 | augroup | event | what it does |
 | ------- | ----- | ------------ |
-| `lsp_nvim` | `LspAttach` | Re-binds the catalogue's `rename` and `goto_type_definition_gr` buffer-locally, because Neovim sets its own `gr*` maps buffer-locally on attach and those would otherwise shadow the catalogue's. Registered only when `keymaps.enable` is on; `bindings/autocmds.lua` owns the name and a `clear()`. |
+| `lsp_nvim` | `LspAttach` | Re-binds the catalogue's `rename` and `goto_type_definition_gr` buffer-locally. The reason `bindings/autocmds.lua` gives for it — that Neovim sets its own `gr*` maps buffer-locally on attach, so a global mapping would be shadowed — does not survive measurement: those maps are global (see above), and the catalogue has already replaced them by the time any client attaches. The re-bind is a no-op over a key the plugin already owns. Registered only when `keymaps.enable` is on; `bindings/autocmds.lua` owns the name and a `clear()`. |
 | `lsp_nvim_inlay_hints` | `LspAttach` | Applies the resolved inlay-hint state to a newly attached buffer. Deliberately a separate group: `lsp_nvim` is cleared when `keymaps.enable = false`, and hints are not a keymap concern. `core/inlay_hints.lua` owns it. |
 | `lsp_nvim_lightbulb` | `CursorMoved`, `BufEnter`, `InsertLeave`, `DiagnosticChanged`, `InsertEnter`, `LspAttach` | Re-asks `textDocument/codeAction` for the cursor position and marks the line when something comes back, debounced; `InsertEnter` clears it undebounced, because hiding is never what needs rate limiting. Separate group for the same reason as the inlay-hint one. `core/lightbulb.lua` owns it. |
 | `lsp_nvim_supervisor` | `LspAttach`, `VimLeavePre` | Records which server each client is and which buffers wanted it, because `on_exit` is handed a client id and nothing else at a point where the client is already going away. `VimLeavePre` stops exits being read as crashes during `:qa`. `core/supervisor.lua` owns it. |

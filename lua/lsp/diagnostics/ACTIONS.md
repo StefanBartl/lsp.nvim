@@ -42,7 +42,9 @@ current buffer's diagnostics and `:DiagNextQF` always steps the quickfix list,
 whatever else is open. The two QF commands did accept the bang and then ignored
 it; the two Loc commands answered `E477: No ! allowed`.
 
-Severity arguments (optional, the same everywhere):
+Severity arguments (optional) on the four commands spelled `[severity]` above.
+`:DiagNextQF` and `:DiagPrevQF` take none: they step the quickfix list itself,
+which `:DiagQF` has already filtered, and a trailing word there is `E488`.
 
 * `error`
 * `warn`
@@ -50,21 +52,33 @@ Severity arguments (optional, the same everywhere):
 * `hint`
 * `all` or empty = no filter
 
+Those five are what `<Tab>` offers. The short forms are typeable too — `err`,
+`e`; `warning`, `w`; `i`; `h` — they just do not clutter a five-item list with
+eleven entries. Anything else is refused by name rather than widened to every
+severity: `:DiagLoc eror` answers
+`unknown severity 'eror' (expected one of: all, error, warn, info, hint)`,
+because listing everything would look like it had worked.
+
 ---
 
 ## Keymaps
 
-* `<leader>wq` → `:DiagQF`
-* `<leader>lq` → `:DiagLoc`
+* `<leader>wq` → same as `:DiagQF`
+* `<leader>lq` → same as `:DiagLoc`
 
 Loclist / buffer navigation:
 
-* `]d` → `:DiagNextLoc`
-* `[d` → `:DiagPrevLoc`
+* `]d`, `[d` — **not** aliases for `:DiagNextLoc`/`:DiagPrevLoc`. They route
+  through `diagnostics.ui`: with Trouble installed and `ui` left at `"auto"`
+  (or set to `"trouble"`) they open and move inside Trouble's diagnostics list;
+  only `"native"`, or an absent Trouble, falls through to the same buffer jump
+  the commands make. They take a count instead of a severity — `3]d` moves
+  three diagnostics on — where `:DiagNextLoc [severity]` takes a severity and
+  moves one.
 
 Quickfix navigation:
 
-* `]q` → `:DiagNextQF`
-* `[q` → `:DiagPrevQF`
+* `]q` → same as `:DiagNextQF`
+* `[q` → same as `:DiagPrevQF`
 
 ---

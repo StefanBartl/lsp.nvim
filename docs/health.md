@@ -4,7 +4,7 @@
 :checkhealth lsp
 ```
 
-Five sections, in the order you need them when something is wrong.
+Six sections, in the order you need them when something is wrong.
 
 | Section | Answers |
 | ------- | ------- |
@@ -12,7 +12,13 @@ Five sections, in the order you need them when something is wrong.
 | lsp.nvim | Whether `setup()` ran, which config layers built it, what it registered, and every warning it worked around |
 | Servers | Installed vs. configured vs. set up vs. attached — here and in total |
 | Ecosystem | Which third-party plugins the adapters can see |
+| Diagnostics | Whether `vim.diagnostic.config()` was applied, and who contributed which keys |
 | Per-buffer diagnosis | Points at `:LspDoctor`, which answers the buffer-level questions |
+
+All six run even when one of them cannot. A section whose module raises turns
+into a single error line — *"this section failed: …"*, with "the sections after
+it still ran" beside it — and the report continues. A health check that dies on
+the first broken module is useless in precisely the case it exists for.
 
 ## The two lines above the warnings
 
@@ -51,9 +57,20 @@ Four numbers, and the gap between any two of them is usually the answer.
 
 The one you came from, not the report. Neovim creates the `health://` buffer
 and makes it current *before* it runs any check, so the report would otherwise
-be describing itself. When there is no file buffer to point at — the report was
-opened from an empty session — it says so rather than printing a zero that
-looks like a fault.
+be describing itself. The buffer you came from is the alternate one.
+
+That only survives the *first* `:checkhealth` of a session: each run wipes the
+previous `health://` buffer and leaves the window without an alternate, so a
+second opinion has nothing to come from. Rather than claim there is no buffer
+while the file is still open and the client still attached to it, it falls back
+to the last used listed file buffer — and says so, appending
+`(last used file buffer)` to the name. A tie there is broken by buffer number,
+which is a guess however deterministic, and the suffix is what tells you to
+read the line that way.
+
+Only when that fallback finds nothing either — the report was opened from an
+empty session — does it say `unknown -- no file buffer to report on`, rather
+than printing a zero that looks like a fault.
 
 ## The one warning about cost
 
@@ -78,6 +95,19 @@ keymap catalogue reaches through command strings.
 The same rule applies to keymaps: an entry bound while the plugin it needs is
 absent is a **warning**, because it will fail only when pressed, which is the
 worst moment to find out.
+
+Absent and broken are told apart, and the advice is the difference. A plugin
+that is nowhere on the runtimepath gets "which is not installed" and "install
+it"; one that is on the runtimepath and raised on the way up gets "which is
+installed but failed to load" and "do not reinstall it — it is there", with the
+`:lua require("…")` that shows the error itself. `pcall(require, …)` cannot
+separate those two, and this report used to call both "not installed", which is
+an hour spent reinstalling something that was already there.
+
+One warning per plugin, listing the keys it owns, and the plugins come out in
+sorted order — LuaJIT seeds its string hashes per process, so an unsorted report
+moves its lines from run to run, and a report whose lines move is one you cannot
+diff against the one you pasted into an issue yesterday.
 
 ## It cannot disagree with `:Lsp status`
 

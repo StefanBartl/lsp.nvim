@@ -45,8 +45,16 @@ which still carries its own `lua/lsp/**` shadows this plugin on the
 
   - Neovim 0.11 or newer.
   - lib.nvim (https://github.com/StefanBartl/lib.nvim), a HARD dependency:
-    the |:Lsp| command is built on `lib.nvim.bindings.usercmd.composer` and does not
-    register without it. It is never optional, in the code or in the docs.
+    the |:Lsp| command is built on `lib.nvim.bindings.usercmd.composer`, and
+    `lsp/init.lua` requires `lib.nvim.notify` at its top. Without lib.nvim
+    `require("lsp")` itself raises -- there is no degraded mode. It is never
+    optional, in the code or in the docs.
+  - ui.nvim (https://github.com/StefanBartl/ui.nvim), a SOFT dependency with
+    teeth: setup() survives without it, but `lsp/lspdoctor/init.lua` requires
+    `ui.kit` at its top, so |:LspDoctor| is not registered at all and
+    `tools.ts_type_lookup` fails -- both recorded as setup warnings. The
+    pickers behind |:Lsp-root| `pick`/`add` and |:Lsp-info|'s viewer go the
+    same way. Everything else runs.
 
 ==============================================================================
 3. SETUP                                                     *lsp.nvim-setup*
@@ -62,7 +70,7 @@ modules, the configured servers, and the extra tools. It is safe to call once;
 a second call is refused with a warning rather than doing all of that twice.
 
 Every bootstrap step is wrapped. One broken server module or tool does not take
-the rest of the setup with it -- it is recorded and shown by |:Lsp status| and
+the rest of the setup with it -- it is recorded and shown by |:Lsp-status| and
 |:checkhealth-lsp|. setup() returns true when at least one server was set up.
 
 With lazy.nvim: >lua
@@ -75,10 +83,12 @@ With lazy.nvim: >lua
     }
 <
                                                             *lsp.nvim-pack*
-`import = "lsp.pack"` additionally installs and configures the ecosystem:
-conform, lazydev, workspace-diagnostics, trouble, lspsaga, lensline and
-inc-rename. Drop it to bring your own -- the plugin then wires up whatever of
-those is installed and reports the rest in |:checkhealth-lsp|.
+`import = "lsp.pack"` additionally installs and configures the ecosystem, in
+four spec modules: `core` (conform, lazydev, workspace-diagnostics), `ui`
+(trouble, lspsaga, lensline, inc-rename) and a completion engine -- blink.cmp
+by default, nvim-cmp when `pack.completion = "cmp"`, neither on `false`. Drop
+the `import` to bring your own: the plugin then wires up whatever of those is
+installed and reports the rest in |:checkhealth-lsp|.
 
 Which of them gets installed is a SEPARATE channel from `opts`, and has to be:
 lazy evaluates `import` while it is still collecting specs, long before
@@ -103,7 +113,7 @@ under `lua/lsp/pack/`, so the selection above is applied per spec through
 Returns a snapshot of what the plugin currently is: whether setup() has run,
 the resolved config, the keymaps actually bound, whether |:Lsp| registered, the
 servers that were set up, the attached LSP clients, and every warning collected
-during setup. |:Lsp status| and |:checkhealth-lsp| both read this, so the two
+during setup. |:Lsp-status| and |:checkhealth-lsp| both read this, so the two
 cannot disagree.
 
 ==============================================================================
@@ -114,7 +124,7 @@ The options are resolved from four layers, lowest to highest:
     1. `lua/lsp/config/DEFAULTS.lua`     the documented values
     2. `lua/lsp/config/PRESETS.lua`      selected by `preset` -- how much of
                                        this should run on this machine
-    3. the |lsp.setup()| options         what you wrote
+    3. the |lsp.nvim.setup()| options    what you wrote
     4. `.nvim-lsp.json`                  what this checkout needs
 
 A preset sits below your options because it moves the floor rather than
@@ -129,17 +139,13 @@ Defaults (excerpt -- the full table is `lua/lsp/config/DEFAULTS.lua`): >lua
       project = { enable = true, file = ".nvim-lsp.json" },
       servers = { "bashls", "lua_ls", "gopls", "marksman", "html",
                   "ts_ls", "tailwindcss", "csharp" },
-      diagnostics = {
-        update_in_insert = false,
-        severity_sort = true,
-        virtual_text = { spacing = 2, prefix = "●" },
-        float = { border = "rounded", source = "if_many" },
+      diagnostics = {   -- these two keys only; see the note below
         ui = "auto",   -- "auto" | "native" | "trouble" -- ]d/[d's sink
         debounce_ms = 150,  -- publishDiagnostics throttle; 0 = off
       },
       formatter = { on_save = false, timeout_ms = 1500 },
       workspace = {
-        markers = { ".git", "go.mod", "package.json", ... },
+        markers = { ".git", "go.work", "go.mod", "package.json", ... },
         containers = { "packages", "apps", "services", ... },
       },
       inlay_hints = { enable = false, filetypes = {} },
@@ -147,6 +153,7 @@ Defaults (excerpt -- the full table is `lua/lsp/config/DEFAULTS.lua`): >lua
         enable = true, filetypes = {},
         kinds = { "quickfix", "source" },  -- {} = unfiltered
         render = "sign",  -- or "virtual_text"
+        text = "󰌵",
         debounce_ms = 150, priority = 20,
       },
       auto_restart = {   -- bring a crashed server back
@@ -164,11 +171,26 @@ Defaults (excerpt -- the full table is `lua/lsp/config/DEFAULTS.lua`): >lua
         deprecated_help = { enable = true },
       },
       languages = { enable = true },
+      completion = {
+        personal_names = { enable = true, labels = nil },
+      },
+      rename = { provider = "auto" },  -- "auto"|"inc_rename"|"native"
       keymaps = { enable = true, preset = "default", map = {} },
-      usrcmds = { enable = true },
+      usrcmds = { enable = true, legacy_aliases = true },
       which_key = { enable = true },
+      menu = { enable = true },
     }
 <
+`diagnostics` really is those two keys and nothing else. The look --
+`update_in_insert`, `severity_sort`, `virtual_text`, `float`, `signs`,
+`underline` -- lives in `lsp.core.diagnostics.baseline()`, not here, and that
+is a correctness point rather than tidiness: this table is merged LAST into
+the single |vim.diagnostic.config()| call, after anything another plugin
+contributed, so that what you write always wins. Leaving lsp.nvim's own
+defaults in it would have meant a plugin's contribution being overruled by
+lsp.nvim's default rather than by anything you asked for. Anything you add
+here still merges last and still wins.
+
 Field reference ~
 
 preset                ("default"|"lean"|"full")
@@ -221,11 +243,15 @@ servers               (string[])  Server names to set up and enable. Each
                                   "no language server at all" looks exactly
                                   like a broken install and is never what a
                                   typo should produce.
-diagnostics           (table)     Passed straight to |vim.diagnostic.config()|
-                                  after the servers are enabled, so a server
-                                  config cannot overwrite it -- except `ui`
-                                  and `debounce_ms`, which are this plugin's
-                                  own and are stripped before that call.
+diagnostics           (table)     Merged last into the one
+                                  |vim.diagnostic.config()| call, made after
+                                  the servers are enabled, so neither a server
+                                  config nor another plugin's contribution can
+                                  overwrite it -- except `ui` and
+                                  `debounce_ms`, which are this plugin's own
+                                  and are stripped before that call. Only
+                                  those two have defaults here; the rest of
+                                  the table is whatever you add.
 diagnostics.debounce_ms (integer) Throttle window for
                                   `textDocument/publishDiagnostics`, in
                                   milliseconds. A chatty server (`ts_ls` is
@@ -242,8 +268,16 @@ diagnostics.debounce_ms (integer) Throttle window for
                                   a merge would resurrect entries the server
                                   had just cleared. `0` turns the throttle off.
 formatter.on_save     (boolean)   Format on write at startup. The runtime
-                                  toggle (|:LspFormatToggle|) owns it from
-                                  there; this is only the starting position.
+                                  toggle (|:Lsp-format| `toggle`, or the
+                                  `:LspFormatToggle` alias) owns it from there;
+                                  this is only the starting position. The hook
+                                  is a `BufWritePre` autocommand in the
+                                  `LspFormatOnSave` group -- an in-editor
+                                  format, so it belongs before the write. The
+                                  shell-based `tools.eslint_prettier` runs on
+                                  `BufWritePost` instead, for the opposite
+                                  reason: a child process needs the file on
+                                  disk to already be the buffer.
 formatter.timeout_ms  (integer)   Upper bound for one format request.
 workspace.markers     (string[])  A directory holding one of these is offered
                                   as a workspace folder by |:Lsp| root add.
@@ -391,6 +425,18 @@ tools.eslint_prettier.filetypes (string[])
 languages.enable      (boolean)   Apply the filetype-specific setup under
                                   `lsp/languages/**` before the servers are
                                   registered.
+completion.personal_names.enable (boolean)
+                                  Register the hand-written personal-names
+                                  completion source. Engine-neutral: it is set
+                                  up from |lsp.nvim.setup()| rather than from
+                                  nvim-cmp's `opts`, which is what stopped a
+                                  switch to blink silently dropping it.
+completion.personal_names.labels (fun(): (string|{name: string})[])|nil
+                                  A reader, not a list. The names are the host
+                                  config's data, so the config hands them over
+                                  instead of this plugin reaching into it.
+                                  Without a reader the source falls back to
+                                  `completion/personal_names/extra.lua` alone.
 rename.provider       ("auto"|"inc_rename"|"native")
                                   Backend for the rename action, which both
                                   bound rename keys go through. "auto" prefers
@@ -414,27 +460,58 @@ keymaps.map           (table<string, string|false>)
                                   action name. A string replaces that action's
                                   left-hand side; `false` drops the mapping; an
                                   absent key keeps the preset's default.
-usrcmds.enable        (boolean)   Register the |:Lsp| verb on setup.
-usrcmds.legacy_aliases (boolean)  Also register the ~25 flat `:Lsp*`/`:Diag*`
+usrcmds.enable        (boolean)   Register the |:Lsp| verb on setup, and
+                                  nothing else. `false` removes exactly one
+                                  command, `:Lsp` itself. It does NOT remove
+                                  the 25 flat aliases below -- switching those
+                                  off is `legacy_aliases`, and the two are
+                                  independent in both directions. Turning this
+                                  off while leaving the aliases on leaves the
+                                  whole flat family working with no verb over
+                                  it, which is a coherent wish and the reason
+                                  the two are separate switches.
+usrcmds.legacy_aliases (boolean)  Register the 25 flat `:Lsp*`/`:Diag*`
                                   commands as aliases onto the same functions
-                                  the routes call. On by default: muscle
-                                  memory beats tidiness and an alias costs a
-                                  line. `:LspDoctor` and `:LspMdHints` are not
-                                  aliases and are registered either way.
+                                  the |:Lsp| routes call. On by default:
+                                  muscle memory beats tidiness and an alias
+                                  costs a line. Off drops exactly those 25 and
+                                  nothing else. `:LspDoctor`, `:LspMdHints`,
+                                  `:EslintFix` and the `:TypeDef*` family are
+                                  not aliases and are registered either way.
 which_key.enable      (boolean)   Label the bound key prefixes as which-key
                                   groups. which-key is a soft dependency: when
                                   it is absent this does nothing and no mapping
                                   is affected.
+menu.enable           (boolean)   Contribute this plugin's entries to the
+                                  right-click context menu (nvzone/menu, a
+                                  soft dependency). The entries mirror the
+                                  resolved keymap catalogue, so
+                                  `keymaps.preset` and `keymaps.map` decide
+                                  what appears. With nvzone/menu absent this
+                                  only gates whether `lsp.integrations.menu`
+                                  returns entries at all.
 
 An out-of-range value never raises. It degrades to the documented default and
-is recorded as a warning, visible in |:Lsp status| and |:checkhealth-lsp| -- a
-typo in a config should cost a feature, not a startup. With more than one layer
-in play, each warning also names the layer the value came from: `(from
-setup())`, `(from preset "lean")`, `(from .nvim-lsp.json)`.
+is recorded as a warning, visible in |:Lsp-status| and |:checkhealth-lsp| -- a
+typo in a config should cost a feature, not a startup. Each warning also names
+the layer the value came from: `(from setup())`, `(from preset "lean")`, `(from
+.nvim-lsp.json)`.
 
-`completion`, `rename` and `integrations` are
-still absent: nothing reads them yet, and a default nothing reads is a promise
-the plugin does not keep. They arrive with the integration layer (phase 4).
+Every enum is checked this way, and so is every value the config layer clamps
+(`diagnostics.debounce_ms`, `lightbulb.debounce_ms`, `auto_restart.*`,
+`servers`, `inlay_hints.filetypes`, `lightbulb.filetypes`). Three numeric
+fields are not checked there and reach `:Lsp status` unaltered:
+`lightbulb.priority`, `formatter.timeout_ms` and `lspdoctor.list_limit`. Their
+consumers defend themselves -- a non-numeric `lightbulb.priority` draws at the
+default 20 -- so nothing raises, but no warning is recorded either, and the
+report shows what you typed rather than what is running.
+
+`integrations` is the one option in this document's history that never
+arrived: nothing reads it, and a default nothing reads is a promise the plugin
+does not keep. `completion` and `rename` DID arrive -- both are in
+`DEFAULTS.lua` and both are read (`lsp/init.lua` for the completion source,
+`bindings/actions.lua` for the rename backend) -- and both are documented
+above.
 
 ==============================================================================
 5. KEYMAPS                                                 *lsp.nvim-keymaps*
@@ -448,8 +525,15 @@ means adding a catalogue entry; nothing is hardcoded at the binding site.
 code.
 
 The `default` preset binds 49 entries; `minimal` binds the 33 that have no
-Neovim 0.11 equivalent (it drops `grn`, `grt` and `]d`/`[d`, and the prefixless
-`ls*` family); `none` binds nothing.
+Neovim 0.11 equivalent (it drops 16: `grn`, `grt`, `]d`/`[d`, seven of the nine
+prefixless `ls*` keys, and the five `<leader>xl*` Trouble views); `none` binds
+nothing.
+
+`minimal` keeps two `ls*` keys, `lsc` and `lsC`: call hierarchy is the one
+thing in that family Neovim has no default for. So the 'timeoutlen' cost below
+is NOT bought back by the preset -- two prefixless `ls` maps cost exactly what
+nine do. `keymaps.map = { picker_incoming_calls = false, picker_outgoing_calls
+= false }` is what finishes the job.
 
 Overriding, per action: >lua
     keymaps = {
@@ -464,21 +548,36 @@ Two properties of the bound keys are worth knowing:
   - The prefixless `ls*` family costs every Normal-mode `l` a 'timeoutlen'
     wait, because Neovim must see whether an `s` follows. That is the price of
     a prefixless three-character mapping, and it is deliberate.
-  - `grn` and `grt` collide with Neovim 0.11's own `gr*` maps, which are set
-    BUFFER-LOCALLY on |LspAttach| and therefore beat a global mapping.
-    `bindings/autocmds.lua` re-binds those two on LspAttach so the catalogue's
-    version runs -- which matters as soon as `rename.provider` selects
-    inc-rename.
+  - `grn` and `grt` collide with Neovim 0.11's own `gr*` maps -- but those are
+    GLOBAL, not buffer-local. `$VIMRUNTIME/lua/vim/_core/defaults.lua` sets all
+    six (`grn`, `gra`, `grr`, `gri`, `grt`, `gO`) at startup, "unconditionally
+    to avoid different behavior depending on whether an LSP client is
+    attached"; in a `--headless --noplugin` session with no client at all,
+    `maparg("grn", "n", false, true).buffer` is `0` for every one of them.
+    Being global, the catalogue's `rename` and `goto_type_definition_gr`
+    replace Neovim's outright the moment the binder runs: after setup() under
+    the `default` preset, `maparg("grn").desc` reads "LSP: Rename symbol" where
+    it read "vim.lsp.buf.rename()" before. That is what routing `grn` through
+    `rename.provider` needs, and it does not need |LspAttach| to get it.
+    `bindings/autocmds.lua` re-binds the two buffer-locally on LspAttach
+    anyway; with the collision global on both sides, that hook is belt and
+    braces rather than the thing that makes the catalogue win.
 
 ==============================================================================
 6. COMMANDS                                               *lsp.nvim-commands*
 
-One command with subcommands and <Tab> completion, built with
-`lib.nvim.bindings.usercmd.composer`. The migrated command family (|:LspDoctor|,
-:LspStatus, :LspLog, :LspInfo, :LspRecover, :LspStartHere, :LspStopHere,
-:LspRestartHere, :LspForceRestart, :LspFormat*, :LspWorkspaceDiagnostics*,
-:LspMdHints, :Diag*, :TypeDef*, :EslintFix) is registered as well; folding it
-into `:Lsp` routes with thin aliases is roadmap section 8.2.
+One command with eighteen subcommands and <Tab> completion, built with
+`lib.nvim.bindings.usercmd.composer`. The folding is done: the flat command
+family (:LspStatus, :LspLog, :LspInfo, :LspRecover, :LspStartHere,
+:LspStopHere, :LspRestartHere, :LspForceRestart, :LspFormat*,
+:LspWorkspaceDiagnostics*, :Diag*) is now 25 thin aliases onto the same
+functions the routes below call, so the two cannot drift apart.
+`usrcmds.legacy_aliases = false` drops them. |:LspDoctor| and :LspMdHints keep
+their own verbs and are not aliases, and neither are :EslintFix or the
+:TypeDef* family, which come from `tools/`.
+
+Every subcommand below completes its arguments, and every argument set here is
+closed unless it says otherwise.
                                                                        *:Lsp*
     :Lsp status                                              *:Lsp-status*
                     Report what the plugin has set up: resolved config,
@@ -494,6 +593,63 @@ into `:Lsp` routes with thin aliases is roadmap section 8.2.
     :Lsp health                                              *:Lsp-health*
                     Run |:checkhealth| for this plugin.
 
+    :Lsp info                                                  *:Lsp-info*
+                    Detailed LSP information for the current buffer, in
+                    ui.nvim's viewer. The `:LspInfo` alias is the same thing.
+
+    :Lsp start [server]                                       *:Lsp-start*
+    :Lsp stop [server]                                         *:Lsp-stop*
+    :Lsp restart [server]                                   *:Lsp-restart*
+                    Lifecycle for this buffer's clients: all of them with no
+                    argument, one by name with one. The server argument
+                    completes from the LIVE set rather than a list frozen at
+                    setup -- attached clients first, since "restart this one"
+                    usually means one of those, then everything `servers`
+                    configures, attached or not.
+
+    :Lsp force-restart {server}                        *:Lsp-force-restart*
+                    Restart one server with a full teardown first. Its own
+                    subcommand rather than a flag on `restart`, because a
+                    literal word after `restart` would be ambiguous with a
+                    server actually called "force". The server name is
+                    required here.
+
+    :Lsp recover                                            *:Lsp-recover*
+                    Start the servers that should be running on this buffer
+                    and are not. This is what owns the case `auto_restart`
+                    deliberately refuses: a client that died before it ever
+                    attached, where an automatic retry loop is a hazard.
+
+    :Lsp format [action]                                     *:Lsp-format*
+                    Format once, or control format-on-save. Actions: `once`
+                    (default), `on`, `off`, `toggle`, `status`, `which`.
+                    `which` answers which engine would format this buffer --
+                    conform's chain for the filetype, or the LSP fallback.
+
+    :Lsp hints [action] [filetype]                            *:Lsp-hints*
+                    Neovim's native inlay hints (|vim.lsp.inlay_hint|),
+                    globally or for one filetype. Actions: `toggle`
+                    (default), `on`, `off`, `status`, `clear`. As with
+                    |:Lsp-lightbulb|, `clear` needs a filetype -- dropping
+                    "the global override" would be dropping the setting
+                    itself, so it is refused with a warning.
+
+    :Lsp diag {action} [list]                                  *:Lsp-diag*
+                    Diagnostics into a list, or movement within one. Actions:
+                    `qf`, `loc`, `next`, `prev` -- required, since there is no
+                    sensible default for "do something with diagnostics". The
+                    optional second argument picks the list `next`/`prev` move
+                    in, `qf` or `loc`, defaulting to `loc`. Movement is one
+                    step per invocation: the keymaps fall back to |v:count1|,
+                    which is right for a keypress and wrong for a command,
+                    where `v:count` holds whatever the last keypress left
+                    behind.
+
+    :Lsp workspace [action]                               *:Lsp-workspace*
+                    Workspace-wide diagnostics on attach. Actions: `on`,
+                    `off`, `toggle`, `status` (default), `now`. `now`
+                    populates immediately rather than waiting for an attach.
+
     :Lsp root [action]                                         *:Lsp-root*
                     Roots and workspace folders. Two mechanisms under one
                     word, because from where you sit both answer "what does
@@ -505,10 +661,22 @@ into `:Lsp` routes with thin aliases is roadmap section 8.2.
                               runtime change.
                       pick    Switch the resolution scope: cwd, git root, or
                               the file's own path. Reaches only the servers
-                              whose `root_dir` is a function -- `lua_ls` and
-                              `marksman` here. `gopls`, `ts_ls`, `clangd` and
-                              `csharp` declare `root_markers`, which Neovim
-                              resolves itself with no hook to intercept.
+                              whose `root_dir` is a function. Of the eight
+                              `servers` ship by default that is three:
+                              `lua_ls`, `marksman`, and `csharp` -- which
+                              registers under the config name `omnisharp`,
+                              so that is what `:Lsp root show` calls it.
+                              `bashls`, `gopls`, `html`, `ts_ls` and
+                              `tailwindcss` declare `root_markers`, which
+                              Neovim resolves itself with no hook to
+                              intercept. A `root_dir` function is necessary
+                              and not sufficient, though: of the three, only
+                              `lua_ls` reads the scope at all
+                              (`servers/lua_ls/rootresolver.lua`) and only it
+                              listens for `User LspRootScopeChanged` to
+                              recompute for open buffers. `marksman` and
+                              `csharp` resolve from their own markers and are
+                              unaffected by a pick.
                       add     Pick a directory and add it as a workspace
                               folder on every attached client that accepts
                               one. This is LSP's own multi-root mechanism
@@ -568,9 +736,18 @@ into `:Lsp` routes with thin aliases is roadmap section 8.2.
 
     :LspDoctor [report]                                        *:LspDoctor*
                     Six reports on the LSP state of the current buffer, each
-                    answering one question. Reachable as `:Lsp doctor` too.
-                    With `!` the report opens in a scratch buffer instead of
-                    being printed.
+                    answering one question. With `!` the report opens in a
+                    scratch buffer instead of being printed.
+
+                    Reachable as `:Lsp doctor` too, over the same six names --
+                    the route takes `lspdoctor.MODES` itself rather than
+                    repeating the spellings, so the two cannot come to offer
+                    different reports. They differ in one thing only, and
+                    deliberately: with no argument `:LspDoctor` runs `all`,
+                    while `:Lsp doctor` runs `startup`. The route always opens
+                    a scratch split, the combined report is long, and the
+                    question one arrives with is almost always "why is my
+                    server not running".
 
                       startup       Is the server running, and if not, why?
                                     Executable, attempts, last error, and what
@@ -610,27 +787,37 @@ multi-line, and meant to be read and copied from.
 >vim
     :checkhealth lsp
 <
-Five sections: the environment (Neovim version, lib.nvim), what setup()
-registered including every warning it worked around, the servers, the ecosystem
-around the plugin, and a pointer to |:LspDoctor| for per-buffer diagnosis.
+Six sections, in this order: `Environment` (Neovim version, lib.nvim),
+`lsp.nvim` (what setup() registered, including every warning it worked around),
+`Servers`, `Ecosystem` (the plugins around this one), `Diagnostics` (who owns
+|vim.diagnostic.config()| and what each contributor put there), and
+`Per-buffer diagnosis`, a pointer to |:LspDoctor|.
 
 The servers section reads left to right along four numbers: installed (what
 Mason has on disk, whatever `servers` says), configured, set up, and attached
 -- both in total and in the buffer you were in when you opened the report. That
 last one is the alternate buffer, not the current one: Neovim creates the
 `health://` buffer and makes it current before running a single check, so
-reading the current buffer would report on the report.
+reading the current buffer would report on the report. The alternate only
+survives the first |:checkhealth| of a session; after that the section falls
+back to the most recently used file buffer, and says so rather than reporting
+a zero it would have invented.
 
 An installed server that nothing attaches to costs nothing. The section warns
 about exactly one thing: a server whose cost scales with attached buffers
-(`ts_ls`, `pyright`, `jdtls`, `omnisharp`) held open across many of them. Never
-on a count alone -- five buffers on `ts_ls` is a working set, and warning about
-that would train you to skip the section.
+(`ts_ls`/`tsserver`, `pyright`, `jdtls`, `omnisharp`) held open across more
+than twenty of them. Never on a count alone -- five buffers on `ts_ls` is a
+working set, and warning about that would train you to skip the section.
 
 Severity follows dependency hardness: something the plugin cannot work without
-is an error, something it uses when present is information. That is why
-trouble.nvim is still informational -- nothing wires it yet -- while a missing
-conform.nvim is not.
+is an error, something it uses when present is information. conform.nvim is
+the one ERROR in the ecosystem section -- it is the formatter's primary
+engine, and without it formatting falls back to the LSP. Everything else
+there, trouble.nvim included, is informational. Note that informational does
+not mean unwired: trouble is driven from the keymap catalogue, which binds
+thirteen keys for it under the `default` preset, and `diagnostics.ui` routes
+`]d`/`[d` through it. The `lsp.nvim` section warns separately about keys bound
+for a plugin that is not installed, and names them.
 
 ==============================================================================
 8. ARCHITECTURE                                       *lsp.nvim-architecture*
@@ -648,7 +835,7 @@ intended.
 
 The tree is complete: `pack/`, `integrations/`, `core/`, `servers/`, `languages/`,
 `formatter/`, `diagnostics/`, `lspdoctor/`, `tools/`, `usercmds/`,
-`completion/`, `config/`, `bindings/` and `health.lua`.
+`completion/`, `config/`, `bindings/`, `@types/`, `health.lua` and `init.lua`.
 
 The adapters own every third-party `require`. They are not called by the core;
 they hand capability contributors and attach hooks to `lsp/init.lua`, which
@@ -663,8 +850,14 @@ All five migration phases are done. The core lives here, configures the
 servers, owns every LSP keymap, reaches third-party plugins only through the
 adapters in `integrations/`, and installs and configures them from `pack/`.
 
-What remains is smaller: folding the ~30 `:Lsp*` commands into `:Lsp` routes
-as aliases.
+The last item that used to stand here -- folding the flat `:Lsp*` commands into
+|:Lsp| routes -- is done too. There are eighteen routes, and the 25 flat
+commands that remain are aliases onto the same functions, switchable off with
+`usrcmds.legacy_aliases`. See |lsp.nvim-commands|.
+
+What is left is `integrations` as a configurable option: the adapters exist and
+are wired, but nothing reads a user-supplied `integrations` table, so there is
+deliberately no default for one. See the end of |lsp.nvim-config|.
 
 
 vim:tw=78:ts=8:ft=help:norl:
