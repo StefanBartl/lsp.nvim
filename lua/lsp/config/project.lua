@@ -50,13 +50,24 @@ local M = {}
 --- * `tools`        -- which extra tools this stack benefits from.
 --- * `languages`    -- the per-filetype setup this tree wants.
 ---
---- The omissions are the point, so they are named rather than left implicit:
+--- The omissions are the point, so they are named rather than left implicit.
+--- All eleven of them, which is one more than this list held until now:
+--- `auto_restart` was refused by the allowlist and mentioned nowhere, so the
+--- one option whose omission a reader had to infer was the one about restarting
+--- processes. Counted rather than eyeballed -- nine allowed plus the eleven
+--- below is every top-level key in `DEFAULTS`.
 ---
 --- * `preset`                -- a property of the machine, not the repository.
 --- * `keymaps`, `usrcmds`,
 ---   `which_key`, `menu`     -- your bindings. Opening a repository must not
 ---                              move a key or drop a command.
 --- * `mason`                 -- installs software. Never from a checkout.
+--- * `auto_restart`          -- how many times this editor relaunches a crashed
+---                              process, and how fast. A supervision policy
+---                              belongs to the machine running the servers, not
+---                              to the tree being edited -- and it is the one
+---                              omission here that a repository could turn into
+---                              a restart loop.
 --- * `completion`, `rename`  -- host data and a personal habit; neither is a
 ---                              property of the code being edited.
 --- * `lspdoctor`             -- report formatting, which is yours to choose.
@@ -128,6 +139,18 @@ end
 function M.read(opts, start)
   if not opts.enable then
     return nil, {}
+  end
+
+  -- `file` is optional on `LspNvim.ProjectOpts`, so a caller that did not come
+  -- through `config.setup()`'s normalization -- a health check, a test, a host
+  -- reading the project layer directly -- may legitimately leave it out.
+  -- Measured before this guard: `M.read({ enable = true })` died inside
+  -- `vim.fs.find` with "names: expected string|table|function, got nil", and
+  -- `file = 42` with "got number". A config layer answering a malformed option
+  -- by raising is the one outcome this plugin's normalization contract rules
+  -- out, whichever door the value came in through.
+  if type(opts.file) ~= "string" or opts.file == "" then
+    return nil, { "project.file: expected a file name, ignoring the project file" }
   end
 
   local path = M.find(opts.file, start)
