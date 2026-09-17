@@ -105,20 +105,58 @@ function M.available()
   return ok and type(mod) == "table" and type(mod.get_lsp_capabilities) == "function"
 end
 
+---@internal
+--- The mirror, merged under `caps`.
+---
+--- `vim.deepcopy`, not `CAPS` straight into the merge: `tbl_deep_extend`
+--- assigns a subtable by *reference* whenever the destination has no key of
+--- that name, so the merged table came back sharing nodes with the module
+--- constant. Measured on the real startup path -- `core.capabilities.get()`
+--- over the real contributor list handed every server a table whose
+--- `textDocument.completion.completionItem.insertTextModeSupport` (and its
+--- `valueSet`) *was* `CAPS`'s. One write into the capabilities anywhere
+--- downstream rewrote the constant for the rest of the session, and since
+--- `M._CAPS` is what `TESTS/lsp/integrations_spec.lua` compares against the
+--- real blink, the drift test would have been comparing the damage.
+---@param caps table
+---@return table
+local function from_mirror(caps)
+  return vim.tbl_deep_extend("force", vim.deepcopy(CAPS), caps)
+end
+
 --- Merge blink.cmp's capabilities in.
 ---
 --- Same shape as blink's own `get_lsp_capabilities(override)`: the incoming
 --- `caps` is passed as the override, so a contributor that ran earlier keeps
 --- whatever it already decided and blink only fills the gaps.
+---
+--- A loaded blink that *raises* (or answers with nil) falls back to the
+--- mirror rather than costing the contribution: an installed-but-broken blink
+--- is the one case where the copy below is worth the most, and it was the one
+--- case that did not reach it. Measured: with
+--- `get_lsp_capabilities` raising, this returned no completion capabilities at
+--- all -- `core.capabilities.get()` recorded the failure and moved on, which
+--- is finding B1's silent-fallback outcome arrived at from the other side.
 ---@param caps table
 ---@return table|nil caps
 ---@return LspCaps.Warning[]|nil warnings
 function M.capabilities(caps)
   local mod = blink_if_loaded()
   if mod ~= nil then
-    return vim.tbl_deep_extend("force", caps, mod.get_lsp_capabilities(caps)), nil
+    local ok, from_blink = pcall(mod.get_lsp_capabilities, caps)
+    if ok and type(from_blink) == "table" then
+      return vim.tbl_deep_extend("force", caps, from_blink), nil
+    end
+    return from_mirror(caps),
+      {
+        {
+          level = "warn",
+          msg = "blink.cmp is loaded but get_lsp_capabilities() failed; used the mirrored table instead: "
+            .. tostring(from_blink),
+        },
+      }
   end
-  return vim.tbl_deep_extend("force", caps, vim.tbl_deep_extend("force", {}, CAPS, caps)), nil
+  return from_mirror(caps), nil
 end
 
 --- The mirrored table, for the drift test.

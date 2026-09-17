@@ -41,6 +41,15 @@ function M.available()
 end
 
 --- Merge NvChad's capabilities in.
+---
+--- `vim.deepcopy` on NvChad's table, not the table itself: `tbl_deep_extend`
+--- assigns a subtable by *reference* wherever the destination has no key of
+--- that name, so the merged capabilities came back sharing nodes with
+--- `nvchad.configs.lspconfig.capabilities` -- a module we do not own. Measured
+--- directly: after one write into the merged table, NvChad's own
+--- `capabilities` carried the new value too. Ours to hand on, not ours to
+--- edit, and a capability table that quietly edits its source is the kind of
+--- thing that only shows up two plugins away.
 ---@param caps table
 ---@return table|nil caps
 ---@return LspCaps.Warning[]|nil warnings
@@ -49,7 +58,7 @@ function M.capabilities(caps)
   if mod == nil or type(mod.capabilities) ~= "table" then
     return nil, nil
   end
-  return vim.tbl_deep_extend("force", caps, mod.capabilities), nil
+  return vim.tbl_deep_extend("force", caps, vim.deepcopy(mod.capabilities)), nil
 end
 
 --- Hand the client to NvChad's own on_init.
