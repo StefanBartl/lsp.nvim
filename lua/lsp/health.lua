@@ -609,7 +609,26 @@ end
 ---@return nil
 local function check_doctor()
   if has("lsp.lspdoctor") then
-    health.ok("`:LspDoctor startup|resolve|buffer|capabilities|all` available")
+    -- Read from `MODES`, not spelled out here. This line used to name five
+    -- modes and omit `probe` -- the one a user would not guess, and the only
+    -- one that answers "are diagnostics actually arriving". It was the single
+    -- place in the plugin that wrote the list by hand; `bindings/usrcmds.lua`
+    -- and `lspdoctor/init.lua` both pass `MODES` to the command composer, which
+    -- is why their completion stayed right while this went stale.
+    --
+    -- Checked rather than assumed to be a list: a module can answer a field
+    -- read with something other than data. The suite's `inert()` stub returns a
+    -- function for *every* key, so `MODES` came back callable and
+    -- `table.concat` raised -- taking the whole section down and, with it, the
+    -- advisory line below that a neighbouring case asserts. When the list
+    -- cannot be read, say less rather than inventing one.
+    local ok_modes, doctor = pcall(require, "lsp.lspdoctor")
+    local modes = ok_modes and type(doctor) == "table" and doctor.MODES or nil
+    if type(modes) == "table" and vim.islist(modes) and #modes > 0 then
+      health.ok(("`:LspDoctor %s` available"):format(table.concat(modes, "|")))
+    else
+      health.ok("`:LspDoctor` available")
+    end
     health.info("This report covers the plugin; :LspDoctor covers the current buffer.")
   else
     health.warn("lsp.lspdoctor did not load", { "Reinstall lsp.nvim" })
