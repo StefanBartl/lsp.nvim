@@ -64,7 +64,16 @@ end
 ---@return boolean
 local function has_provider(bufnr)
   for _, client in ipairs(vim.lsp.get_clients({ bufnr = bufnr })) do
-    if (client.server_capabilities or {}).inlayHintProvider ~= nil then
+    -- `~= nil` is not the question. `inlayHintProvider` is
+    -- `boolean | InlayHintOptions | InlayHintRegistrationOptions`, and a
+    -- server that does not do hints answers the capability with `false`
+    -- rather than leaving it out -- so an explicit "no" read as a "yes".
+    -- Measured with two stub servers on two buffers, one answering `false`
+    -- and one `true`: `status()` listed both under "buffers with an
+    -- inlayHintProvider" and reported both "on", and `set()` counted both in
+    -- its "(2 buffers)" -- the report the module header says costs an hour.
+    local provider = (client.server_capabilities or {}).inlayHintProvider
+    if provider ~= nil and provider ~= false then
       return true
     end
   end
