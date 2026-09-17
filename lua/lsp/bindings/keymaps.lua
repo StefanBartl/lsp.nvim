@@ -87,14 +87,59 @@ function M.setup(cfg)
   return registered
 end
 
+---@internal
+--- Does `bufnr` carry a buffer-local mapping for `lhs` that is *Neovim's own*
+--- LSP default, rather than one somebody set deliberately?
+---
+--- Both halves matter, and getting only the first one right inverts the answer.
+--- A plain "is it mapped buffer-locally" test fires on exactly the mappings that
+--- must not be touched: on a Neovim whose `gr*` defaults are global there is
+--- never a default to find, so the only buffer-local `grn` that can exist is the
+--- user's, and re-binding over it is the one outcome worse than doing nothing.
+--- Measured, with that weaker test in place: a user's `grn` in a scratch buffer
+--- came back out of the re-bind reading `LSP: Rename symbol`.
+---
+--- Neovim's own is recognisable -- it dispatches straight to `vim.lsp.buf.*` and
+--- `maparg` reports that as the description (`vim.lsp.buf.rename()` for `grn`).
+--- A user who mimics that description exactly gets replaced, which is the one
+--- false positive left and is not worth more machinery than this.
+---
+--- `lhs` is compared through `nvim_replace_termcodes`, because Neovim stores a
+--- mapping under the *resolved* sequence: a `<leader>`-prefixed left-hand side
+--- comes back out of `nvim_buf_get_keymap` already expanded, so comparing the
+--- notation this function was handed never matches. The same trap cost `tools/`
+--- a "bind once" guard that fired every time.
+---@param mode string|string[]
+---@param lhs string
+---@param bufnr integer
+---@return boolean
+local function shadowed_by_neovim_default(mode, lhs, bufnr)
+  local want = vim.api.nvim_replace_termcodes(lhs, true, true, true)
+  local modes = (type(mode) == "table") and mode or { mode }
+  for _, m in ipairs(modes) do
+    for _, map in ipairs(vim.api.nvim_buf_get_keymap(bufnr, m)) do
+      if vim.api.nvim_replace_termcodes(map.lhs, true, true, true) == want then
+        return type(map.desc) == "string" and map.desc:match("^vim%.lsp%.buf%.") ~= nil
+      end
+    end
+  end
+  return false
+end
+
 --- Re-bind one catalogue entry buffer-locally.
 ---
---- Needed for the `gr*` family: Neovim sets `grn`, `grr`, `gri`, `grt` and `gO`
---- buffer-locally on |LspAttach|, and a buffer-local mapping wins over a global
---- one. Without this, the global `grn` from the catalogue would be shadowed the
---- moment a server attaches -- harmless while both call
---- `vim.lsp.buf.rename`, but wrong as soon as `rename.provider` selects
---- inc-rename (roadmap section 8.1).
+--- For the `gr*` family, and only when there is something to answer. A
+--- buffer-local mapping wins over a global one, so a buffer-local `grn` would
+--- shadow the catalogue's -- harmless while both call `vim.lsp.buf.rename`, but
+--- wrong as soon as `rename.provider` selects inc-rename (roadmap section 8.1).
+---
+--- This used to re-bind unconditionally, on the assumption that Neovim installs
+--- those maps buffer-locally on |LspAttach|. It does not: they are global from
+--- startup, measured before and after a real attach on 0.12.2. So the function
+--- now checks the buffer first and returns false when nothing shadows the
+--- catalogue -- which on a current Neovim is every time. The check is what keeps
+--- this honest on a version that behaves differently, and it stops the re-bind
+--- from clobbering a buffer-local mapping the *user* set in an ftplugin.
 ---@param cfg LspNvim.Config
 ---@param name string # Catalogue entry name.
 ---@param bufnr integer
@@ -113,20 +158,30 @@ function M.rebind_buffer_local(cfg, name, bufnr)
   -- The same question `setup()` answers, not a second one: out-of-preset
   -- entries are forced off there only when the user said *nothing* about them
   -- (`user[name] == nil`), so an explicit lhs re-enables one. Asking "is it in
-  -- the preset" alone disagreed. Measured with
-  -- `preset = "minimal", map = { rename = "grn" }`: `setup()` bound `grn`
-  -- globally, this returned false, and Neovim's own buffer-local `grn` ->
-  -- `vim.lsp.buf.rename` then won in every attached buffer -- which is the one
-  -- thing this function exists to prevent, and it took `rename.provider` down
-  -- with it.
+  -- the preset" alone disagreed, and the disagreement is the bug: with
+  -- `preset = "minimal", map = { rename = "grn" }`, `setup()` binds `grn` and
+  -- this would have refused to defend it. Whether that refusal costs anything
+  -- depends on the Neovim underneath -- on a current one nothing shadows the
+  -- mapping anyway -- but the two answers have to agree about which entries are
+  -- bound regardless, or this function is reasoning about a different keymap
+  -- set than the one that exists.
   local in_preset = vim.tbl_contains(KEYMAPS.presets[cfg.keymaps.preset] or {}, name)
   if not in_preset and override == nil then
     return false
   end
 
   local lhs = (type(override) == "string") and override or spec.lhs
+
+  -- No Neovim default shadowing the catalogue here, so there is nothing to
+  -- re-assert. On a Neovim whose `gr*` defaults are global -- every version this
+  -- can be measured against -- that is the answer every time, and the whole
+  -- handler costs one keymap scan per attach.
+  if not shadowed_by_neovim_default(spec.mode, lhs, bufnr) then
+    return false
+  end
+
   -- The one-off setter, not the registry: this re-binds a single entry that is
-  -- already declared, to shadow a buffer-local default Neovim installs itself.
+  -- already declared, to shadow a buffer-local mapping that beat it.
   -- Registering it again would replace the plugin's whole record with one
   -- action.
   keymap(spec.mode, lhs, spec.rhs, {

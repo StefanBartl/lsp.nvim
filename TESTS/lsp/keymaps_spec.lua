@@ -207,6 +207,14 @@ describe("lsp.bindings.keymaps", function()
   describe("rebind_buffer_local", function()
     it("binds an entry of the active preset into the buffer", function()
       local bufnr = vim.api.nvim_create_buf(false, true)
+      -- The Neovim-default-shaped mapping this exists to replace. It used to be
+      -- absent here, because the function re-bound unconditionally -- which is
+      -- what let it overwrite a mapping the user had set. See the cases at the
+      -- bottom of this file.
+      vim.keymap.set("n", "grn", function() end, {
+        buffer = bufnr,
+        desc = "vim.lsp.buf.rename()",
+      })
       assert.is_true(keymaps.rebind_buffer_local(cfg(), "rename", bufnr))
 
       local found = false
@@ -422,5 +430,149 @@ describe("diagnostics.ui: Trouble as the ]d/[d sink (roadmap 15.1)", function()
     local state = stub_trouble()
     actions.diag_next(1)
     assert.is_not_nil(state.opened, "]d opened the list on its own")
+  end)
+end)
+
+describe("lsp.bindings.keymaps.rebind_buffer_local", function()
+  -- The `gr*` re-bind exists to beat a buffer-local default Neovim was believed
+  -- to install on LspAttach. It does not install one: measured on 0.12.2 with a
+  -- real client attaching, `maparg("grn", "n", false, true).buffer` is 0 before
+  -- and after, and `$VIMRUNTIME/lua/vim/_core/defaults.lua` maps the family
+  -- globally at startup on purpose. So on every Neovim this can be measured
+  -- against, the only buffer-local `grn` that can exist is one somebody set
+  -- themselves -- which makes "is it mapped buffer-locally?" the wrong question
+  -- and its answer actively harmful.
+  local keymaps = require("lsp.bindings.keymaps")
+  local config = require("lsp.config")
+
+  local bufs, clients = {}, {}
+  local function scratch()
+    local b = vim.api.nvim_create_buf(false, true)
+    bufs[#bufs + 1] = b
+    return b
+  end
+
+  after_each(function()
+    -- Force-stop, and wait: a fake client left running holds Neovim open at
+    -- exit, which turns a failing assertion into a hung suite.
+    for _, id in ipairs(clients) do
+      local client = vim.lsp.get_client_by_id(id)
+      if client then
+        pcall(function()
+          client:stop(true)
+        end)
+      end
+    end
+    vim.wait(2000, function()
+      for _, id in ipairs(clients) do
+        if vim.lsp.get_client_by_id(id) then
+          return false
+        end
+      end
+      return true
+    end, 10)
+    clients = {}
+    for _, b in ipairs(bufs) do
+      pcall(vim.api.nvim_buf_delete, b, { force = true })
+    end
+    bufs = {}
+  end)
+
+  local function cfg()
+    config.setup({})
+    return config.get()
+  end
+
+  it("does nothing when no buffer-local mapping shadows the catalogue", function()
+    local buf = scratch()
+    assert.is_false(keymaps.rebind_buffer_local(cfg(), "rename", buf))
+    assert.are.equal(0, #vim.api.nvim_buf_get_keymap(buf, "n"))
+  end)
+
+  it("leaves a buffer-local mapping the user set themselves alone", function()
+    -- Red before the guard was corrected: the re-bind fired on any buffer-local
+    -- mapping, so this came back reading "LSP: Rename symbol" -- the plugin
+    -- silently replacing a deliberate choice, in the one case where it fires at
+    -- all on a current Neovim.
+    local buf = scratch()
+    vim.keymap.set("n", "grn", function() end, { buffer = buf, desc = "my own rename" })
+
+    assert.is_false(keymaps.rebind_buffer_local(cfg(), "rename", buf))
+
+    local desc
+    for _, m in ipairs(vim.api.nvim_buf_get_keymap(buf, "n")) do
+      if m.lhs == "grn" then
+        desc = m.desc
+      end
+    end
+    assert.are.equal("my own rename", desc)
+  end)
+
+  it("does replace Neovim's own buffer-local default, which is the point", function()
+    -- The shape a Neovim that behaved as the old comment claimed would produce:
+    -- a buffer-local map dispatching straight to `vim.lsp.buf.*`. Kept so the
+    -- handler is still doing its job on a version that does that, rather than
+    -- being deleted on the strength of one version's measurement.
+    local buf = scratch()
+    vim.keymap.set("n", "grn", function() end, { buffer = buf, desc = "vim.lsp.buf.rename()" })
+
+    assert.is_true(keymaps.rebind_buffer_local(cfg(), "rename", buf))
+
+    local desc
+    for _, m in ipairs(vim.api.nvim_buf_get_keymap(buf, "n")) do
+      if m.lhs == "grn" then
+        desc = m.desc
+      end
+    end
+    assert.are.equal("LSP: Rename symbol", desc)
+  end)
+
+  it("Neovim installs no buffer-local gr* mapping on attach", function()
+    -- The premise the handler was written on, asserted directly so a Neovim
+    -- that changes its mind about this fails here rather than silently.
+    local buf = scratch()
+    local attached = false
+    vim.api.nvim_create_autocmd("LspAttach", {
+      once = true,
+      callback = function(a)
+        if a.buf == buf then
+          attached = true
+        end
+      end,
+    })
+
+    clients[#clients + 1] = vim.lsp.start({
+      name = "keymaps_spec_fake",
+      root_dir = vim.fn.tempname(),
+      cmd = function(dispatchers)
+        return {
+          request = function(method, _, cb)
+            if method == "initialize" then
+              cb(nil, { capabilities = { renameProvider = true } })
+            elseif method == "shutdown" then
+              cb(nil, nil)
+            end
+            return true, 1
+          end,
+          notify = function()
+            return true
+          end,
+          is_closing = function()
+            return false
+          end,
+          terminate = function() end,
+          _dispatchers = dispatchers,
+        }
+      end,
+    }, { bufnr = buf })
+
+    vim.wait(2000, function()
+      return attached
+    end, 10)
+    assert.is_true(attached, "the fake client attached")
+
+    for _, lhs in ipairs({ "grn", "grr", "gri", "grt", "gO" }) do
+      assert.are.equal(0, vim.fn.maparg(lhs, "n", false, true).buffer or 0, lhs .. " stayed global")
+    end
   end)
 end)

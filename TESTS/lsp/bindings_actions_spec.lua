@@ -236,9 +236,15 @@ describe("lsp.bindings.keymaps.rebind_buffer_local", function()
   it("defends an out-of-preset entry the user re-enabled by lhs", function()
     -- `setup()` binds it -- an explicit lhs beats "not in the preset", because
     -- out-of-preset entries are forced off there only when the user said
-    -- nothing. So the LspAttach defender has to bind it too, or Neovim's own
-    -- buffer-local `grn` shadows it in exactly the buffers it is meant for and
-    -- `rename.provider` stops reaching the key at all.
+    -- nothing. So the LspAttach defender has to agree that it is bound, or the
+    -- two disagree about which keys exist and `rename.provider` stops reaching
+    -- the key in any buffer that does shadow it.
+    --
+    -- The shadow has to be staged, which it did not used to be: the defender
+    -- re-bound unconditionally, so this passed without one. Neovim does not
+    -- install a buffer-local `gr*` mapping on attach -- measured global before
+    -- and after on 0.12.2 -- so the only way to exercise the defender is to put
+    -- a Neovim-shaped default there by hand.
     local name, lhs = out_of_preset()
     local cfg = require("lsp.config").setup({
       keymaps = { preset = "minimal", map = { [name] = lhs } },
@@ -253,6 +259,10 @@ describe("lsp.bindings.keymaps.rebind_buffer_local", function()
 
     vim.cmd("enew!")
     local bufnr = vim.api.nvim_get_current_buf()
+    vim.keymap.set("n", lhs, function() end, {
+      buffer = bufnr,
+      desc = "vim.lsp.buf.rename()",
+    })
     assert.is_true(keymaps.rebind_buffer_local(cfg, name, bufnr))
 
     local found
