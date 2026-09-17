@@ -9,7 +9,15 @@ local root_resolver = require("lsp.servers.lua_ls.rootresolver")
 local library_profiles = require("lsp.servers.lua_ls.library_profiles")
 
 ---@param shared {capabilities?:table,on_attach?:fun(client,bufnr),on_init?:fun(client,init_result):boolean}|nil
----@param opts { enable?: boolean,  profile?: LibraryProfile }|nil
+--- `opts` deliberately has no `profile` field. It used to declare one, and
+--- nothing read it: measured by capturing what `before_init` installs, all of
+--- `minimal`, `normal` and `full` -- passed as `opts.profile` and as
+--- `LUA_LS_PROFILE` -- produce the same four-entry library. The profiles in
+--- `library_profiles` bound `find_type_dirs`' scan, and that scan is not on
+--- this path any more (see `before_init` below), so there is nothing here for
+--- a profile to tune. `library_profiles.get_config` is still the knob for the
+--- callers that do scan, i.e. `debug` / `build_library`.
+---@param opts { enable?: boolean }|nil
 ---@return nil
 function M.setup(shared, opts)
   -- Ensure shared and opts are tables, even if nil was passed
@@ -57,9 +65,13 @@ function M.setup(shared, opts)
       -- an lspconfig hook, and this server is registered through the native
       -- `vim.lsp.config`, which knows nothing about it. Verified on a running
       -- client -- `client.config.settings.Lua.workspace.library` was nil, so
-      -- lua_ls had no Neovim runtime types at all, and `LUA_LS_PROFILE` had
-      -- no effect (which is the real reason the `minimal` A/B in
-      -- the startup A/B changed nothing).
+      -- lua_ls had no Neovim runtime types at all (which is the real reason
+      -- the `minimal` A/B in the startup A/B changed nothing).
+      --
+      -- `LUA_LS_PROFILE` still has no effect on what a server receives, and
+      -- moving the library here did not change that:
+      -- `build_runtime_library` takes no profile. That is the intended state,
+      -- not an oversight -- see the `opts` note above.
       ---@param _params table
       ---@param config table
       before_init = function(_params, config)

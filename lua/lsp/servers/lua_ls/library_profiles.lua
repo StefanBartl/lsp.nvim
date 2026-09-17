@@ -61,18 +61,23 @@ function M.get_config(profile)
 end
 
 --- Build only the part of the library that is cheap to compute: the `${3rd}`
---- meta definitions and Neovim's own runtime paths. Measured at 0.0ms, versus
---- ~157ms for the full `build_library` -- all of that difference is
---- `find_type_dirs`' filesystem scan.
+--- meta definitions and Neovim's own runtime paths. Re-measured on this
+--- machine: 0.010ms here, versus 5.6ms for the full `build_library` on this
+--- repo and 337ms on the real plugin tree (`nvim-data/lazy`, 39 library
+--- entries out of a 315ms `find_type_dirs` scan that yields 25 paths). All of
+--- that difference is the scan, and its cost tracks the number of directories
+--- below the root -- `max_results` bounds the result list, not the walk.
 ---
 --- This is the part that actually matters for editing a Neovim config: the
---- runtime paths are what give lua_ls the `vim.*` API types. `find_type_dirs`
+--- runtime paths are what give lua_ls the `vim.*` API types. Verified against
+--- a real `lua-language-server`: with this list installed, hover on
+--- `vim.api.nvim_get_current_buf` resolves to
+--- `function vim.api.nvim_get_current_buf() -> integer`. `find_type_dirs`
 --- searches BELOW the project root, so everything it finds is already inside
 --- the workspace and gets indexed anyway -- declaring those paths as `library`
 --- would only exempt them from diagnostics (`diagnostics.libraryFiles` is
---- "Disable" in .luarc.json), which does not justify a 197ms scan on the
---- startup path.
---- CDX: scan cost is quoted as both ~157ms and 197ms here; likely the same measurement.
+--- "Disable" in .luarc.json), which does not justify that scan on the startup
+--- path.
 ---
 --- Returned as an array, which is what lua_ls' `workspace.library` expects.
 ---@return string[]
@@ -80,6 +85,18 @@ function M.build_runtime_library()
   local library = {
     "${3rd}/luv/library",
     "${3rd}/busted/library",
+    -- busted without luassert is half a test environment. `build_library.lua`
+    -- has carried this entry (and the note explaining it) since the duplicate
+    -- was found, but `build_library` is not on the startup path any more --
+    -- `init.lua`'s `before_init` calls *this* function -- so the entry never
+    -- reached a server. Measured against a real `lua-language-server`:
+    -- `client.settings.Lua.workspace.library` held three entries and no
+    -- luassert, hover on `assert.are.equal` resolved to the Lua stdlib
+    -- `assert(v?, message?, ...)`, and the server itself asked "Do you need to
+    -- configure your work environment as `luassert`?" over `checkThirdParty`.
+    -- With the entry present the same hover resolves to `luassert` with
+    -- `are`/`are_not`/`same`/... and the prompt stops.
+    "${3rd}/luassert/library",
   }
 
   -- Only $VIMRUNTIME/lua, deliberately NOT every runtimepath entry. The first

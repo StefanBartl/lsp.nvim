@@ -1,8 +1,15 @@
 ---@module 'lsp.servers.lua_ls.find_type_dirs'
 --- Enhanced type directory and file discovery for lua_ls
 --- Finds both:
----   1. Directories named "types" or "@types"
+---   1. Directories whose name is `types`/`@types`, starts with `@types`, or
+---      ends in `types` -- so `mytypes` and `@typescript` match too. Measured
+---      against a fixture: `prototypes`, `mytypes` and `@typescript` are all
+---      returned, `TYPES` is not (the name test is case-sensitive even on
+---      Windows, unlike the ignore test below it).
 ---   2. Individual files named "@types.lua" or "types.lua" outside those directories
+---
+--- The walk is breadth-first and bounded by `max_results`; see the queue
+--- comment below for what each of those cost when it was neither.
 
 local notify = require("lib.nvim.notify").create("[lsp.servers.lua_ls.find_type_dirs]")
 local sys_env = require("lib.nvim.system.env")
@@ -28,11 +35,27 @@ return function(root, opts)
   end
 
   local matches = {}
-  local stack = { { path = norm(root), depth = 0 } }
+
+  -- A queue with a moving head, not `table.remove(stack)`. Two reasons, both
+  -- measured:
+  --
+  -- * `table.remove` pops the *last* pushed child, so the walk ran
+  --   depth-first while the README calls it "BFS scanning".
+  --   On a tree holding `aaa/types` at depth 1 and `zzz/a/b/c/types` at
+  --   depth 4, `max_results = 1` returned the depth-4 directory and dropped
+  --   the shallow one. Order only became visible once the cap below actually
+  --   held, and under a cap it decides which directories make the budget --
+  --   a vendored subtree four levels down must not spend it before
+  --   `<root>/lua/types` is even looked at.
+  -- * `table.remove(queue, 1)` would be the other way to get FIFO, but it
+  --   shifts the whole array on every pop.
+  local queue = { { path = norm(root), depth = 0 } }
+  local head = 1
   local seen = {}
 
-  while #stack > 0 and #matches < MAX_RESULTS do
-    local node = table.remove(stack)
+  while head <= #queue and #matches < MAX_RESULTS do
+    local node = queue[head]
+    head = head + 1
 
     -- Skip already processed paths
     if seen[node.path] then
@@ -114,15 +137,29 @@ return function(root, opts)
               -- Only add if contains actual type definitions
               if has_lua then
                 matches[#matches + 1] = child
+                -- The cap has to be re-checked *here*, not only in the outer
+                -- loop. Every match a single directory contributes lands in
+                -- one pass of this inner loop, so testing `#matches` once per
+                -- popped node bounds nothing: a directory holding 500
+                -- siblings that each end in "types" returned 500 paths for
+                -- `max_results = 10` (measured, 34ms) -- 50x the budget the
+                -- profile asked for, handed straight to lua_ls as
+                -- `workspace.library`.
+                if #matches >= MAX_RESULTS then
+                  break
+                end
               end
             end
 
-            -- Add to stack for further exploration
-            stack[#stack + 1] = { path = child, depth = node.depth + 1 }
+            -- Add to the queue for further exploration
+            queue[#queue + 1] = { path = child, depth = node.depth + 1 }
           elseif kind == "file" and INCLUDE_FILES then
             -- Check for standalone type files
             if name == "@types.lua" or name == "types.lua" then
               matches[#matches + 1] = child
+              if #matches >= MAX_RESULTS then
+                break
+              end
             end
           end
 
