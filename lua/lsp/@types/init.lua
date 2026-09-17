@@ -141,8 +141,15 @@ require("lsp.@types.subsystem")
 
 ---@alias LspNvim.RenameProvider
 --- Which backend the rename action uses. Both bound rename keys go through it.
+---
+--- `"inc_rename"` was documented here as "no-op if it is not installed". It is
+--- not: `M.rename` probes with `pcall(require, "inc_rename")` and falls back,
+--- so with inc-rename absent it runs `vim.lsp.buf.rename` -- measured for all
+--- three values. A rename key that does nothing would be the worse behaviour
+--- anyway; the difference between `"auto"` and `"inc_rename"` is intent, not
+--- runtime.
 ---| '"auto"'       # inc-rename when installed, `vim.lsp.buf.rename` otherwise
----| '"inc_rename"' # always inc-rename (no-op if it is not installed)
+---| '"inc_rename"' # inc-rename; `vim.lsp.buf.rename` when it is not installed
 ---| '"native"'     # always `vim.lsp.buf.rename`
 
 ---@class LspNvim.RenameOpts
