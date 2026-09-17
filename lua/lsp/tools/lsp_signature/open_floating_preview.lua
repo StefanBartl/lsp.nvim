@@ -1,10 +1,25 @@
 ---@module 'lsp.tools.lsp_signature.open_floating_preview'
--- changes for custom/lsp_signature/open_floating_preview.lua
--- Accept opts.orig_fname / orig_line / orig_col and use them to set buffer name and a compact title.
+--- The floating window every path in this module shows its lines in.
+---
+--- `orig_line` / `orig_col` used to be advertised here as well. Callers pass
+--- them -- `fallback_providers` does -- but nothing has ever read them: the
+--- position they carry is already baked into the `title` the same caller
+--- builds. Documenting an option that is silently dropped is how the `footer`
+--- below came to be dropped for a whole release.
 local api = vim.api
 local fn = vim.fn
 local Autocmd = require("lib.nvim.bindings.autocmd")
 
+--- Open the popup for `lines`.
+---
+--- opts:
+---   - title | footer: string, shown as the border title and centred in the
+---     window-local statusline. Two names for one value; see below.
+---   - focus: boolean, whether the window is focusable and entered on open.
+---   - orig_fname: string, buffer name for the scratch buffer, so filetype
+---     detection has something to work with. Best-effort: the name may
+---     already be taken by an earlier preview of the same file, and `E95` is
+---     swallowed rather than raised on the hot path.
 ---@param lines string[]
 ---@param opts table|nil
 ---@return integer|nil bufnr, integer|nil winid
@@ -25,7 +40,15 @@ return function(lines, opts)
     return nil
   end
 
-  local footer = opts.title
+  -- `title` and `footer` are the same thing under two names, and the callers
+  -- disagree about which: `request_and_show` passes `footer = <workspace or
+  -- buffer path>`, `fallback_providers` passes `title = <path:line:col>`.
+  -- Only `title` was read, so the signature popup rendered with no border
+  -- title and with the *default* statusline -- measured: `cfg.title = nil` and
+  -- a statusline still holding `%<%f %h%w%m%r ...`, i.e. the scratch buffer's
+  -- own name. Accepting both is cheaper than a rename that has to reach a
+  -- module this audit may not touch.
+  local title = opts.title or opts.footer
 
   -- Compute width (max display width of content), cap to 60% of editor width
   local width = 0
@@ -84,26 +107,26 @@ return function(lines, opts)
     focusable = opts.focus == true,
     style = "minimal",
     border = "rounded",
-    title = opts.title or "",
+    title = title or "",
     title_pos = "center",
   }
 
   local winid = api.nvim_open_win(bufnr, opts.focus == true, win_opts)
 
   -- Set window-local statusline to display centered title/path (title already compact)
-  if footer and footer ~= "" then
-    local title = tostring(footer)
+  if title and title ~= "" then
+    local shown = tostring(title)
     local max_title = math.max(10, math.floor(final_width * 0.9))
-    if fn.strdisplaywidth(title) > max_title then
+    if fn.strdisplaywidth(shown) > max_title then
       local short
-      if title:match("[/\\]") then
-        short = title:match("[^/\\]+[/\\][^/\\]+$") or title:sub(-max_title)
+      if shown:match("[/\\]") then
+        short = shown:match("[^/\\]+[/\\][^/\\]+$") or shown:sub(-max_title)
       else
-        short = title:sub(-max_title)
+        short = shown:sub(-max_title)
       end
-      title = "…" .. short
+      shown = "…" .. short
     end
-    api.nvim_set_option_value("statusline", "%=" .. title .. "%=", { win = winid })
+    api.nvim_set_option_value("statusline", "%=" .. shown .. "%=", { win = winid })
     api.nvim_set_option_value("winbar", "", { win = winid })
   end
 
@@ -133,7 +156,13 @@ return function(lines, opts)
 
   local group_name = "LspSignaturePopup_" .. tostring(winid)
   local aug_id = api.nvim_create_augroup(group_name, { clear = true })
-  Autocmd.create({ "BufWipeout", "BufHidden", "BufLeave", "WinClosed" }, function()
+  -- `WinClosed` used to be in this list. Its pattern is a *window id*, and a
+  -- buffer-local registration compiles to `<buffer=N>`: measured, the autocmd
+  -- was created with pattern `<buffer=2>`, which no `WinClosed` can ever
+  -- match. Nothing is lost by dropping it -- the window closing wipes the
+  -- buffer (`bufhidden=wipe`), so `BufWipeout` is the event that actually
+  -- runs, and it is the one that deletes this group again.
+  Autocmd.create({ "BufWipeout", "BufHidden", "BufLeave" }, function()
     pcall(require("lsp.tools.lsp_signature.state").close)
     pcall(api.nvim_del_augroup_by_id, aug_id)
   end, {
