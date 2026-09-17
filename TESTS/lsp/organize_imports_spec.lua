@@ -192,6 +192,57 @@ describe("lsp.core.util.organize_imports_sync", function()
     assert.are.same({ "utf-16", "utf-8" }, encodings)
   end)
 
+  -- An action's `command` used to be executed on *every* eligible client, not
+  -- on the one that offered it. A command is the issuing server's own -- the
+  -- others have no reason to know it, and a server that does know a command by
+  -- that name would run a different one.
+  --
+  -- The last of the three defects in this function, and the one that had no
+  -- case: the buffer-wide request and the shared encoding were both caught by
+  -- the two above, this was not caught by anything.
+  it("runs an action's command only on the client that offered it", function()
+    local executed = {}
+
+    ---@param id integer
+    ---@param actions table[]
+    ---@return table
+    local function client(id, actions)
+      return {
+        id = id,
+        name = "ls" .. id,
+        offset_encoding = "utf-16",
+        server_capabilities = {
+          codeActionProvider = { codeActionKinds = { "source.organizeImports" } },
+        },
+        supports_method = function()
+          return true
+        end,
+        request_sync = function()
+          return { result = actions }
+        end,
+        request = function(_self, method, _params, _handler, _bufnr)
+          executed[#executed + 1] = { id = id, method = method }
+          return true, id
+        end,
+      }
+    end
+
+    -- Only the first offers a command; the second is eligible and silent.
+    vim.lsp.get_clients = function()
+      return {
+        client(1, { { title = "organize", command = { command = "_ls1.organize" } } }),
+        client(2, {}),
+      }
+    end
+
+    local util = require("lsp.core.util")
+    assert.is_true(util.organize_imports_sync(0, "source.organizeImports", 100))
+
+    assert.are.equal(1, #executed, "the command went to more than one client")
+    assert.are.equal(1, executed[1].id, "the command went to a client that did not offer it")
+    assert.are.equal("workspace/executeCommand", executed[1].method)
+  end)
+
   it("returns false without requesting when no client is attached", function()
     vim.lsp.get_clients = function()
       return {}
