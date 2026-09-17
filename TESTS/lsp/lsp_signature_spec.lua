@@ -221,9 +221,18 @@ describe("lsp.tools.lsp_signature", function()
       return mod
     end
 
+    --- A `textDocument/hover` answer, which is what `show_hover` asks for.
+    ---
+    --- This used to return `{ signatures = ... }` -- a `signatureHelp` result,
+    --- the shape `format_hover` was written to parse and the shape no server
+    --- sends in reply to a hover request. The cases below therefore passed
+    --- against a formatter that returned nil for every answer it could really
+    --- receive, and the feature they cover could not work: the test agreed with
+    --- the bug instead of catching it. Anything asserting popup mechanics here
+    --- needs a result the formatter accepts, so it has to be a real one.
     ---@return table
     local function hover_result()
-      return { signatures = { { label = "foo(a, b)" } } }
+      return { contents = { kind = "markdown", value = "foo(a, b)" } }
     end
 
     ---@param bufnr integer
@@ -350,5 +359,101 @@ describe("lsp.tools.lsp_signature", function()
         "the normal-mode popup cannot be focused"
       )
     end)
+  end)
+end)
+
+describe("lsp.tools.lsp_signature.format_hover", function()
+  -- `show_hover` sends `textDocument/hover`. The formatter read
+  -- `result.signatures`, which is a `signatureHelp` field, so it returned nil
+  -- for every answer it could actually be given -- the documented hover
+  -- fallback, and the LRU cache built to make it cheap, were both unreachable.
+  local format_hover = require("lsp.tools.lsp_signature.format_hover")
+
+  it("formats every shape the protocol allows for Hover.contents", function()
+    -- All three return nil against the previous formatter.
+    assert.are.same(
+      { "plain hover text" },
+      format_hover({ contents = "plain hover text" }),
+      "MarkedString as a bare string"
+    )
+    assert.are.same(
+      { "**bold** docs" },
+      format_hover({ contents = { kind = "markdown", value = "**bold** docs" } }),
+      "MarkupContent"
+    )
+    assert.are.same(
+      { "f()", "and prose" },
+      format_hover({ contents = { { language = "lua", value = "f()" }, "and prose" } }),
+      "MarkedString[]"
+    )
+  end)
+
+  it("drops the code fences, because the popup renders plain text", function()
+    -- `open_floating_preview` sets filetype `lsp_signature` and runs no
+    -- markdown stylizer, so a fence would reach the reader as backticks.
+    local lines = format_hover({
+      contents = { kind = "markdown", value = "head\n\n```lua\nlocal x = 1\n```\n\ntail" },
+    })
+    assert.are.same({ "head", "", "local x = 1", "", "tail" }, lines)
+  end)
+
+  it("returns nil rather than an empty list when there is nothing to show", function()
+    assert.is_nil(format_hover(nil))
+    assert.is_nil(format_hover({}), "no contents")
+    assert.is_nil(format_hover({ contents = "" }), "empty contents")
+    assert.is_nil(format_hover("not a table"))
+  end)
+
+  it("no longer answers a signatureHelp result, which is the other module's job", function()
+    -- The only shape the old formatter handled, and the one nothing sends here.
+    -- `format_signature_help` covers it.
+    assert.is_nil(format_hover({ signatures = { { label = "foo(a)" } } }))
+  end)
+
+  it("opens a popup for a real hover answer", function()
+    -- End to end, and red against the previous formatter: `show_hover` returned
+    -- true while no window was ever created, so the caller waited for something
+    -- that was not coming.
+    package.loaded["lsp.tools.lsp_signature.show_hover"] = nil
+    local mod = require("lsp.tools.lsp_signature.show_hover")
+    mod.clear_cache()
+
+    local bufnr = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "local x = 1" })
+
+    local client = {
+      id = 91,
+      request = function(_self, method, _params, handler)
+        if method ~= "textDocument/hover" then
+          return false
+        end
+        vim.schedule(function()
+          handler(nil, { contents = { kind = "markdown", value = "hover works" } })
+        end)
+        return true, 1
+      end,
+    }
+
+    local shown
+    local sent = mod.show_hover({ client }, {
+      textDocument = { uri = vim.uri_from_bufnr(bufnr) },
+      position = { line = 0, character = 0 },
+    }, {
+      mode = "i",
+      bufnr = bufnr,
+      callback = function(b, w)
+        shown = { buf = b, win = w }
+      end,
+    })
+
+    assert.is_true(sent, "the client accepted the request")
+    vim.wait(2000, function()
+      return shown ~= nil
+    end, 10)
+    assert.is_not_nil(shown, "a popup was opened")
+    assert.are.same({ "hover works" }, vim.api.nvim_buf_get_lines(shown.buf, 0, -1, false))
+
+    require("lsp.tools.lsp_signature.state").close()
+    pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
   end)
 end)
