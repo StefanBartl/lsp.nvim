@@ -106,7 +106,7 @@ one-group-per-concern pattern above.
 
 | Augroup (`clear=true`) | Event | Condition | Action |
 | --- | --- | --- | --- |
-| `MasonEslintPrettier` | `BufWritePre` | `ctx._enabled` and filetype ∈ js/jsx/ts/tsx/vue/svelte | ESLint/Prettier on save |
+| `MasonEslintPrettier` | `BufWritePost` | `ctx._enabled` and filetype ∈ js/jsx/ts/tsx/vue/svelte | ESLint/Prettier on save |
 | `ToolsNoiceIntegration` | `BufWinEnter` | Buffer is a Noice preview | Installs type-lookup keymaps in the preview |
 | `LspSignaturePopup_<winid>` (per window) | `BufWipeout`, `BufHidden`, `BufLeave`, `WinClosed` | `once = true`, buffer-local | Closes the signature popup and **deletes its own augroup** |
 | `LspLuaLsRootScope` | `User LspRootScopeChanged` | — | Recomputes `root_dir` for open buffers |

@@ -5,7 +5,8 @@ This file explains the behaviour of running `eslint_d` and `prettier` automatica
 
 ## Default behaviour
 - Running automatically on save is enabled by default (`enabled = true`).
-- When a file is saved (`BufWritePre`) the plugin checks:
+- When a file is saved (`BufWritePost` -- after the write, so the formatters
+  and Neovim are never holding the same path open at once) the plugin checks:
   1. Is the filetype one of the supported ones (e.g. `javascript`, `typescript`, `vue`, `svelte`)?
   2. Is there an ESLint or Prettier configuration in the project root?
 - Only if the respective configuration is present does it start `eslint_d --fix` resp. `prettier --write`.
