@@ -30,11 +30,56 @@ local function has(modname)
 end
 
 ---@internal
+--- Whether a module loads, and when it does not, whether that is because it is
+--- absent or because it is present and raised on the way up.
+---
+--- `pcall(require, …)` cannot tell those two apart, and this report used to
+--- call both "not installed". Measured against a plugin whose `init.lua` is a
+--- bare `error(…)`: `pcall(require, …)` returns false, exactly as for a name
+--- that is nowhere on the runtimepath, while `vim.loader.find` returns one path
+--- against zero. The distinction is the whole advice line -- "install it" is an
+--- hour wasted on something that is already installed.
+---@param modname string
+---@return "ok"|"broken"|"missing"
+local function module_state(modname)
+  if pcall(require, modname) then
+    return "ok"
+  end
+  local found_ok, found = pcall(vim.loader.find, modname)
+  if found_ok and type(found) == "table" and #found > 0 then
+    return "broken"
+  end
+  return "missing"
+end
+
+---@internal
+--- Run one section, turning its failure into a line in the report instead of
+--- the end of the report.
+---
+--- Measured with one integration adapter whose `report()` throws: `check()`
+--- emitted 18 lines and stopped, `:checkhealth lsp` printed "Failed to run
+--- healthcheck" under `Ecosystem`, and the Diagnostics and Per-buffer sections
+--- never ran at all. A health check that dies on the first broken module is
+--- useless in precisely the case it exists for. Same blast-radius rule as
+--- `lsp.init`'s `step()`, for the same reason.
+---@param label string
+---@param fn fun(): nil
+---@return nil
+local function section(label, fn)
+  health.start(label)
+  local ok, err = pcall(fn)
+  if not ok then
+    health.error(("this section failed: %s"):format(tostring(err)), {
+      "The sections after it still ran -- read on.",
+      "This is a bug in lsp.nvim or in a module it reports on, not in your config.",
+    })
+  end
+end
+
+---@internal
 --- Neovim version and the one dependency the plugin cannot run without.
 ---@return nil
 local function check_environment()
-  health.start("Environment")
-
   if vim.fn.has("nvim-0.11") == 1 then
     health.ok("Neovim " .. tostring(vim.version()))
   else
@@ -43,8 +88,15 @@ local function check_environment()
     })
   end
 
-  if has("lib.nvim.bindings.keymap") then
+  local lib = module_state("lib.nvim.bindings.keymap")
+  if lib == "ok" then
     health.ok("lib.nvim available")
+  elseif lib == "broken" then
+    health.error("lib.nvim is on the runtimepath but failed to load", {
+      "It is installed -- reinstalling is not the fix. Something in it raised "
+        .. "while loading, so every `:Lsp` route and keymap built on it is gone.",
+      'Run `:lua require("lib.nvim.bindings.keymap")` to see the error itself.',
+    })
   else
     health.error("lib.nvim missing", {
       "lsp.nvim depends on it hard: the `:Lsp` command is built on "
@@ -58,8 +110,6 @@ end
 --- What setup() did, and anything it had to work around.
 ---@return nil
 local function check_plugin()
-  health.start("lsp.nvim")
-
   local status = require("lsp").status()
 
   if not status.initialized then
@@ -115,24 +165,63 @@ local function check_plugin()
     -- lsp.bindings.keymaps for why). This is where it pays off: a key that is
     -- bound but whose plugin is missing fails only when pressed, which is the
     -- worst moment to find out.
+    ---@type table<string, "ok"|"broken"|"missing">
+    local seen = {}
+    ---@param modname string
+    ---@return "ok"|"broken"|"missing"
+    local function state_of(modname)
+      if seen[modname] == nil then
+        seen[modname] = module_state(modname)
+      end
+      return seen[modname]
+    end
+
     ---@type table<string, string[]>
     local missing = {}
     for _, spec in ipairs(status.keymaps) do
-      if spec.requires ~= nil and not has(spec.requires) then
+      if spec.requires ~= nil and state_of(spec.requires) ~= "ok" then
         missing[spec.requires] = missing[spec.requires] or {}
         table.insert(missing[spec.requires], spec.lhs)
       end
     end
-    for plugin, lhs_list in pairs(missing) do
+
+    -- Sorted, not `pairs`: LuaJIT seeds its string hashes per process, so the
+    -- order these came out in changed from run to run. Measured over three
+    -- headless runs of the default preset, which is missing exactly two
+    -- plugins: "trouble, fzf-lua", then "fzf-lua, trouble", then "trouble,
+    -- fzf-lua". A report whose lines move is a report you cannot diff against
+    -- the one you pasted into an issue yesterday.
+    ---@type string[]
+    local plugins = vim.tbl_keys(missing)
+    table.sort(plugins)
+
+    for _, plugin in ipairs(plugins) do
+      local lhs_list = missing[plugin]
       table.sort(lhs_list)
-      health.warn(
-        ("%d keymap(s) bound for %s, which is not installed: %s"):format(
-          #lhs_list,
-          plugin,
-          table.concat(lhs_list, ", ")
-        ),
-        { ("Install %s, or switch them off via keymaps.map."):format(plugin) }
-      )
+      if state_of(plugin) == "broken" then
+        health.warn(
+          ("%d keymap(s) bound for %s, which is installed but failed to load: %s"):format(
+            #lhs_list,
+            plugin,
+            table.concat(lhs_list, ", ")
+          ),
+          {
+            ("Do not reinstall %s -- it is there. Run `:lua require(%q)` for the error."):format(
+              plugin,
+              plugin
+            ),
+          }
+        )
+      else
+        health.warn(
+          ("%d keymap(s) bound for %s, which is not installed: %s"):format(
+            #lhs_list,
+            plugin,
+            table.concat(lhs_list, ", ")
+          ),
+          { ("Install %s, or switch them off via keymaps.map."):format(plugin) }
+        )
+      end
     end
   end
 
@@ -204,23 +293,59 @@ end
 --- Returns nil rather than a guess when there is no real file buffer to point
 --- at: "attached here: 0" would read as a problem, and it would be an artefact
 --- of how the report was opened.
+---
+--- The alternate buffer only survives the *first* `:checkhealth` of a session.
+--- Measured over three runs in one headless session with one file open:
+--- pass 1 got `bufnr("#") == 1` and reported "attached to real.lua: 1 of 1
+--- running client(s) -- lua_ls"; passes 2 and 3 got `bufnr("#") == -1` -- each
+--- run wipes the previous `health://` buffer and leaves the window without an
+--- alternate -- and reported "unknown -- no file buffer to report on", with the
+--- file still loaded and the client still attached to it. So a second opinion
+--- falls back to the last used listed file buffer, and says that it did: with
+--- two files opened a second apart `lastused` ties, and a tie broken by buffer
+--- number is a guess, however deterministic.
 ---@return integer|nil bufnr
+---@return boolean exact # false when `bufnr` is the fallback, not the caller's buffer.
 local function source_buffer()
+  ---@param bufnr integer
+  ---@return boolean
+  local function is_file_buffer(bufnr)
+    return bufnr > 0 and vim.api.nvim_buf_is_loaded(bufnr) and vim.bo[bufnr].buftype == ""
+  end
+
   local current = vim.api.nvim_get_current_buf()
   if vim.api.nvim_buf_get_name(current) ~= "health://" then
     -- Called as a plain function rather than through `:checkhealth`; then the
     -- current buffer really is the caller's.
-    return current
+    return current, true
   end
 
   local alternate = vim.fn.bufnr("#")
-  if alternate <= 0 or not vim.api.nvim_buf_is_loaded(alternate) then
-    return nil
+  if is_file_buffer(alternate) then
+    return alternate, true
   end
-  if vim.bo[alternate].buftype ~= "" then
-    return nil
+
+  ---@type integer|nil
+  local best = nil
+  ---@type integer
+  local best_used = -1
+  for _, info in ipairs(vim.fn.getbufinfo({ buflisted = 1 })) do
+    if
+      info.name ~= ""
+      and is_file_buffer(info.bufnr)
+      and (
+        best == nil
+        or info.lastused > best_used
+        or (info.lastused == best_used and info.bufnr > best)
+      )
+    then
+      best, best_used = info.bufnr, info.lastused
+    end
   end
-  return alternate
+  if best == nil then
+    return nil, false
+  end
+  return best, false
 end
 
 ---@internal
@@ -278,8 +403,6 @@ end
 --- server held open over many buffers.
 ---@return nil
 local function check_servers()
-  health.start("Servers")
-
   local status = require("lsp").status()
   local configured = status.config and status.config.servers or {}
 
@@ -351,7 +474,7 @@ local function check_servers()
     return
   end
 
-  local source = source_buffer()
+  local source, exact = source_buffer()
   if source == nil then
     health.info("attached to this buffer: unknown -- no file buffer to report on")
   else
@@ -365,6 +488,9 @@ local function check_servers()
     local name = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(source), ":t")
     if name == "" then
       name = "buffer " .. source
+    end
+    if not exact then
+      name = name .. " (last used file buffer)"
     end
     if #here == 0 then
       health.info(("attached to %s: none of the %d running client(s)"):format(name, #clients))
@@ -422,8 +548,6 @@ end
 --- one adapter per plugin now, and each answers for itself.
 ---@return nil
 local function check_ecosystem()
-  health.start("Ecosystem")
-
   local rows = require("lsp.integrations").report()
   if #rows == 0 then
     health.warn("no integration adapter loaded", { "Reinstall lsp.nvim" })
@@ -451,8 +575,6 @@ end
 --- did this icon come from".
 ---@return nil
 local function check_diagnostics()
-  health.start("Diagnostics")
-
   local ok_mod, diag = pcall(require, "lsp.core.diagnostics")
   if not ok_mod then
     health.error("lsp.core.diagnostics did not load", { "Reinstall lsp.nvim" })
@@ -486,8 +608,6 @@ end
 --- Point at the per-buffer diagnosis rather than repeating it.
 ---@return nil
 local function check_doctor()
-  health.start("Per-buffer diagnosis")
-
   if has("lsp.lspdoctor") then
     health.ok("`:LspDoctor startup|resolve|buffer|capabilities|all` available")
     health.info("This report covers the plugin; :LspDoctor covers the current buffer.")
@@ -499,12 +619,12 @@ end
 --- Entry point for `:checkhealth lsp`.
 ---@return nil
 function M.check()
-  check_environment()
-  check_plugin()
-  check_servers()
-  check_ecosystem()
-  check_diagnostics()
-  check_doctor()
+  section("Environment", check_environment)
+  section("lsp.nvim", check_plugin)
+  section("Servers", check_servers)
+  section("Ecosystem", check_ecosystem)
+  section("Diagnostics", check_diagnostics)
+  section("Per-buffer diagnosis", check_doctor)
 end
 
 return M
