@@ -4,45 +4,15 @@
 local M = {}
 
 local lsp = vim.lsp
-
---- Get filetype-to-server mapping
----@return table<string, string[]>
-local function get_filetype_server_map()
-  return {
-    lua = { "lua_ls" },
-    javascript = { "ts_ls", "eslint" },
-    typescript = { "ts_ls", "eslint" },
-    javascriptreact = { "ts_ls", "eslint" },
-    typescriptreact = { "ts_ls", "eslint" },
-    go = { "gopls" },
-    markdown = { "marksman" },
-    ["markdown.mdx"] = { "marksman" },
-    html = { "html", "emmet_ls" },
-    css = { "cssls" },
-    json = { "jsonls" },
-    sh = { "bashls" },
-    bash = { "bashls" },
-    zsh = { "bashls" },
-    c = { "clangd" },
-    cpp = { "clangd" },
-    cs = { "omnisharp" },
-    zig = { "zls" },
-  }
-end
-
---- Get servers for current buffer's filetype
----@param bufnr integer|nil
----@return string[]
-local function get_servers_for_buffer(bufnr)
-  bufnr = bufnr or 0
-  local ft = vim.bo[bufnr].filetype
-  if not ft or ft == "" then
-    return {}
-  end
-
-  local map = get_filetype_server_map()
-  return map[ft] or {}
-end
+-- The expected-server list comes from `lsp.usercmds.start`, which derives it
+-- from the registered configs. This module used to keep its own hardcoded
+-- filetype table -- the same seventeen-entry table `start` was rewritten to
+-- get rid of -- and the two disagreed about every filetype that matters.
+-- Measured on an `html` buffer with `tailwindcss` attached and running:
+-- `:Lsp info` listed `html` and `emmet_ls` (which this plugin does not
+-- configure, so `:Lsp start emmet_ls` answers "No registered LSP
+-- configuration") and did not mention the server that was actually running.
+local start = require("lsp.usercmds.start")
 
 --- Get clients attached to buffer
 ---@param bufnr integer|nil
@@ -68,10 +38,12 @@ end
 --- Execute LspInfo command
 ---@return nil
 function M.execute()
-  local bufnr = 0
+  -- Resolved, not left as 0: the report prints this number, and "Buffer: 0"
+  -- is not a buffer anyone can look up.
+  local bufnr = vim.api.nvim_get_current_buf()
   local ft = vim.bo[bufnr].filetype
   local clients = get_buffer_clients(bufnr)
-  local expected = get_servers_for_buffer(bufnr)
+  local expected = start.get_servers_for_buffer(bufnr)
 
   local lines = {
     "LSP Information",

@@ -42,39 +42,53 @@ function M.execute(args)
   end
 
   if args.args and args.args ~= "" then
-    -- Restart specific server
-    local found = false
+    -- Restart specific server: every client carrying that name goes down, not
+    -- just the first one found. The loop used to `break`, and a name is not
+    -- unique -- with two `dup` clients on one buffer the command stopped one,
+    -- started a replacement, and left the other running (measured: `dup#1
+    -- dup#2` before, `dup#2` plus the new client after). One restart has to
+    -- leave one client behind, not two.
+    local stopped = 0
     for _, c in ipairs(clients) do
       if c.name == args.args then
-        found = true
+        stopped = stopped + 1
         -- Before the stop: a force-stop is a SIGTERM, which the supervisor
         -- would otherwise read as a crash and race this restart.
         supervisor.expect_stop(c.id)
         c:stop(true)
-
-        -- Delayed restart to allow cleanup
-        vim.defer_fn(function()
-          if not vim.api.nvim_buf_is_valid(bufnr) then
-            return
-          end
-          if start_lsp(args.args, bufnr) then
-            notify.info(string.format("Restarted LSP: %s", args.args))
-          else
-            notify.error(string.format("Failed to restart LSP: %s", args.args))
-          end
-        end, 100)
-        break
       end
     end
 
-    if not found then
+    if stopped == 0 then
       notify.warn(string.format("LSP '%s' not running", args.args))
+      return
     end
+
+    -- Delayed restart to allow cleanup
+    vim.defer_fn(function()
+      if not vim.api.nvim_buf_is_valid(bufnr) then
+        return
+      end
+      if start_lsp(args.args, bufnr) then
+        notify.info(string.format("Restarted LSP: %s", args.args))
+      else
+        notify.error(string.format("Failed to restart LSP: %s", args.args))
+      end
+    end, 100)
   else
-    -- Restart all servers
+    -- Restart all servers. The names are deduplicated: `supervisor.start`
+    -- reuses a client for a name it has already started, so two clients called
+    -- `spec_dup` come back as one and starting the name twice is one start
+    -- plus one no-op. Counting clients instead of names made the command
+    -- report "Restarted 3/3 LSP server(s)" for three clients that became one
+    -- (measured), which is a count of what went down, not of what came back.
     local server_names = {}
+    local seen = {}
     for _, c in ipairs(clients) do
-      server_names[#server_names + 1] = c.name
+      if not seen[c.name] then
+        server_names[#server_names + 1] = c.name
+        seen[c.name] = true
+      end
     end
 
     local ids = {}

@@ -28,6 +28,16 @@ end
 --- sat in a 50ms timer, so stopping one client printed the deprecation notice
 --- on a loop. `Client:stop()` and `Client:is_stopped()` are methods since
 --- 0.11, which is this plugin's minimum.
+---
+--- What the poll asks is `lsp.get_client_by_id(id) == nil`, not
+--- `client:is_stopped()`. `is_stopped()` means "shutdown has been requested",
+--- not "the process is gone": measured on 0.12.2 against a stub server that
+--- never answers `shutdown`, `is_stopped()` flipped to true in the same tick
+--- as `client:stop(false)` and stayed true, while the client was still in
+--- `get_clients()` six seconds later. Asking it here made the first 50ms tick
+--- report success for every client, which made the deadline and the
+--- force-stop below unreachable code -- a server that ignores `shutdown` was
+--- left attached forever and `:Lsp stop` said it had stopped it.
 ---@param client_id integer
 ---@param timeout_ms integer|nil
 ---@param on_done fun(success: boolean)|nil called on the main loop when settled
@@ -79,7 +89,7 @@ local function graceful_stop(client_id, timeout_ms, on_done)
       -- Re-read rather than closing over the handle above: the client may have
       -- gone in the meantime, and a stale object is not something to call.
       local live = lsp.get_client_by_id(client_id)
-      if live and not live:is_stopped() then
+      if live then
         pcall(function()
           live:stop(true)
         end)
@@ -110,7 +120,7 @@ local function graceful_stop(client_id, timeout_ms, on_done)
 
       local live = lsp.get_client_by_id(client_id)
 
-      if (not live) or live:is_stopped() then
+      if not live then
         close_timer()
         finish(true)
       elseif vim.uv.now() >= deadline then
@@ -131,21 +141,27 @@ function M.execute(args)
   local bufnr = 0
 
   if args.args and args.args ~= "" then
-    -- Stop specific server
-    local clients = get_buffer_clients(bufnr)
-    local found = false
+    -- Stop specific server -- every client carrying that name, not the first
+    -- one found. A name is not unique: two clients can share it (a second root
+    -- directory, a config reloaded while the old client was still attached).
+    -- The loop used to `break`, so with two `dup` clients on one buffer the
+    -- command reported "Stopped LSP: dup" and left the second one attached
+    -- (measured: `dup#1 dup#2` before, `dup#2` after).
+    local stopped = 0
 
-    for _, c in ipairs(clients) do
+    for _, c in ipairs(get_buffer_clients(bufnr)) do
       if c.name == args.args then
         graceful_stop(c.id)
-        found = true
-        notify.info(string.format("Stopped LSP: %s", args.args))
-        break
+        stopped = stopped + 1
       end
     end
 
-    if not found then
+    if stopped == 0 then
       notify.warn(string.format("LSP '%s' not running", args.args))
+    elseif stopped == 1 then
+      notify.info(string.format("Stopped LSP: %s", args.args))
+    else
+      notify.info(string.format("Stopped %d instance(s) of LSP: %s", stopped, args.args))
     end
   else
     -- Stop all servers
