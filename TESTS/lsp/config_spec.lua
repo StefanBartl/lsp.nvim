@@ -217,7 +217,30 @@ describe("lsp.config", function()
       "project",
       "usrcmds",
       "which_key",
+      -- The one this hand-written list was missing for as long as it existed,
+      -- which is why the case below now derives it from `DEFAULTS` instead.
+      "menu",
     }
+
+    -- Derived, not trusted. `menu` was the only top-level option nothing
+    -- normalized: `menu = 42` passed straight through with no warning, and
+    -- `integrations/menu.lua` then raised on `mcfg.enable` -- a config error
+    -- surfacing as a stack trace in an unrelated module. The list above did
+    -- not catch it because the list was written by hand.
+    it("covers every table-valued option DEFAULTS declares", function()
+      local defaults = require("lsp.config.DEFAULTS")
+      ---@type string[]
+      local missing = {}
+      for key, value in pairs(defaults) do
+        if type(value) == "table" and not vim.tbl_contains(KEYS, key) then
+          missing[#missing + 1] = key
+        end
+      end
+      table.sort(missing)
+      -- `servers` is a list with its own normalizer, not a `{ enable = ... }`
+      -- switch, so it is the one legitimate absence.
+      assert.are.same({ "servers" }, missing)
+    end)
 
     for _, key in ipairs(KEYS) do
       it(("degrades %s = false instead of raising"):format(key), function()

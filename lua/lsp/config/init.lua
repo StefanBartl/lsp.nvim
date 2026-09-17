@@ -436,6 +436,13 @@ function M.setup(user_opts)
   normalize_keymaps(cfg)
   normalize_switch(cfg, "usrcmds")
   normalize_switch(cfg, "which_key")
+  -- `menu` was the one top-level option nothing normalized. Every other key
+  -- answered `menu = 42` with "expected a table, using defaults"; this one
+  -- passed the number through with no warning at all, and
+  -- `integrations/menu.lua` then raised on `mcfg.enable` -- a config error
+  -- surfacing as a stack trace in an unrelated module, which is the shape this
+  -- whole normalization step exists to prevent.
+  normalize_switch(cfg, "menu")
   normalize_servers(cfg)
   for _, key in ipairs({
     "rename",
