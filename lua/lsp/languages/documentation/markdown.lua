@@ -14,7 +14,17 @@ local M = {}
 -- Highlight setup
 -- ============================================================================
 
---- Apply LSP document-highlight groups for markdown buffers.
+--- Define the LSP document-highlight groups.
+---
+--- These are **global** highlight groups (namespace 0), not markdown-scoped
+--- ones -- the docstring here used to claim "for markdown buffers", which
+--- namespace 0 cannot do. `enable()` calls this once and again on
+--- `ColorScheme`, because it used to run inside the FileType callback:
+--- measured, opening three markdown buffers rewrote the three groups nine
+--- times, and each write replaced whatever the colourscheme had set for every
+--- buffer in the session (a `LspReferenceText` of `fg = #123456` came back as
+--- `fg = #FFFFFF, bg = #2b2b2b, italic`). Opening a markdown file is not a
+--- reason to restyle references in the Go buffer next to it.
 ---@return nil
 function M.setup_reference_hl()
   api.nvim_set_hl(0, "LspReferenceText", { fg = "#FFFFFF", bg = "#2b2b2b", italic = true })
@@ -29,6 +39,17 @@ end
 ---@return nil
 function M.enable()
   local grp = api.nvim_create_augroup("LangMarkdownQoL", { clear = true })
+
+  -- Once, plus on every colourscheme change -- not once per markdown buffer.
+  -- See `setup_reference_hl`.
+  M.setup_reference_hl()
+  Autocmd.create("ColorScheme", function()
+    M.setup_reference_hl()
+  end, {
+    group = grp,
+    pattern = "*",
+    desc = desc_tag .. "Re-apply LSP reference highlights after a colourscheme change",
+  })
 
   -- ------------------------------------------------------------------
   -- Per-buffer FileType setup
@@ -49,8 +70,6 @@ function M.enable()
 
     bo.textwidth = 0
     bo.formatoptions = "jnql"
-
-    M.setup_reference_hl()
 
     -- Buffer-local format keymap
     map("n", "<leader>fm", function()

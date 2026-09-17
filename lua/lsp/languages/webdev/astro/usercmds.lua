@@ -8,6 +8,34 @@ local usercmd = require("lib.nvim.bindings.usercmd")
 
 local M = {}
 
+---@internal
+--- Write `template` to `path`, creating the directories above it, and open it.
+---
+--- `vim.fn.writefile` creates no directories. Measured in a project without a
+--- `src/` tree, which is every project before its first component:
+--- `:AstroNewComponent Widget` and `:AstroNewPage about` both died with
+--- "E482: Can't open file src/components/Widget.astro for writing: no such
+--- file or directory", swallowed into a notification by the usercmd wrapper --
+--- so the command that exists to create a file created nothing. A nested name
+--- (`:AstroNewComponent ui/Button`) failed the same way even with
+--- `src/components` present.
+---
+--- The `:edit` path is escaped, too: unescaped, a name with a space made
+--- Neovim open two files.
+---@param path string
+---@param template string[]
+---@return nil
+local function scaffold(path, template)
+  vim.fn.mkdir(vim.fn.fnamemodify(path, ":h"), "p")
+
+  if not pcall(vim.fn.writefile, template, path) then
+    notify.warn("Could not write " .. path)
+    return
+  end
+
+  vim.cmd("edit " .. vim.fn.fnameescape(path))
+end
+
 ---@return nil
 function M.setup()
   -- Start Astro dev server
@@ -29,8 +57,31 @@ function M.setup()
 
   -- Build Astro project
   usercmd.create("AstroBuild", function()
+    -- Guarded like `:AstroDevStop` is. `vim.system` raises outright on a
+    -- missing executable rather than returning a non-zero result: without the
+    -- guard, running this where astro is not installed produced
+    -- "vim/_core/system.lua:324: ENOENT: no such file or directory (cmd):
+    -- 'astro'" as a notification, which reads like a bug in Neovim.
+    if vim.fn.executable("astro") ~= 1 then
+      notify.warn("astro not found on PATH")
+      return
+    end
+
     local res = vim.system({ "astro", "build" }, { text = true }):wait()
-    notify.info(res.stdout or res.stderr or "")
+
+    -- `res.stdout or res.stderr` never reached stderr: `vim.system` returns
+    -- "" (truthy in Lua), not nil, for an empty stream. A failing build
+    -- therefore showed an empty INFO notification and swallowed the error
+    -- message the build wrote to stderr.
+    local out = res.stdout
+    if out == nil or out == "" then
+      out = res.stderr or ""
+    end
+    if res.code == 0 then
+      notify.info(out)
+    else
+      notify.warn(("astro build exited %d\n%s"):format(res.code, out))
+    end
   end, { desc = "Build Astro project" })
 
   -- Preview production build
@@ -60,8 +111,7 @@ function M.setup()
         "</div>",
       }
 
-      vim.fn.writefile(template, path)
-      vim.cmd("edit " .. path)
+      scaffold(path, template)
     end
 
     if opts.args ~= "" then
@@ -98,8 +148,7 @@ function M.setup()
         "</Layout>",
       }
 
-      vim.fn.writefile(template, path)
-      vim.cmd("edit " .. path)
+      scaffold(path, template)
     end
 
     if opts.args ~= "" then

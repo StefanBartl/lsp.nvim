@@ -74,10 +74,20 @@ local function enable_webdev()
     end
   end
 
+  -- `wat` is deliberately NOT mapped to "wasm" here any more. Neovim detects
+  -- `*.wat` as filetype `wat` by itself and ships `syntax/wat.vim`,
+  -- `ftplugin/wat.vim` and `indent/wat.vim` for it; it ships nothing at all
+  -- for `wasm`. Measured on this Neovim (0.12.2): a clean session answers
+  -- `vim.filetype.match({ filename = "a.wat" }) == "wat"`, and after
+  -- `enable_all()` the same call answered `"wasm"` -- so this plugin took the
+  -- WebAssembly text format from a fully supported filetype to one with no
+  -- syntax, no ftplugin and no indent, for nothing in return.
+  --
+  -- `wasm` (the binary form) has no native detection, so that entry still buys
+  -- something; `astro` is native since 0.11 but is kept for older Neovim.
   vim.filetype.add({
     extension = {
       wasm = "wasm",
-      wat = "wasm",
       astro = "astro",
     },
   })

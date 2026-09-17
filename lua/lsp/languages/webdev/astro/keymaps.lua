@@ -65,23 +65,28 @@ function M.attach()
   -- Toggle between Script/Template/Style
   map("n", "<leader>an", function()
     local line = vim.fn.line(".")
-    local total = vim.fn.line("$")
 
-    -- Find next section boundary
+    -- Find next section boundary. `next_line` starts at "nothing found"
+    -- rather than at the line count: seeded with `total`, a boundary that sits
+    -- ON the last line failed the `next_line < total` test and the cursor
+    -- wrapped to line 1 instead of moving to it. Measured on a four-line
+    -- buffer whose only boundary is `<style>` on line 4 -- the mapping left
+    -- the cursor on line 1.
     local patterns = { "^<script", "^<style", "^---$" }
-    local next_line = total
+    local next_line = 0
 
     for _, pat in ipairs(patterns) do
       vim.fn.cursor(line, 1)
       local found = vim.fn.search(pat, "W")
-      if found > 0 and found < next_line then
+      if found > 0 and (next_line == 0 or found < next_line) then
         next_line = found
       end
     end
 
-    if next_line < total then
+    if next_line > 0 then
       vim.fn.cursor(next_line, 1)
     else
+      -- Nothing below the cursor: wrap to the top.
       vim.fn.cursor(1, 1)
     end
   end, { buffer = bufnr, desc = "Next Astro section" })
@@ -113,13 +118,26 @@ function M.attach()
 
   -- Extract to Component
   map("v", "<leader>ax", function()
-    -- Capture the visual selection BEFORE the prompt: leaving visual mode to
-    -- answer it is fine (marks persist), but reading '</'> only makes sense
-    -- for the selection this mapping was invoked on.
-    local start_line = vim.fn.line("'<")
-    local end_line = vim.fn.line("'>")
-    local lines = vim.fn.getline(start_line, end_line)
-    ---@cast lines string[]
+    -- The LIVE selection, not `'<`/`'>`. Those marks are written when Visual
+    -- mode is left, and a mapping invoked from Visual mode runs while it is
+    -- still active, so they still describe the *previous* selection -- or
+    -- nothing at all. Measured on a fresh `Vj` over lines 4-5 of an
+    -- index.astro: `line("'<")` and `line("'>")` both read 0, so `getline(0,
+    -- 0)` returned an empty list, the component file was written with an empty
+    -- body, `deletebufline(bufnr, 0, 0)` removed nothing, no `<Name />` was
+    -- inserted -- and the user was told "Created component:" all the same.
+    -- `line("v")` is the anchor end of the selection that is open right now
+    -- and `line(".")` is the cursor end; either may be the upper one.
+    local start_line = vim.fn.line("v")
+    local end_line = vim.fn.line(".")
+    if start_line > end_line then
+      start_line, end_line = end_line, start_line
+    end
+    local lines = vim.api.nvim_buf_get_lines(bufnr, start_line - 1, end_line, false)
+
+    -- The range is captured, so leave Visual mode before the prompt opens its
+    -- own window over it.
+    vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "nx", false)
 
     require("ui.kit").input({
       title = "Component name: ",
@@ -130,18 +148,25 @@ function M.attach()
 
         -- Create new component file
         local component_path = "src/components/" .. name .. ".astro"
-        local content = {
-          "---",
-          "---",
-          "",
-          table.concat(lines, "\n"),
-        }
 
-        vim.fn.writefile(vim.split(table.concat(content, "\n"), "\n"), component_path)
+        -- `writefile` does not create directories: measured, this died with
+        -- "E482: Can't open file src/components/X.astro for writing" in a
+        -- project that has no `src/components` yet -- which is every project
+        -- before its first component, and every nested `ui/Button` name.
+        vim.fn.mkdir(vim.fn.fnamemodify(component_path, ":h"), "p")
 
-        -- Replace selection with component usage
-        vim.fn.deletebufline(bufnr, start_line, end_line)
-        vim.fn.append(start_line - 1, "<" .. name .. " />")
+        local content = { "---", "---", "" }
+        vim.list_extend(content, lines)
+
+        if not pcall(vim.fn.writefile, content, component_path) then
+          notify.warn("Could not write " .. component_path)
+          return
+        end
+
+        -- Replace the selection with the component usage, on `bufnr` rather
+        -- than on whatever is current when the prompt resolves, and in one
+        -- call so the insert cannot land against a range the delete shifted.
+        vim.api.nvim_buf_set_lines(bufnr, start_line - 1, end_line, false, { "<" .. name .. " />" })
 
         notify.notify("Created component: " .. component_path)
       end,
