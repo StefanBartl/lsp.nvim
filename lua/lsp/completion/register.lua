@@ -84,6 +84,27 @@ end
 
 ---@internal
 --- nvim-cmp: register a source object and listen for its confirmations.
+---
+--- Once per source name, however often this is called. `setup()` runs again on
+--- a config reload and the sources register again with it, and cmp has no way
+--- to remove a listener -- so the `confirm_done` hooks used to stack. Measured:
+--- three registrations, and one accepted word counted three times.
+---
+--- That is not a transient miscount. The counts live in
+--- `lsp_completion_usage.json`, they only ever go up, and `usage.lua` describes
+--- them as the user's history "accumulated over months" -- so every reload
+--- permanently skewed the ranking the file exists to hold.
+---
+--- The guard is kept on the `cmp` module rather than in a local here, and that
+--- placement is the point: a module-local one is cleared by the very reload it
+--- has to survive. `:Lazy reload lsp.nvim` drops every `lsp.*` module including
+--- this one, while cmp -- and the listeners already on its event bus -- stay
+--- exactly where they were. The guard belongs with the thing it is guarding.
+---
+--- Everything the source does looks the spec up by name rather than closing
+--- over the table it was given, so re-registering still takes effect: a
+--- changed `items` or `filetypes` is live from the next request without a
+--- second object reaching cmp.
 ---@param spec LspNvim.CompletionSource
 ---@return boolean registered
 local function register_cmp(spec)
@@ -92,39 +113,58 @@ local function register_cmp(spec)
     return false
   end
 
+  local name = spec.name
+
+  ---@type table<string, true>
+  local hooked = rawget(cmp, "__lsp_nvim_confirm_hooked")
+  if type(hooked) ~= "table" then
+    hooked = {}
+    cmp.__lsp_nvim_confirm_hooked = hooked
+  end
+  if hooked[name] then
+    return true
+  end
+
   local Source = {}
   Source.__index = Source
 
   function Source:is_available()
-    return M.applies(spec)
+    local current = specs[name]
+    return current ~= nil and M.applies(current)
   end
 
   function Source:get_debug_name()
-    return spec.name
+    return name
   end
 
   if spec.keyword_pattern ~= nil then
     function Source:get_keyword_pattern()
-      return spec.keyword_pattern
+      local current = specs[name]
+      return current and current.keyword_pattern or spec.keyword_pattern
     end
   end
 
   function Source:complete(_, callback)
-    callback({ items = spec.items(), isIncomplete = false })
+    local current = specs[name]
+    callback({ items = current and current.items() or {}, isIncomplete = false })
   end
 
-  cmp.register_source(spec.name, setmetatable({}, Source))
+  cmp.register_source(name, setmetatable({}, Source))
 
   -- cmp has no per-source confirm hook, so this is one global listener per
   -- source that filters on the name. Cheap: it only fires on an accepted
   -- completion, not on every keystroke.
   cmp.event:on("confirm_done", function(event)
     local entry = event.entry
-    if entry and entry.source and entry.source.name == spec.name then
-      M.picked(spec, entry.completion_item.label)
+    if entry and entry.source and entry.source.name == name then
+      local current = specs[name]
+      if current ~= nil then
+        M.picked(current, entry.completion_item.label)
+      end
     end
   end)
 
+  hooked[name] = true
   return true
 end
 
