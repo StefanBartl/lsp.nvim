@@ -165,22 +165,37 @@ describe("lsp.lspdoctor.probe (live)", function()
 
   ---@type integer|nil
   local client_id
+  ---@type integer|nil
+  local seed_buf
   ---@type string|nil
   local dir
 
+  --- Undo everything the case created, in the order that lets it work.
+  ---
+  --- Client first, so `didClose` goes out while the buffer is still there;
+  --- then the buffer; then the directory, once the server has actually exited.
+  --- The wait is not ceremony: on Windows a process that still holds a file
+  --- keeps the directory undeletable, and `vim.fn.delete` fails silently, so
+  --- skipping it would leak a temp tree per run rather than raise.
+  ---
+  --- Only what this case made. An earlier version deleted every named buffer
+  --- in the process, which is fine under `PlenaryBustedDirectory` -- one nvim
+  --- per spec file -- and destructive anywhere else.
   after_each(function()
     if client_id then
       local client = vim.lsp.get_client_by_id(client_id)
       if client then
         client:stop(true)
       end
+      vim.wait(5000, function()
+        return vim.lsp.get_client_by_id(client_id) == nil
+      end, 50)
       client_id = nil
     end
-    for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
-      if vim.api.nvim_buf_is_valid(bufnr) and vim.api.nvim_buf_get_name(bufnr) ~= "" then
-        pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
-      end
+    if seed_buf and vim.api.nvim_buf_is_valid(seed_buf) then
+      pcall(vim.api.nvim_buf_delete, seed_buf, { force = true })
     end
+    seed_buf = nil
     if dir then
       pcall(vim.fn.delete, dir, "rf")
       dir = nil
@@ -207,19 +222,26 @@ describe("lsp.lspdoctor.probe (live)", function()
 
     -- A real directory, not a scratch buffer: `root_dir` has to resolve to
     -- something, and the probe builds its own buffer next to the current one.
+    --
+    -- Every write is checked. An unwritable temp directory would otherwise
+    -- surface as "gopls delivered no diagnostics" -- a red case about the one
+    -- thing that is not wrong, which is the failure mode this whole file was
+    -- written to avoid producing.
     dir = vim.fn.tempname()
-    vim.fn.mkdir(dir, "p")
+    assert.are.equal(1, vim.fn.mkdir(dir, "p"), "could not create " .. dir)
     for file, lines in pairs(candidate.root) do
-      vim.fn.writefile(lines, vim.fs.joinpath(dir, file))
+      local path = vim.fs.joinpath(dir, file)
+      assert.are.equal(0, vim.fn.writefile(lines, path), "could not write " .. path)
     end
 
     -- The seed file is *valid*. Its job is to give the server a document to
     -- attach to; the broken content is the probe's to supply, and seeding it
     -- here would mean testing this file instead of `probe.SNIPPETS`.
     local seed = vim.fs.joinpath(dir, candidate.seed.file)
-    vim.fn.writefile(candidate.seed.lines, seed)
+    assert.are.equal(0, vim.fn.writefile(candidate.seed.lines, seed), "could not write " .. seed)
     vim.cmd.edit(vim.fn.fnameescape(seed))
     local bufnr = vim.api.nvim_get_current_buf()
+    seed_buf = bufnr
     vim.api.nvim_set_option_value("filetype", candidate.filetype, { buf = bufnr })
 
     client_id = vim.lsp.start({
@@ -245,15 +267,35 @@ describe("lsp.lspdoctor.probe (live)", function()
     local lines, report = probe.run(bufnr)
     local rendered = table.concat(lines, "\n")
 
-    -- Asserted before `ok`, because these three say *where* it broke and `ok`
-    -- only says that it did.
+    -- Asserted before the verdict, because it says *where* it broke and the
+    -- verdict only says that it did.
     assert.is_nil(
       report.reason,
-      ("the probe did not reach %s: %s\n%s"):format(candidate.name, report.reason, rendered)
+      ("the probe did not reach %s: %s\n%s"):format(
+        candidate.name,
+        tostring(report.reason),
+        rendered
+      )
     )
-    assert.are.equal(1, #report.clients, "expected exactly the started client\n" .. rendered)
+
+    -- By id, not `report.clients[1]`, and not by asserting there is exactly
+    -- one. The seed buffer can legitimately carry clients this case did not
+    -- start: `:PlenaryBustedFile` and the `<Plug>` mappings spawn their child
+    -- *without* `minimal_init`, so the user's own config runs and attaches its
+    -- own servers. Pinning the count would turn that into a red case about
+    -- nothing -- the exact failure shape this file exists to rule out.
+    local mine
+    for _, entry in ipairs(report.clients) do
+      if entry.id == client_id then
+        mine = entry
+      end
+    end
+    assert.is_truthy(
+      mine,
+      ("%s is not in the probe's report at all\n%s"):format(candidate.name, rendered)
+    )
     assert.is_true(
-      report.clients[1].attached,
+      mine.attached,
       ("%s refused the probe buffer\n%s"):format(candidate.name, rendered)
     )
 
@@ -261,15 +303,22 @@ describe("lsp.lspdoctor.probe (live)", function()
     -- chain holds end to end: buffer -> didOpen -> server -> publish/pull ->
     -- namespace -> `vim.diagnostic` -> report.
     assert.is_true(
-      report.ok,
+      mine.count > 0,
       (
         "%s is running and attached but delivered no diagnostics for content it"
         .. " cannot parse, within %dms. That is a broken diagnostics pipeline,"
         .. " not an absence of errors.\n%s"
       ):format(candidate.name, PROBE_TIMEOUT_MS, rendered)
     )
-    assert.is_true(report.clients[1].count > 0, rendered)
-    assert.is_truthy(report.clients[1].elapsed_ms, rendered)
+    assert.is_truthy(mine.elapsed_ms, rendered)
+
+    -- `report.ok` is the report's own verdict and is checked too -- but only
+    -- where this case started the only client. It requires *every* client to
+    -- have answered, so a foreign one that stays mute would fail it without
+    -- saying anything about the chain.
+    if #report.clients == 1 then
+      assert.is_true(report.ok, "the client answered but the report says otherwise\n" .. rendered)
+    end
 
     -- Proven against a fake in `lspdoctor_spec.lua`; proven against a server
     -- that really opened the document here, which is where a stray write or a
