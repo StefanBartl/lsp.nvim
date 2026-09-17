@@ -19,8 +19,44 @@ local M = {}
 
 --- Raw list of directory names commonly ignored.
 --- These are loaded from a centralized ignore list module.
+---
+--- `basenames`, not `as_luals_patterns()`. The shared list's
+--- `as_luals_patterns()` already returns both spellings of every entry --
+--- `.git` *and* `**/.git`, 62 strings for 31 directories -- and this module
+--- treated that output as if it were raw basenames. Measured consequences:
+--- `names()` returned 62 entries, 31 of them globs, against a docstring that
+--- promises "raw directory basenames"; `as_set()` carried 31 dead `**/name`
+--- keys that no basename can ever equal; and `as_luals_patterns()` below
+--- doubled the list again into 124 patterns -- 31 exact duplicates and 31
+--- `**/**/name`. `basenames` is the 31-entry array those spellings are
+--- derived from.
+---
+--- Copied rather than aliased so `names()`'s promise that callers cannot
+--- mutate the internal list also covers the shared module's table.
 --- @type string[]
-M._names = require("lib.nvim.fs.ignore.list").as_luals_patterns()
+M._names = (function()
+  local list = require("lib.nvim.fs.ignore.list")
+  local out = {}
+
+  if type(list.basenames) == "table" then
+    for i = 1, #list.basenames do
+      out[i] = list.basenames[i]
+    end
+    return out
+  end
+
+  -- Fallback for an older shared list that exposes only the pattern form:
+  -- strip the `**/` prefix and drop the duplicate each name then produces.
+  local seen = {}
+  for _, p in ipairs(list.as_luals_patterns and list.as_luals_patterns() or {}) do
+    local name = p:gsub("^%*%*/", "")
+    if not seen[name] then
+      seen[name] = true
+      out[#out + 1] = name
+    end
+  end
+  return out
+end)()
 
 --- Platform-normalize a name for consistent comparisons (no filesystem IO).
 --- On Windows this lower-cases strings for case-insensitive comparison.

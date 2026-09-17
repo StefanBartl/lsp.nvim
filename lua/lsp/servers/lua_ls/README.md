@@ -46,10 +46,14 @@ The workspace libraries are built dynamically per project root:
 The system is optimised for performance:
 
 - **Intelligent ignore lists**: skips `node_modules`, `.git`, `build` etc.
-- **Configurable limits**:
-  - `maxPreload = 3000` - maximum number of preloaded files
+- **Configurable limits** (the values `init.lua` actually sends):
+  - `maxPreload = 2000` - maximum number of preloaded files
   - `preloadFileSize = 500` - maximum file size (KB)
-- **BFS scanning**: breadth-first search with a configurable depth (`max_depth = 12`)
+- **BFS scanning**: breadth-first search, with `max_depth` and `max_results`
+  supplied per call by the caller (`build_library` uses 15/200). The scan is
+  bounded in *results*, not in directories visited: measured at 315ms over the
+  machine's plugin tree for 25 results, which is why it is not on the startup
+  path -- see below.
 
 ### 4. **Git integration**
 - Respects `.gitignore` files (`useGitIgnore = true`)
@@ -73,7 +77,8 @@ require("lsp.servers.lua_ls").setup({
 
 **Important features:**
 - Uses the native `vim.lsp.config()` API (Neovim 0.10+)
-- Dynamic library configuration via the `on_new_config` hook
+- Library configuration via the `before_init` hook -- **not** `on_new_config`,
+  which is an lspconfig concept that `vim.lsp.config` never calls
 - LuaJIT runtime for Neovim optimisation
 - Inlay hints enabled
 - Semantic tokens disabled (TreeSitter is preferred)
@@ -122,8 +127,10 @@ local type_dirs = scanner(root, {
 ```
 
 **Features:**
-- Breadth-first search (BFS) algorithm
-- Finds `types/` and `@types/` directories
+- Breadth-first search (BFS) algorithm, so a tight `max_results` is spent on
+  the shallowest matches
+- Finds `types/` and `@types/` directories, plus any directory whose name ends
+  in `types` or starts with `@types` (`mytypes`, `@typescript`)
 - Respects the ignore lists
 - Configurable limits for performance
 
@@ -283,9 +290,9 @@ local lua_markers = vim.fs.find(
 │         init.lua (Main Setup)           │
 │  ┌────────────────────────────────────┐ │
 │  │ vim.lsp.config("lua_ls", {         │ │
-│  │   root_dir = rootresolver(),       │ │
+│  │   root_dir = rootresolver,        │ │
 │  │   settings = { ... },              │ │
-│  │   on_new_config = ...              │ │
+│  │   before_init = ...                │ │
 │  │ })                                 │ │
 │  └────────────────────────────────────┘ │
 └──────────────┬──────────────────────────┘
@@ -294,7 +301,7 @@ local lua_markers = vim.fs.find(
                │                     │
                ▼                     ▼
     ┌──────────────────┐  ┌──────────────────┐
-    │  rootresolver()  │  │  on_new_config   │
+    │  rootresolver()  │  │   before_init    │
     │                  │  │      Hook        │
     │ • VCS markers    │  └────────┬─────────┘
     │ • Lua configs    │           │
@@ -345,12 +352,22 @@ library["${3rd}/luv/library"] = true
 -- Resolves to: /path/to/lua-language-server/meta/3rd/luv/library
 ```
 
-### The dynamic on_new_config hook
+### The before_init hook
 
-The `on_new_config` hook is called on every root switch. That makes possible:
-- ✅ root-specific libraries
-- ✅ dynamic adaptation to the project structure
-- ✅ no global state pollution
+`before_init` runs once per client, just before the `initialize` request goes
+out, and is where `Lua.workspace.library` is installed. It is the native
+`vim.lsp` equivalent of lspconfig's `on_new_config`; the earlier version of
+this file registered `on_new_config` instead, and `vim.lsp.config` never called
+it, so no server received a library at all.
+
+What it installs is `library_profiles.build_runtime_library()` -- the `${3rd}`
+placeholders plus `$VIMRUNTIME/lua`, measured at 0.010ms -- and deliberately
+not the full `build_library` scan. `find_type_dirs` only searches *below* the
+project root, so what it finds is inside the workspace and gets indexed anyway.
+
+Note that `LUA_LS_PROFILE` therefore has no effect on a running server;
+the profiles in `library_profiles` bound the scan, and the scan is only reached
+through `debug` / `build_library`.
 
 ## 📚 Further resources
 

@@ -1,14 +1,25 @@
 ---@module 'lsp.servers.lua_ls.debug'
 --- Utilities for debugging LuaLS setup: root detection and workspace library inspection.
 
--- Use the appropriate async I/O library (vim.uv preferred, vim.loop fallback)
 local notify = require("lib.nvim.notify").create("[lsp.servers.lua_ls.debug]")
 
-local uv = vim.uv or vim.loop
-
--- Import filesystem helper utilities
-local is_subpath = require("lib.nvim.fs.is_subpath")
-local find_upward_dir = require("lib.nvim.fs.find_upward_dir")
+-- The resolver `lua_ls` is actually registered with. This module used to carry
+-- its own copy of the algorithm, and the copy had drifted: it tried VCS
+-- markers first and the `stdpath("config")` check only as step 3, where
+-- `rootresolver` does the config check *first* and deliberately says so.
+--
+-- Measured with `stdpath("config")` pointed at a fixture holding a nested repo
+-- at `<config>/lua/vendor/plug/.git`, on a buffer for
+-- `<config>/lua/vendor/plug/a.lua`:
+--
+--   rootresolver      -> <config>
+--   debug.root_for_buf -> <config>/lua/vendor/plug
+--
+-- The README sends people here to "check whether the root was detected
+-- correctly", so a second answer is worse than no answer. The copy also knew
+-- nothing about the `<leader>lsp` root-scope switch, which `rootresolver`
+-- honours -- under scope "cwd" every root printed here was wrong as well.
+local rootresolver = require("lsp.servers.lua_ls.rootresolver")
 
 ---@class LuaLsDebug
 local M = {}
@@ -17,64 +28,30 @@ local M = {}
 -- ROOT RESOLUTION
 -- ===================================================================
 
----@param start_dir? string Starting directory path (optional)
----@return string|nil Detected root directory or nil if none found
-local function strict_root(start_dir)
-  -- Determine starting directory: use provided dir or fall back to current working directory
-  local dir = start_dir or (uv.cwd and uv.cwd()) or vim.fn.getcwd()
-
-  -- Bail early if no valid directory could be determined
-  if not dir or dir == "" then
-    return nil
-  end
-
-  -- Step 1: Check for version control system roots (.git, .hg, .svn)
-  -- These are strong indicators of a project boundary
-  local vcs_root = find_upward_dir({ ".git", ".hg", ".svn" }, dir)
-  if vcs_root then
-    return vcs_root
-  end
-
-  -- Step 2: Check for Lua-specific project markers
-  -- These config files typically sit at the project root
-  local lua_markers =
-    find_upward_dir({ ".luarc.json", ".neoconf.json", "selene.toml", "stylua.toml" }, dir)
-  if lua_markers then
-    return lua_markers
-  end
-
-  -- Step 3: Check if we're inside Neovim's config directory
-  -- This is common when editing init.lua or plugin files
-  local stdconfig = vim.fn.stdpath("config")
-  if is_subpath(dir, stdconfig) then
-    return stdconfig
-  end
-
-  -- Step 4: Fallback to the starting directory itself
-  -- This ensures single-file editing still works
-  return dir
-end
-
---- Get root directory for a specific buffer
+--- Get root directory for a specific buffer, exactly as the server resolves it.
 ---@param bufnr? integer Buffer number (optional, defaults to current buffer)
 ---@return string|nil Root directory path or nil
 function M.root_for_buf(bufnr)
-  local fname = ""
-
-  -- Get the filename for the specified buffer
-  if type(bufnr) == "number" then
-    fname = vim.api.nvim_buf_get_name(bufnr) or ""
+  if type(bufnr) ~= "number" or not vim.api.nvim_buf_is_valid(bufnr) then
+    bufnr = vim.api.nvim_get_current_buf()
   end
 
-  -- Extract directory from filename, or use nil to trigger CWD fallback
-  return strict_root(fname ~= "" and vim.fs.dirname(fname) or nil)
+  local ok, root = pcall(rootresolver, bufnr)
+  if not ok then
+    return nil
+  end
+  return root
 end
 
---- Debug helper: Get the root for the current working directory
+--- Debug helper: Get the root for the current buffer.
+---
+--- Named `debug_root` for the buffer-less caller; it goes through the same
+--- resolver, so an unnamed buffer lands on the resolver's own fallback rather
+--- than on a second one invented here.
 ---@nodiscard
 ---@return string|nil Root directory path
 function M.debug_root()
-  return strict_root()
+  return M.root_for_buf()
 end
 
 -- ===================================================================
@@ -83,11 +60,19 @@ end
 
 --- Build workspace library paths for a given root directory
 --- This shows which directories lua_ls will scan for type definitions
----@param root? string Root directory (optional, defaults to detected root)
+---
+--- Returns the array this has always been annotated (and documented in the
+--- README) to return. `build_library` hands back a `{ [path] = true }` map, and
+--- this used to pass that straight through: measured on this repo, the result
+--- had 22 keys and an array length of 0, so `#libs` was 0 and `ipairs(libs)`
+--- yielded nothing -- for a helper whose only job is to list paths for a human.
+--- Sorted, because a debug dump that reorders itself between runs cannot be
+--- diffed.
+---@param root? string Root directory (optional, defaults to the detected root)
 ---@return string[] Array of library paths
 function M.debug_library(root)
-  -- Use provided root or detect from CWD
-  root = root or strict_root()
+  -- Use provided root or resolve the current buffer's
+  root = root or M.debug_root()
   if not root then
     return {}
   end
@@ -98,8 +83,17 @@ function M.debug_library(root)
     return {}
   end
 
-  -- Call build_library with the root to get project-specific libraries
-  return build_library(root)
+  local built = build_library(root)
+  if type(built) ~= "table" then
+    return {}
+  end
+
+  local paths = {}
+  for path in pairs(built) do
+    paths[#paths + 1] = path
+  end
+  table.sort(paths)
+  return paths
 end
 
 -- ===================================================================
@@ -118,27 +112,33 @@ function M.print_debug_info(bufnr)
     return
   end
 
-  -- Get full library including type files
-  local ok, build_library = pcall(require, "lsp.servers.lua_ls.build_library")
-  if not ok then
-    notify.error("Could not load build_library")
+  -- Through `debug_library`, so the dump and the programmatic accessor can
+  -- never disagree, and so the order is stable between runs.
+  local library = M.debug_library(root)
+  if #library == 0 then
+    notify.error("Could not build a library for " .. root)
     return
   end
 
-  local library = build_library(root)
-
-  -- Separate directories and files for clarity
+  -- Separate directories and files for clarity. The third bucket is the point:
+  -- an entry that `fs_stat` cannot see used to be dropped with no trace, and
+  -- three of this repo's 22 entries are exactly that -- `${3rd}/luv/library`,
+  -- `${3rd}/busted/library`, `${3rd}/luassert/library`, placeholders the
+  -- server expands itself. Printing "17 directories, 2 files" for a 22-entry
+  -- library is how a missing `${3rd}` entry stays invisible, which is the one
+  -- thing this dump exists to catch.
   local dirs = {}
   local files = {}
+  local unresolved = {}
 
-  for path, _ in pairs(library) do
+  for _, path in ipairs(library) do
     local stat = (vim.uv or vim.loop).fs_stat(path)
-    if stat then
-      if stat.type == "directory" then
-        dirs[#dirs + 1] = path
-      elseif stat.type == "file" then
-        files[#files + 1] = path
-      end
+    if stat and stat.type == "directory" then
+      dirs[#dirs + 1] = path
+    elseif stat and stat.type == "file" then
+      files[#files + 1] = path
+    else
+      unresolved[#unresolved + 1] = path
     end
   end
 
@@ -151,6 +151,10 @@ function M.print_debug_info(bufnr)
   notify.info("\nType Files (" .. #files .. "):")
   for _, file in ipairs(files) do
     notify.info("  " .. file)
+  end
+  notify.info("\nNot on disk -- server-expanded or stale (" .. #unresolved .. "):")
+  for _, path in ipairs(unresolved) do
+    notify.info("  " .. path)
   end
 end
 
