@@ -35,7 +35,7 @@ describe("lsp.core.util.organize_imports_sync", function()
   --- `vim.lsp.buf.code_action` fail the test if it is ever reached.
   ---@return table calls
   local function stub_client(kind)
-    local calls = { buf_request_sync = 0, apply_workspace_edit = {}, code_action = 0 }
+    local calls = { request_sync = 0, apply_workspace_edit = {}, code_action = 0 }
 
     local client = {
       id = 1,
@@ -45,18 +45,28 @@ describe("lsp.core.util.organize_imports_sync", function()
       supports_method = function()
         return true
       end,
+      -- Per client, because the helper asks the clients it found eligible.
+      -- It used to go through `lsp.buf_request_sync`, which is buffer-wide:
+      -- the eligible list was computed and then thrown away, and one attached
+      -- client that was *not* eligible and did not answer made the whole call
+      -- time out and return nothing -- on `BufWritePre`, so organize-on-save
+      -- stopped happening and every `:w` gained the full timeout.
+      request_sync = function(_self, method, params, _timeout, _bufnr)
+        calls.request_sync = calls.request_sync + 1
+        assert.are.equal("textDocument/codeAction", method)
+        assert.are.same({ kind }, params.context.only)
+        return { result = { { edit = { changes = {} } } } }
+      end,
     }
 
     vim.lsp.get_clients = function()
       return { client }
     end
 
+    -- Treated like the async path below: reaching it at all is the failure.
     ---@diagnostic disable-next-line: duplicate-set-field
-    vim.lsp.buf_request_sync = function(_, method, params, _)
-      calls.buf_request_sync = calls.buf_request_sync + 1
-      assert.are.equal("textDocument/codeAction", method)
-      assert.are.same({ kind }, params.context.only)
-      return { [1] = { result = { { edit = { changes = {} } } } } }
+    vim.lsp.buf_request_sync = function()
+      error("organize_imports_sync must ask the eligible clients, not the whole buffer")
     end
 
     ---@diagnostic disable-next-line: duplicate-set-field
@@ -80,7 +90,7 @@ describe("lsp.core.util.organize_imports_sync", function()
     local applied = util.organize_imports_sync(0, "source.organizeImports")
 
     assert.is_true(applied)
-    assert.are.equal(1, calls.buf_request_sync)
+    assert.are.equal(1, calls.request_sync)
     assert.are.equal(1, #calls.apply_workspace_edit)
     assert.are.equal(0, calls.code_action)
   end)
@@ -92,7 +102,94 @@ describe("lsp.core.util.organize_imports_sync", function()
     local applied = util.organize_imports_sync(0, "source.organizeImports.astro")
 
     assert.is_true(applied)
-    assert.are.equal(1, calls.buf_request_sync)
+    assert.are.equal(1, calls.request_sync)
+  end)
+
+  -- The bug the per-client rewrite fixes. `eligible` was computed and then
+  -- discarded: the request went out buffer-wide, so a client that is attached,
+  -- supports `textDocument/codeAction` and is *not* eligible for this kind
+  -- still had to answer before anything came back. Measured against a real
+  -- pair: the eligible client applied the action in 0ms alone, and the
+  -- identical call returned false after the full 1549ms once one ineligible
+  -- mute client shared the buffer. On `BufWritePre`.
+  it("is not held up by an attached client that is not eligible", function()
+    local applied_edits = {}
+    local eligible = {
+      id = 1,
+      name = "eligible_ls",
+      offset_encoding = "utf-16",
+      server_capabilities = {
+        codeActionProvider = { codeActionKinds = { "source.organizeImports" } },
+      },
+      supports_method = function()
+        return true
+      end,
+      request_sync = function()
+        return { result = { { edit = { changes = {} } } } }
+      end,
+    }
+    -- Supports codeAction, declares a different kind, and never answers.
+    local ineligible = {
+      id = 2,
+      name = "mute_ls",
+      offset_encoding = "utf-16",
+      server_capabilities = { codeActionProvider = { codeActionKinds = { "quickfix" } } },
+      supports_method = function()
+        return true
+      end,
+      request_sync = function()
+        error("the ineligible client must not be asked")
+      end,
+    }
+    vim.lsp.get_clients = function()
+      return { eligible, ineligible }
+    end
+    ---@diagnostic disable-next-line: duplicate-set-field
+    vim.lsp.util.apply_workspace_edit = function(edit, enc)
+      applied_edits[#applied_edits + 1] = enc
+      return edit
+    end
+
+    local util = require("lsp.core.util")
+    assert.is_true(util.organize_imports_sync(0, "source.organizeImports", 100))
+    assert.are.equal(1, #applied_edits)
+  end)
+
+  -- Every edit used to be applied with `eligible[1].offset_encoding`, whichever
+  -- client that happened to be. A `utf-8` server's edit applied as `utf-16`
+  -- lands on the wrong column on every line holding a non-ASCII character --
+  -- the damage the offset-encoding warning in `:LspDoctor buffer` exists to
+  -- predict.
+  it("applies each edit with the encoding of the client that produced it", function()
+    local encodings = {}
+    local function client(id, enc)
+      return {
+        id = id,
+        name = "ls" .. id,
+        offset_encoding = enc,
+        server_capabilities = {
+          codeActionProvider = { codeActionKinds = { "source.organizeImports" } },
+        },
+        supports_method = function()
+          return true
+        end,
+        request_sync = function()
+          return { result = { { edit = { changes = {} } } } }
+        end,
+      }
+    end
+    vim.lsp.get_clients = function()
+      return { client(1, "utf-16"), client(2, "utf-8") }
+    end
+    ---@diagnostic disable-next-line: duplicate-set-field
+    vim.lsp.util.apply_workspace_edit = function(_edit, enc)
+      encodings[#encodings + 1] = enc
+    end
+
+    local util = require("lsp.core.util")
+    assert.is_true(util.organize_imports_sync(0, "source.organizeImports", 100))
+    table.sort(encodings)
+    assert.are.same({ "utf-16", "utf-8" }, encodings)
   end)
 
   it("returns false without requesting when no client is attached", function()

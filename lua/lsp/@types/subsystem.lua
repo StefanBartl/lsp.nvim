@@ -1,27 +1,30 @@
 ---@meta
 ---@module 'lsp.@types.subsystem'
-
----@class LspMod.Init
----@field ensure_installing boolean|nil
-
--- The client and protocol shapes below used to be declared here under
--- `LspMod.*` names. Neovim carries every one of them, and more precisely:
--- `vim.lsp.Client` has each field this file listed, `lsp.ServerCapabilities`
--- is the full capability set rather than the eleven keys we happened to use,
--- and `lsp.Position`/`lsp.Range`/`lsp.TextDocumentIdentifier`/
--- `lsp.CodeActionParams` come straight from the protocol meta.
---
--- Keeping a second name for the same shape is not free: LuaLS decides class
--- assignability by NAME, not by shape, so a parallel `LspMod.Client` can never
--- be assigned from a `vim.lsp.Client` however identical the fields are. That
--- collision is what `languages/webdev/typescript.lua` ran into three times.
-
----@class LspMod.AttachOptions
----@field use_workspace_diagnostics boolean
----@field use_lazydev boolean
-
----@class LspMod.AttachApi
----@field on_attach fun(client: any, bufnr:integer)
----@field on_init   fun(client: any, _):boolean
+--- A record, not a type file: everything it declared has been removed.
+---
+--- The client and protocol shapes used to be declared here under `LspMod.*`
+--- names. Neovim carries every one of them, and more precisely:
+--- `vim.lsp.Client` has each field this file listed, `lsp.ServerCapabilities`
+--- is the full capability set rather than the eleven keys we happened to use,
+--- and `lsp.Position`/`lsp.Range`/`lsp.TextDocumentIdentifier`/
+--- `lsp.CodeActionParams` come straight from the protocol meta.
+---
+--- Keeping a second name for the same shape is not free: LuaLS decides class
+--- assignability by NAME, not by shape, so a parallel `LspMod.Client` can never
+--- be assigned from a `vim.lsp.Client` however identical the fields are. That
+--- collision is what `languages/webdev/typescript.lua` ran into three times.
+---
+--- Three classes survived that cleanup and were dead in a quieter way:
+--- `LspMod.Init`, `LspMod.AttachOptions` and `LspMod.AttachApi`. Nothing in
+--- the plugin named any of them -- no `---@type`, no `---@param`, no
+--- `---@return` -- so nothing could notice that they described nobody.
+---
+--- `LspMod.Init` was the one that could cost a reader something. Its single
+--- field was `ensure_installing`, one letter off the real option
+--- `mason.ensure_install` (`config/DEFAULTS.lua`, read in `lsp/init.lua`).
+--- Writing the documented spelling is silently ineffective: the config merge
+--- keeps unknown keys and raises no warning, so `mason.ensure_installing` ends
+--- up sitting in the resolved config next to `ensure_install = false`, looking
+--- like it took.
 
 return {}
