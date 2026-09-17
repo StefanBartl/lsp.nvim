@@ -31,10 +31,26 @@ local actions = require("lsp.bindings.actions")
 local entries = {
   -- ------------------------------------------------------------ navigation
   -- The `ls*` family is prefixless and three characters long. It sits beside
-  -- Neovim 0.11's own `grr`/`gri`/`grn`/`grt`/`gO` rather than replacing them:
-  -- those are buffer-local on LspAttach, these are global, so both work. The
-  -- price is that every Normal-mode `l` waits out 'timeoutlen' to see whether
-  -- an `s` follows -- deliberate, and documented in docs/BINDINGS.md.
+  -- Neovim's own `grr`/`gri`/`grn`/`grt`/`gO` because it uses different keys --
+  -- not, as this comment claimed until now, because Neovim's are buffer-local
+  -- and therefore out of the way. They are not buffer-local.
+  -- `$VIMRUNTIME/lua/vim/_core/defaults.lua` sets all six at startup with the
+  -- note "mapped unconditionally to avoid different behavior depending on
+  -- whether an LSP client is attached", and a `--headless --noplugin` session
+  -- with no client at all reports `maparg("grn", "n", false, true).buffer == 0`
+  -- for every one of them.
+  --
+  -- Which matters for the two entries below that DO claim those left-hand
+  -- sides: being global, `rename` (`grn`) and `goto_type_definition_gr` (`grt`)
+  -- replace Neovim's outright the moment the binder runs -- measured, after
+  -- `bindings.keymaps.setup()` under the `default` preset `maparg("grn").desc`
+  -- reads "LSP: Rename symbol" where it read "vim.lsp.buf.rename()" before.
+  -- That is what roadmap finding B9 needs; it just does not need an LspAttach
+  -- hook to get it.
+  --
+  -- The family's own price is that every Normal-mode `l` waits out
+  -- 'timeoutlen' to see whether an `s` follows -- deliberate, and documented in
+  -- docs/BINDINGS.md.
   goto_definition = {
     lhs = "lsd",
     mode = "n",
@@ -398,9 +414,30 @@ local entries = {
 
 --- Which entries each preset binds.
 ---
---- `minimal` drops everything Neovim 0.11 already provides on its own
---- (`grn`, `grt`, `gO`, `grr`, `gri`, `]d`/`[d`) plus the prefixless `ls*`
---- family, and keeps what has no native equivalent.
+--- `minimal` keeps the entries with no plausible native equivalent. It drops
+--- `rename` (`grn`), `goto_type_definition_gr` (`grt`) and `diag_next`/
+--- `diag_prev` (`]d`/`[d`) -- the catalogue keys Neovim already binds to the
+--- same action -- plus seven of the nine prefixless `ls*` keys. (`gO`, `grr`
+--- and `gri` were named here as dropped too, until someone checked: the
+--- catalogue has never bound any of the three, so there was nothing to drop.)
+---
+--- Two exceptions, named because "no plausible native equivalent" is not what
+--- a reader would guess of either. Both were measured against
+--- `nvim_get_keymap("n")` in a `--noplugin` session rather than assumed:
+---
+--- * `]q`/`[q`/`]l`/`[l` ARE Neovim 0.11 defaults (`:cnext`, `:cprevious`,
+---   `:lnext`, `:lprevious`), and `minimal` keeps them anyway. The catalogue's
+---   versions swallow E553 at the end of a list, which was the whole of roadmap
+---   finding B3 -- and a key one holds down is exactly where an error beats a
+---   stop.
+--- * `picker_incoming_calls` (`lsc`) and `picker_outgoing_calls` (`lsC`) are
+---   `ls*` keys and `minimal` keeps them too: call hierarchy is the one thing
+---   in the family Neovim has no default for. The cost is the one thing
+---   `minimal` does NOT buy back -- two `ls*` maps stay live under it against
+---   nine under `default`, and one is enough to make every Normal-mode `l` wait
+---   out 'timeoutlen'. If that wait is the reason for picking the preset,
+---   `keymaps.map = { picker_incoming_calls = false, picker_outgoing_calls =
+---   false }` is what finishes the job.
 ---@type table<LspNvim.KeymapPreset, string[]>
 local presets = {
   default = vim.tbl_keys(entries),
