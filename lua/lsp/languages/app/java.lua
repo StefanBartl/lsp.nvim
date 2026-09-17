@@ -28,12 +28,31 @@ function M.enable()
     vim.bo[bufnr].tabstop = 4
     vim.bo[bufnr].expandtab = true
 
-    -- Organize imports on save
-    Autocmd.create("BufWritePre", function(bev)
-      pcall(util.organize_imports_sync, bev.buf, "source.organizeImports")
-    end, {
+    -- Organize imports on save. In the group, and only once per buffer:
+    -- FileType fires again every time the file is re-read (`:e`, `:e!`,
+    -- `:set ft=java`), and a groupless nested autocmd has nothing to
+    -- overwrite. Measured on one Probe.java: after the initial `:edit` plus
+    -- two `:edit!` the buffer carried 3 buffer-local BufWritePre handlers and
+    -- a single `:w` made 3 organize-imports round trips -- three blocking
+    -- `textDocument/codeAction` requests of up to a second each, applying the
+    -- same edit three times. `enable()` again did not clean them up either:
+    -- clearing `LangJava` cannot touch an autocmd that is in no group. The
+    -- flip side of the group is that a re-`enable()` now drops the handler
+    -- from buffers that are already open too -- the same contract the FileType
+    -- autocmd beside it has always had, and the next `:e` puts it back.
+    local already = api.nvim_get_autocmds({
+      event = "BufWritePre",
+      group = grp,
       buffer = bufnr,
     })
+    if #already == 0 then
+      Autocmd.create("BufWritePre", function(bev)
+        pcall(util.organize_imports_sync, bev.buf, "source.organizeImports")
+      end, {
+        group = grp,
+        buffer = bufnr,
+      })
+    end
   end, {
     group = grp,
     pattern = { "java" },

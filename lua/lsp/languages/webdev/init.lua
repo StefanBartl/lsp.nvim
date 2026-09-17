@@ -15,10 +15,12 @@ function M.enable_all()
     end
   end
 
+  -- No `wat = "wasm"`: it would override Neovim's own `wat` filetype, which
+  -- has syntax/ftplugin/indent where `wasm` has none. See the measurement at
+  -- the same table in `lsp/languages/init.lua`.
   vim.filetype.add({
     extension = {
       wasm = "wasm",
-      wat = "wasm",
       astro = "astro",
     },
   })
