@@ -25,6 +25,12 @@ local function strip_comment_prefix(line)
   return s
 end
 
+--- Format one `signatureHelp` result.
+---@param result table|nil
+---@return string[]|nil lines Display lines, or nil when there is nothing to show.
+---@return table|nil hl `{ line, col_start, col_end }` for the active parameter, 1-based.
+---@return table|nil signature The `SignatureInformation` the lines were built from.
+---@return integer|nil active_param 0-based index of the active parameter, if the server named one.
 return function(result)
   if not result then
     return nil
@@ -51,10 +57,29 @@ return function(result)
     table.insert(lines, strip_comment_prefix(ln))
   end
 
+  -- Which parameter is the active one.
+  --
+  -- `activeParameter` sits on the *result* in the base protocol; the
+  -- per-signature field is a 3.16 refinement that overrides it when present.
+  -- Only the per-signature one was read here, and it is the one servers
+  -- mostly do not send: measured against `{ signatures = {...},
+  -- activeSignature = 0, activeParameter = 1 }` -- the shape for `foo(a, |b)`
+  -- -- this returned `hl = nil`, so nothing was emphasised, and
+  -- `request_and_show`, deriving the index the same way, defaulted to 1 and
+  -- painted `LspSignatureActiveParam` over the *first* parameter instead.
+  local envelope = result.value or result
+  ---@type integer|nil
+  local active_param = nil
+  if type(sig.activeParameter) == "number" then
+    active_param = sig.activeParameter
+  elseif type(envelope.activeParameter) == "number" then
+    active_param = envelope.activeParameter
+  end
+
   -- compute active parameter hl info if available
   local hl = nil
-  if sig.parameters and sig.activeParameter then
-    local param = sig.parameters[sig.activeParameter + 1]
+  if sig.parameters and active_param then
+    local param = sig.parameters[active_param + 1]
     if param and param.label then
       if type(param.label) == "table" and #param.label == 2 then
         hl = { line = 1, col_start = param.label[1] + 1, col_end = param.label[2] }
@@ -83,5 +108,11 @@ return function(result)
     end
   end
 
-  return lines, hl
+  -- `sig` and `active_param` are handed back so the caller does not have to
+  -- dig the same two values out of `result` a second time. It used to, and it
+  -- read `result.signatures` directly -- which is nil for the `result.value`
+  -- envelope this function accepts three lines above, so a server sending that
+  -- shape produced lines here and then an "attempt to index field 'signatures'
+  -- (a nil value)" in the caller's scheduled callback.
+  return lines, hl, sig, active_param
 end

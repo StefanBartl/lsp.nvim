@@ -41,14 +41,36 @@ return function(bufnr, callback)
     return
   end
 
-  local params = vim.lsp.util.make_position_params(0, "utf-8")
+  --- Position parameters in the encoding `client` negotiated.
+  ---
+  --- The column in a position parameter is counted in the client's own offset
+  --- encoding, and "utf-8" was hardcoded here. Nvim's default -- and what a
+  --- server gets when it does not insist otherwise -- is utf-16: measured on
+  --- `local x = "äöü" .. foo()` with the cursor inside the call, this asked
+  --- for character 26 where the server counts 23. Three columns to the right
+  --- is past the call, so the answer was about the wrong position, or there
+  --- was no answer at all. Any line with a multi-byte character before the
+  --- cursor is affected, which is most prose-carrying source.
+  ---@param client table
+  ---@return table
+  local function position_params(client)
+    return vim.lsp.util.make_position_params(0, client.offset_encoding or "utf-16")
+  end
+
   local mode = vim.fn.mode()
 
   -- helper to show hover across clients using the modular helper
   local function show_hover_across_clients()
-    -- show_hover returns true when at least one request was scheduled
-    local did_schedule =
-      hover_helper.show_hover(clients, params, { mode = mode, callback = callback, bufnr = bufnr })
+    -- The shared `params` is the one the cache keys on; `params_for` is what
+    -- each client is actually asked with.
+    local params = position_params(clients[1])
+    -- show_hover returns true when at least one client accepted the request
+    local did_schedule = hover_helper.show_hover(clients, params, {
+      mode = mode,
+      callback = callback,
+      bufnr = bufnr,
+      params_for = position_params,
+    })
 
     -- schedule a short deferred check: if no floating preview appeared, call fallback providers
     vim.defer_fn(function()
@@ -76,7 +98,7 @@ return function(bufnr, callback)
           return
         end
 
-        local lines, active_hl = format_signature_help(result)
+        local lines, active_hl, sig, active_param = format_signature_help(result)
         if not lines or #lines == 0 then
           schedule(function()
             notify.info("signatureHelp produced no displayable lines, trying hover across clients")
@@ -99,6 +121,10 @@ return function(bufnr, callback)
             footer = vim.api.nvim_buf_get_name(bufnr)
           end
 
+          -- One popup at a time: `state` tracks a single window, and a second
+          -- one opened over it can never be closed again by the toggle.
+          state.close()
+
           local buf, win = open_floating_preview(lines, { footer = footer, focus = (mode == "n") })
           if not buf or not win then
             notify.error("[lsp_signature] buf or win is nil")
@@ -107,9 +133,49 @@ return function(bufnr, callback)
 
           state.set(buf, win)
 
-          -- apply active parameter highlighting if hl present
-          if active_hl and buf then
-            local ns = ns_id or param_hl.setup()
+          -- One namespace, the module's own. This used to call
+          -- `nvim_create_namespace("my_signature_ns")` inside the parameter
+          -- loop, so the parameter marks landed in a namespace nothing else
+          -- in the plugin knows about while the active one went to
+          -- `LspSignatureParams` -- measured, one popup carried extmarks in
+          -- both. The ids are interned by name, so it never leaked, but the
+          -- marks were unreachable from `param_hl.ns_id()`.
+          local ns = ns_id or param_hl.setup()
+
+          -- Parameter highlighting: every parameter of the signature, the
+          -- active one emphasised. `sig` and `active_param` come from the
+          -- formatter, which already resolved the active signature and the
+          -- active parameter across the two shapes servers send them in.
+          if sig and sig.parameters and sig.label then
+            local groups = param_hl.group_names()
+            for i, param in ipairs(sig.parameters) do
+              local start_col, end_col
+              if type(param.label) == "table" and #param.label == 2 then
+                start_col = param.label[1] + 1
+                end_col = param.label[2]
+              elseif type(param.label) == "string" then
+                local s, e = string.find(sig.label, vim.pesc(param.label), 1, true)
+                start_col = s
+                end_col = e
+              end
+
+              if start_col and end_col then
+                local group = (active_param and i == active_param + 1) and "LspSignatureActiveParam"
+                  or groups[(i - 1) % #groups + 1]
+                pcall(
+                  vim.hl.range,
+                  buf,
+                  ns,
+                  group,
+                  { 0, start_col - 1 },
+                  { 0, end_col },
+                  { inclusive = false }
+                )
+              end
+            end
+          elseif active_hl then
+            -- No parameter list to walk, but the formatter found the active
+            -- range anyway (a string label matched inside the signature).
             local start_col = active_hl.col_start or 1
             local end_col = active_hl.col_end or start_col
             pcall(
@@ -123,58 +189,6 @@ return function(bufnr, callback)
             )
           end
 
-          -- Parameter highlighting (all params + active)
-          local sig = result.signatures[result.activeSignature and result.activeSignature + 1 or 1]
-          if sig and sig.parameters then
-            -- apply highlighting for signature
-            -- after opening preview buffer (buf) and if we have active parameter hl info:
-            local groups = param_hl.group_names()
-            local ns = ns_id or param_hl.setup()
-            if active_hl and buf then
-              local start_col = active_hl.col_start or 1
-              local end_col = active_hl.col_end or start_col
-              -- highlight the active param
-              pcall(
-                vim.hl.range,
-                buf,
-                ns,
-                "LspSignatureActiveParam",
-                { active_hl.line - 1, start_col - 1 },
-                { active_hl.line - 1, end_col },
-                { inclusive = false }
-              )
-            end
-
-            -- Also highlight other parameters if you have their ranges:
-            for i, param in ipairs(sig.parameters) do
-              local start_col, end_col
-              if type(param.label) == "table" and #param.label == 2 then
-                start_col = param.label[1] + 1
-                end_col = param.label[2]
-              elseif type(param.label) == "string" then
-                local s, e = string.find(sig.label, vim.pesc(param.label), 1, true)
-                start_col = s
-                end_col = e
-              end
-
-              if start_col and end_col and buf then
-                local group = (i == (sig.activeParameter or 0) + 1) and "LspSignatureActiveParam"
-                  or groups[(i - 1) % #groups + 1]
-                ---@type integer
-                local _ns = vim.api.nvim_create_namespace("my_signature_ns")
-                pcall(
-                  vim.hl.range,
-                  buf,
-                  _ns,
-                  group,
-                  { 0, start_col - 1 },
-                  { 0, end_col },
-                  { inclusive = false }
-                )
-              end
-            end
-          end
-
           if mode == "n" and win and api.nvim_win_is_valid(win) then
             api.nvim_set_current_win(win)
           end
@@ -185,7 +199,14 @@ return function(bufnr, callback)
       end
 
       -- request signatureHelp; wrap in pcall to avoid throwing if client disappears
-      pcall(client.request, client, "textDocument/signatureHelp", params, handler, bufnr)
+      pcall(
+        client.request,
+        client,
+        "textDocument/signatureHelp",
+        position_params(client),
+        handler,
+        bufnr
+      )
       return
     end
   end

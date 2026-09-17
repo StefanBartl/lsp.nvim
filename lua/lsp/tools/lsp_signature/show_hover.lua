@@ -1,11 +1,18 @@
 ---@module 'lsp.tools.lsp_signature.show_hover'
 --- Request hover from one or multiple LSP clients and display it in a floating preview.
 --- Accepts either a single client object or a list (array) of clients.
---- If given multiple clients, it queries them in order and shows the first hover result
---- that yields displayable lines. Operations are asynchronous; the function schedules UI
---- updates and uses an optional callback to notify when a floating preview was created.
+--- If given multiple clients, it asks all of them at once and shows the first
+--- answer that yields displayable lines; the later ones are dropped. Operations are
+--- asynchronous; the function schedules UI updates and uses an optional callback to
+--- notify when a floating preview was created.
 ---
---- Return value: boolean indicating that at least one request was scheduled (not that a preview was necessarily shown).
+--- Asking them all at once rather than one after the other is not about latency.
+--- A sequential chain advances on an *answer*, so a client that never produces one
+--- ends the search at itself -- and "one attached client is silent" is the normal
+--- state of affairs for a buffer with a linter and a language server on it.
+---
+--- Return value: boolean indicating that at least one client accepted the request
+--- (not that a preview was necessarily shown).
 ---
 --- ## The cache
 ---
@@ -84,7 +91,20 @@ end
 ---@param opts table
 ---@return nil
 local function present(lines, opts)
-  local buf, win = open_floating_preview(lines)
+  -- Close whatever is tracked before opening. `state` holds exactly one
+  -- popup, so a second one opened over it is untrackable from that moment on:
+  -- measured with two `<C-b>` presses while the first request was still in
+  -- flight, both answers presented and `nvim_list_wins()` ended with two
+  -- floats `{1003, 1002}` while `state` knew only 1003 -- the toggle then
+  -- closed 1003 and left 1002 on screen with no way to reach it, because its
+  -- only closer is an autocommand on its own buffer that cannot fire while
+  -- that buffer is displayed.
+  state.close()
+  -- `focus` was never passed here, so every hover popup came out
+  -- `focusable = false` -- including in normal mode, where the module
+  -- documents a popup that "takes focus, so it can be scrolled and copied
+  -- from". The signature path next door has always passed it.
+  local buf, win = open_floating_preview(lines, { focus = opts.mode == "n" })
   state.set(buf, win)
   if opts.mode == "n" and win and api.nvim_win_is_valid(win) then
     api.nvim_set_current_win(win)
@@ -92,60 +112,6 @@ local function present(lines, opts)
   if opts.callback and buf and win then
     opts.callback(buf, win)
   end
-end
-
---- Internal single-client handler creator.
---- Calls the client and invokes `on_result` when result processed (true if preview shown).
----@param _client table # Unused
----@param _params table # Unused
----@param opts table|nil
----@param on_result fun(shown: boolean, lines: string[]|nil)
----@diagnostic disable-next-line: unused-local
-local function make_client_request_handler(_client, _params, opts, on_result)
-  opts = opts or {}
-
-  return function(_, result)
-    if not result then
-      -- no hover result for this client
-      schedule(function()
-        -- Do not notify here to avoid spamming when multiple clients are queried.
-      end)
-      on_result(false, nil)
-      return
-    end
-
-    local lines = format_hover(result)
-    if not lines or #lines == 0 then
-      schedule(function()
-        -- no displayable lines for this client
-      end)
-      on_result(false, nil)
-      return
-    end
-
-    schedule(function()
-      present(lines, opts)
-      on_result(true, lines)
-    end)
-  end
-end
-
---- send request to a single client (safely)
----@param client table
----@param params table
----@param opts table|nil
----@param on_result fun(shown: boolean, lines: string[]|nil)
-local function request_one_client(client, params, opts, on_result)
-  local handler = make_client_request_handler(client, params, opts, on_result)
-  -- protect the request call; some clients may disconnect
-  pcall(
-    client.request,
-    client,
-    "textDocument/hover",
-    params,
-    handler,
-    vim.api.nvim_get_current_buf()
-  )
 end
 
 --- Drop every cached hover answer.
@@ -164,8 +130,11 @@ end
 ---   - mode: "n" or nil
 ---   - callback: fun(buf,win) optional callback
 ---   - bufnr: integer, the buffer the position belongs to (default: current)
---- Returns true when at least one request was scheduled, or when a cached
---- answer was shown without one.
+---   - params_for: fun(client): table|nil, per-client position parameters.
+---     Falls back to the shared `params` when absent or when it returns
+---     nothing, so a caller with one encoding to worry about can ignore it.
+--- Returns true when at least one client accepted the request, or when a
+--- cached answer was shown without one.
 ---@param client_or_clients table|table[]
 ---@param params table
 ---@param opts table|nil
@@ -202,40 +171,76 @@ function M.show_hover(client_or_clients, params, opts)
     end
   end
 
-  local scheduled_any = false
-  local ci = 1
+  -- One popup per call, whoever gets there first.
+  --
+  -- The clients used to be asked one at a time, the next one only after the
+  -- previous had answered -- which meant any client that did not answer ended
+  -- the search. Measured with two stubs where the second held the hover text:
+  -- with the first raising from `request` (a client that is shutting down),
+  -- with it returning `false` (a server not ready yet), and with it simply
+  -- staying silent, the second client was asked 0 times in all three cases and
+  -- no popup ever opened -- while `show_hover` returned `true`, so the caller
+  -- went on believing an answer was on its way.
+  --
+  -- So: ask everyone at once and take the first displayable answer. `settled`
+  -- is set in the handler rather than in the scheduled callback, because two
+  -- answers can arrive before the loop turns and both would otherwise open a
+  -- popup.
+  local settled = false
+  local sent = 0
 
-  -- recursive iterator over clients: try next client when current yields nothing
-  local function try_next_client()
-    local client = clients[ci]
-    ci = ci + 1
-    if not client then
-      -- exhausted clients without showing hover
-      return
-    end
+  ---@return fun(err: any, result: any)
+  local function handler_for()
+    -- One answer per client. A handler that fires twice -- a server sending a
+    -- duplicate response, or a request we already gave up on -- must not draw
+    -- over an answer that is already on screen.
+    local answered = false
+    return function(_, result)
+      if answered or settled then
+        return
+      end
+      answered = true
 
-    scheduled_any = true
-    -- on_result will be called with true when a preview was shown, false otherwise
-    local function on_result(shown, lines)
-      if shown then
-        -- stop further attempts
-        if key and lines then
+      local lines = result and format_hover(result) or nil
+      if not lines or #lines == 0 then
+        -- Nothing displayable from this client. No notify: with every client
+        -- asked at once that would be one message per silent server.
+        return
+      end
+
+      settled = true
+      schedule(function()
+        present(lines, opts)
+        if key then
           cache:put(key, lines)
         end
-        return
-      else
-        -- try next client
-        try_next_client()
+      end)
+    end
+  end
+
+  for _, client in ipairs(clients) do
+    -- `params_for` lets the caller encode the position per client: the column
+    -- in a position parameter is counted in the encoding *that* server
+    -- negotiated, and two clients on one buffer need not agree.
+    local client_params = params
+    if opts.params_for then
+      local ok, per_client = pcall(opts.params_for, client)
+      if ok and type(per_client) == "table" then
+        client_params = per_client
       end
     end
 
-    -- fire request for this client
-    request_one_client(client, params, opts, on_result)
+    -- `pcall`: `request` raises on a client that is closing. Counting only
+    -- the requests that were actually accepted is what makes the return value
+    -- mean something -- see the measurement above.
+    local ok, accepted =
+      pcall(client.request, client, "textDocument/hover", client_params, handler_for(), bufnr)
+    if ok and accepted ~= false then
+      sent = sent + 1
+    end
   end
 
-  try_next_client()
-
-  return scheduled_any
+  return sent > 0
 end
 
 return M
