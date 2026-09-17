@@ -204,8 +204,16 @@ end
 --- store knows the registered spelling.
 ---
 --- `"*"` is skipped: it is the shared base config, not a server.
+---
+--- `include_disabled` keeps the ones that are registered but never enabled.
+--- Only `:LspDoctor resolve` wants them: that report walks the chain stage by
+--- stage and "registered, not enabled" is one of its stages, so folding it
+--- into "not registered" would hide the very break it is there to find.
+--- Everything else asks the default question -- which servers should this
+--- buffer expect -- and a config nobody enabled is not one of them.
+---@param include_disabled boolean|nil
 ---@return string[]
-function M.registered_names()
+function M.registered_names(include_disabled)
   ---@type string[]
   local names = {}
 
@@ -231,7 +239,7 @@ function M.registered_names()
   -- A registered config that was never enabled is not a server this buffer
   -- should expect. `is_enabled` is public; when it is missing, registered is
   -- the best available answer.
-  if type(lsp.is_enabled) == "function" then
+  if not include_disabled and type(lsp.is_enabled) == "function" then
     ---@type string[]
     local enabled = {}
     for _, name in ipairs(names) do

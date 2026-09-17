@@ -5,29 +5,27 @@ local M = {}
 
 local lsp = vim.lsp
 
---- Get filetype-to-server mapping
----@return table<string, string[]>
-local function get_filetype_server_map()
-  return {
-    lua = { "lua_ls" },
-    javascript = { "ts_ls", "eslint" },
-    typescript = { "ts_ls", "eslint" },
-    javascriptreact = { "ts_ls", "eslint" },
-    typescriptreact = { "ts_ls", "eslint" },
-    go = { "gopls" },
-    markdown = { "marksman" },
-    ["markdown.mdx"] = { "marksman" },
-    html = { "html", "emmet_ls" },
-    css = { "cssls" },
-    json = { "jsonls" },
-    sh = { "bashls" },
-    bash = { "bashls" },
-    zsh = { "bashls" },
-    c = { "clangd" },
-    cpp = { "clangd" },
-    cs = { "omnisharp" },
-    zig = { "zls" },
-  }
+--- Servers registered for this buffer's filetype.
+---
+--- Through `lsp.usercmds.start`, which is where `:LspDoctor startup` and
+--- `:Lsp start` get the same answer. This file used to keep its own hardcoded
+--- table of eighteen filetypes -- the very table `usercmds/start.lua` documents
+--- as discredited and replaced: it named five servers this plugin does not
+--- configure (`eslint`, `cssls`, `jsonls`, `omnisharp`, `zls`), missed ones it
+--- does, and answered "none mapped" for every filetype outside the eighteen
+--- whatever was actually attached.
+---
+--- That left the two halves of one command disagreeing about one question:
+--- `resolve` is the report for "where does the filetype -> server chain break",
+--- and it was walking a different chain than the plugin does.
+---@param bufnr integer
+---@return string[]
+local function get_expected_servers(bufnr)
+  local ok, start_mod = pcall(require, "lsp.usercmds.start")
+  if ok and type(start_mod.get_servers_for_buffer) == "function" then
+    return start_mod.get_servers_for_buffer(bufnr)
+  end
+  return {}
 end
 
 --- Get configured servers from registry
@@ -40,22 +38,36 @@ local function get_configured_servers()
   return {}
 end
 
---- Get registered configs
----@return string[]
+--- Names registered with `vim.lsp.config`.
+---
+--- Through `lsp.core.supervisor`, which owns the defensive read of that store.
+--- This used to be `lsp.config.get()`, guarded by `not lsp.config.get` --
+--- `vim.lsp.config` is a table with an `__index` resolver and has no `get`, so
+--- the guard fired on every call and this list was *always* empty.
+---
+--- It is the same mistake as `health.lua`'s `config_exists` (roadmap B16,
+--- fixed 2026-08-23); the twin in this file was not. And it mattered more
+--- here: an empty list prints "❌ (none - THIS IS THE PROBLEM!)" in section 3,
+--- and the Diagnosis below opens on `#registered == 0`, so `:LspDoctor
+--- resolve` always closed with "❌ Critical: No servers registered in
+--- vim.lsp.config" and could never reach any other verdict -- including the
+--- ✅ one. Verified against three genuinely registered configs.
+---
+--- Two lists, because "registered" and "enabled" are different stages of the
+--- chain this report exists to walk. A config that is registered and never
+--- enabled would otherwise be indistinguishable from one that was never
+--- registered, and the Diagnosis would send the reader to
+--- `registry` initialization for a problem that is one `vim.lsp.enable` away.
+---@return string[] registered, string[] enabled
 local function get_registered_configs()
-  if type(lsp.config) ~= "table" or not lsp.config.get then
-    return {}
+  local ok, supervisor = pcall(require, "lsp.core.supervisor")
+  if not ok or type(supervisor.registered_names) ~= "function" then
+    return {}, {}
   end
-
-  local configs = lsp.config.get() or {}
-  local names = {}
-  for _, cfg in pairs(configs) do
-    if cfg.name then
-      names[#names + 1] = cfg.name
-    end
-  end
-  table.sort(names)
-  return names
+  local registered = supervisor.registered_names(true)
+  local enabled = supervisor.registered_names()
+  table.sort(registered)
+  return registered, enabled
 end
 
 --- Get running clients
@@ -120,10 +132,9 @@ end
 function M.info(bufnr)
   local lines = {}
   local ft = vim.bo[bufnr].filetype
-  local map = get_filetype_server_map()
-  local expected = map[ft] or {}
+  local expected = get_expected_servers(bufnr)
   local configured = get_configured_servers()
-  local registered = get_registered_configs()
+  local registered, enabled = get_registered_configs()
   local running = get_running_clients(bufnr)
   local completion = get_completion_candidates(expected, running, configured)
 
@@ -139,7 +150,7 @@ function M.info(bufnr)
       table.insert(lines, string.format("   • `%s`", name))
     end
   else
-    table.insert(lines, "   *(none mapped)*")
+    table.insert(lines, "   *(no registered config declares this filetype)*")
   end
   table.insert(lines, "")
 
@@ -158,7 +169,21 @@ function M.info(bufnr)
   table.insert(lines, "### 3. Registered configs (vim.lsp.config)")
   if #registered > 0 then
     for _, name in ipairs(registered) do
-      table.insert(lines, string.format("   • `%s`", name))
+      local is_enabled = false
+      for _, e in ipairs(enabled) do
+        if e == name then
+          is_enabled = true
+          break
+        end
+      end
+      table.insert(
+        lines,
+        string.format(
+          "   • `%s`%s",
+          name,
+          is_enabled and "" or "  ⚠️  registered, not enabled"
+        )
+      )
     end
   else
     table.insert(lines, "   ❌ **(none - THIS IS THE PROBLEM!)**")
@@ -197,6 +222,9 @@ function M.info(bufnr)
     table.insert(lines, "   1. `lsp.core.registry` initialization")
     table.insert(lines, "   2. `lsp.core.setup` registration loop")
     table.insert(lines, "   3. Call stack: `setup() -> register() -> config.add()`")
+  elseif #enabled == 0 then
+    table.insert(lines, "⚠️  **Warning**: Configs are registered but none is enabled")
+    table.insert(lines, "   `vim.lsp.enable` is what attaches them on FileType")
   elseif #configured == 0 then
     table.insert(lines, "⚠️  **Warning**: No servers in registry.ACTIVE")
     table.insert(lines, "   Configs exist but registry is empty")
@@ -212,6 +240,7 @@ function M.info(bufnr)
     expected = expected,
     configured = configured,
     registered = registered,
+    enabled = enabled,
     running = running,
     completion = completion,
   }

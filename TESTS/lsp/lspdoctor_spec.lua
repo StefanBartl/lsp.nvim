@@ -432,4 +432,135 @@ describe("lsp.lspdoctor", function()
       assert.is_truthy(rendered:find("Semantic tokens: ✅", 1, true), rendered)
     end)
   end)
+
+  describe("resolve", function()
+    local saved
+
+    before_each(function()
+      saved = {
+        supervisor = package.loaded["lsp.core.supervisor"],
+        start_mod = package.loaded["lsp.usercmds.start"],
+        registry = package.loaded["lsp.core.registry"],
+      }
+      package.loaded["lsp.core.supervisor"] = {
+        registered_names = function(include_disabled)
+          if include_disabled then
+            return { "spec_a", "spec_b", "spec_never_enabled" }
+          end
+          return { "spec_a", "spec_b" }
+        end,
+      }
+      package.loaded["lsp.usercmds.start"] = {
+        get_servers_for_buffer = function()
+          return { "spec_a" }
+        end,
+      }
+      package.loaded["lsp.core.registry"] = { ACTIVE = { "spec_a", "spec_b" } }
+    end)
+
+    after_each(function()
+      package.loaded["lsp.core.supervisor"] = saved.supervisor
+      package.loaded["lsp.usercmds.start"] = saved.start_mod
+      package.loaded["lsp.core.registry"] = saved.registry
+    end)
+
+    ---@return string[] lines, Lsp.Doctor.ResolveInfo info
+    local function resolve()
+      package.loaded["lsp.lspdoctor.debug"] = nil
+      return require("lsp.lspdoctor.debug").info(vim.api.nvim_get_current_buf())
+    end
+
+    -- This list was built from `lsp.config.get()`, guarded by
+    -- `not lsp.config.get`. `vim.lsp.config` is a table with an `__index`
+    -- resolver and has no `get`, so the guard fired every time and the list was
+    -- *always* empty -- the same mistake as health.lua's `config_exists`
+    -- (roadmap B16), fixed there in 2026-08 and left here.
+    --
+    -- It mattered more here: an empty list opens the Diagnosis on
+    -- `#registered == 0`, so `:LspDoctor resolve` always closed with
+    -- "❌ Critical: No servers registered in vim.lsp.config" and could never
+    -- reach any other verdict, the ✅ one included.
+    it("finds the registered configs instead of always reporting none", function()
+      local lines, info = resolve()
+      local rendered = table.concat(lines, "\n")
+
+      assert.are.same({ "spec_a", "spec_b", "spec_never_enabled" }, info.registered)
+      assert.is_nil(rendered:find("THIS IS THE PROBLEM", 1, true), rendered)
+      assert.is_nil(rendered:find("Critical", 1, true), rendered)
+    end)
+
+    -- "Registered" and "enabled" are separate stages of the chain this report
+    -- walks, and a config that is registered and never enabled is one
+    -- `vim.lsp.enable` away from working -- not a registry problem, which is
+    -- where the Diagnosis would otherwise send the reader.
+    it("separates registered from enabled", function()
+      local lines, info = resolve()
+      assert.are.same({ "spec_a", "spec_b" }, info.enabled)
+      assert.is_truthy(
+        table.concat(lines, "\n"):find("registered, not enabled", 1, true),
+        "the one config nobody enabled is not marked"
+      )
+    end)
+
+    -- The expected list came from a hardcoded filetype table kept in this file
+    -- -- the same table `usercmds/start.lua` documents as discredited and
+    -- replaced, naming five servers this plugin does not configure. So the two
+    -- halves of one command answered "which servers belong to this buffer"
+    -- from two different sources, and `resolve` -- the report *for* that
+    -- question -- was the one walking the wrong chain.
+    it("takes the expected servers from the same place `:Lsp start` does", function()
+      local _, info = resolve()
+      assert.are.same({ "spec_a" }, info.expected)
+    end)
+  end)
+
+  -- Reading one report and opening a second to compare is the obvious move,
+  -- and it failed: the scratch buffer was always named "LSP Doctor Report",
+  -- the first one is still holding that name while it is open, and
+  -- `nvim_buf_set_name` raises `E95` on a name that is taken. The report was
+  -- lost and the empty split from `botright new` stayed behind.
+  -- `bufhidden = "wipe"` does not cover it -- the buffer is visible, not
+  -- hidden.
+  describe("scratch output", function()
+    local opened
+
+    before_each(function()
+      opened = vim.api.nvim_list_wins()
+    end)
+
+    after_each(function()
+      local keep = {}
+      for _, win in ipairs(opened) do
+        keep[win] = true
+      end
+      for _, win in ipairs(vim.api.nvim_list_wins()) do
+        if not keep[win] and vim.api.nvim_win_is_valid(win) and #vim.api.nvim_list_wins() > 1 then
+          pcall(vim.api.nvim_win_close, win, true)
+        end
+      end
+    end)
+
+    it("opens a second report while the first is still on screen", function()
+      local mod = doctor()
+      local ok_first, err_first = pcall(mod.buffer, 0, true)
+      assert.is_true(ok_first, tostring(err_first))
+
+      local ok_second, err_second = pcall(mod.capabilities, 0, true)
+      assert.is_true(ok_second, "a second report collided with the first: " .. tostring(err_second))
+
+      -- Both are still there, under names that tell them apart.
+      local names = {}
+      for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+        local name = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(bufnr), ":t")
+        if name:find("LSP Doctor Report", 1, true) then
+          names[#names + 1] = name
+        end
+      end
+      assert.are.equal(
+        2,
+        #names,
+        "expected two distinctly named reports, got: " .. vim.inspect(names)
+      )
+    end)
+  end)
 end)

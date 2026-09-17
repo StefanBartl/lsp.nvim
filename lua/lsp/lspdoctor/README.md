@@ -35,7 +35,7 @@ The name says which question it answers, not how much output to expect.
 | Report | Answers |
 | ------ | ------- |
 | `startup` | Is the server running, and if not, why? Per server: running, configured, attempts made, executable found, last error, and what to run next. |
-| `resolve` | Where does the filetype → server chain break? Five numbered steps: which servers this filetype should get, which are configured, which are registered with `vim.lsp.config`, which are running, and what `:Lsp start` would offer. |
+| `resolve` | Where does the filetype → server chain break? Five numbered steps: which servers this filetype should get, which are configured, which are registered with `vim.lsp.config` (marking any that are registered but never enabled — a stage of its own, one `vim.lsp.enable` away from working), which are running, and what `:Lsp start` would offer. |
 | `buffer` | What is going on in this buffer right now? Attached clients, diagnostic counts per severity, provider conflicts, offset encodings, formatter. Lists capped at `list_limit`. |
 | `capabilities` | What can the servers here actually do? The `buffer` report uncapped, plus `root_dir` and workspace folders and the full capability set per client. |
 | `probe` | Do diagnostics actually arrive? Hands the attached clients a buffer they cannot possibly parse and waits. The only report that provokes rather than observes — see below. |
@@ -307,7 +307,7 @@ they cannot drift from what the functions actually build.
 | Report | Result |
 | ------ | ------ |
 | `startup` | `Lsp.Doctor.StartupEntry[]` — one per expected server: `name`, `running`, `config_exists`, `attempts`, `last_error`. A *list*, and an empty one means no server is configured for this filetype at all |
-| `resolve` | `Lsp.Doctor.ResolveInfo` — `filetype`, plus `expected`, `configured`, `registered`, `running` and `completion` as name lists |
+| `resolve` | `Lsp.Doctor.ResolveInfo` — `filetype`, plus `expected`, `configured`, `registered`, `enabled`, `running` and `completion` as name lists. `expected` comes from `lsp.usercmds.start`, the same source `:Lsp start` and `:LspDoctor startup` use |
 | `buffer`, `capabilities` | `Lsp.Doctor.InspectReport` — `mode`, `ok`, `summary`. The detail is in the lines |
 | `probe` | `Lsp.Doctor.ProbeReport`, below |
 | `all` | `Lsp.Doctor.CombinedReport` — `{ startup = …, resolve = …, capabilities = … }`. No `probe`: it is not part of `all` |
