@@ -130,14 +130,23 @@ describe("lsp.tools.eslint_prettier", function()
     assert.are.same({ "ESLINT", "PRETTIER" }, spawned, "prettier never ran after eslint")
   end)
 
-  -- The same ordering on the save path, which is where it actually bites.
-  it("the BufWritePre hook starts prettier only after eslint has exited", function()
+  -- The same ordering on the save path, which is where it actually bites --
+  -- and on `BufWritePost`, so the formatters never hold the file open while
+  -- Neovim is still writing it. Measured on a 25.8 MB buffer against the
+  -- `BufWritePre` version: `:w` took 233 ms, the formatter got to the path
+  -- first and died with "Der Prozess kann nicht auf die Datei zugreifen, da
+  -- sie von einem anderen Prozess verwendet wird", and the file was left
+  -- unformatted.
+  it("the save hook runs after the write, and prettier only after eslint", function()
     reload_with_stubbed_spawn()
     local autocmds = require("lsp.tools.eslint_prettier.autocmds")
     vim.bo[buf].filetype = "typescript"
     autocmds.attach({ _enabled = true, filetypes = { "typescript" } })
 
     vim.api.nvim_exec_autocmds("BufWritePre", { buffer = buf })
+    assert.are.same({}, spawned, "a formatter was started while Neovim was still writing")
+
+    vim.api.nvim_exec_autocmds("BufWritePost", { buffer = buf })
     assert.are.same({ "ESLINT" }, spawned, "prettier was started before eslint had exited")
 
     pending[1]({ code = 0, stdout = "", stderr = "" })
