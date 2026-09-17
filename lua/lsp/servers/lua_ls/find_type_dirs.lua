@@ -15,7 +15,17 @@ local notify = require("lib.nvim.notify").create("[lsp.servers.lua_ls.find_type_
 local sys_env = require("lib.nvim.system.env")
 
 local uv = vim.loop or vim.uv
-local norm = vim.fs.normalize
+
+-- `vim.fs.normalize` only rewrites "\" to "/" on Windows itself -- on Linux
+-- it leaves a backslash-spelled path untouched, so a root built from
+-- expand("~") or Tab-completion on a real Windows machine would survive
+-- into `uv.fs_scandir` unmangled on every *other* platform, where "\" is
+-- just an ordinary filename character and the scan silently finds nothing.
+---@param p string
+---@return string
+local function norm(p)
+  return vim.fs.normalize((p:gsub("\\", "/")))
+end
 
 --- Discover type directories AND standalone type files under root.
 --- @param root string Root directory to scan

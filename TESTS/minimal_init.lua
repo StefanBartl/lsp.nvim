@@ -16,7 +16,15 @@ vim.opt.rtp:prepend(vim.fn.getcwd())
 local function prepend_env(var)
   local path = os.getenv(var)
   if path and path ~= "" then
-    vim.opt.rtp:prepend(path)
+    -- Absolute, not the literal env value: CI's LIB_NVIM_PATH/UI_NVIM_PATH
+    -- are relative (".deps/lib.nvim"), and any spec that chdir()s to a
+    -- fixture directory -- config_layers_spec.lua and languages_spec.lua
+    -- both do, to test cwd-relative discovery -- would otherwise have this
+    -- rtp entry silently resolve against the *new* cwd on the next
+    -- require() of something not already cached in package.loaded, failing
+    -- with "module not found" and no file candidate anywhere near the real
+    -- checkout.
+    vim.opt.rtp:prepend(vim.fn.fnamemodify(path, ":p"))
   end
 end
 
