@@ -74,15 +74,40 @@ local function step(label, fn)
 end
 
 ---@internal
+--- Call `mod.<fname>(...)` on a module that is allowed to be absent -- and
+--- allowed to be broken.
+---
+--- `pcall(require, …)` alone only covers the module that will not load. Measured
+--- on all four of the fallbacks below, with the module present and its function
+--- a bare `error("boom")`: `require("lsp").setup({})` raised `boom` to the
+--- caller, `_initialized` stayed false, zero servers were set up -- and the
+--- nine LspAttach/LspDetach/DiagnosticChanged autocommands registered by the
+--- steps before it stayed registered. `:checkhealth lsp` then reported "setup()
+--- has not run", which is the one thing that was not true. A fallback written
+--- for "this module is unavailable" has to cover the likelier half of that.
+---@param modname string
+---@param fname string
+---@param ... any
+---@return boolean ok # false when the module is missing, incomplete, or raised.
+---@return any ... # What the function returned, or the error message.
+local function try_module(modname, fname, ...)
+  local loaded, mod = pcall(require, modname)
+  if not (loaded and type(mod) == "table" and type(mod[fname]) == "function") then
+    return false, nil
+  end
+  return pcall(mod[fname], ...)
+end
+
+---@internal
 --- Client capabilities: whatever `core/capabilities` resolves (cmp / blink /
 --- NvChad merged in), falling back to Neovim's own when that module cannot be
---- loaded at all. Its own warnings are surfaced immediately -- a silently
---- degraded capability set is the failure mode that costs hours.
+--- loaded at all, or raises. Its own warnings are surfaced immediately -- a
+--- silently degraded capability set is the failure mode that costs hours.
 ---@return table caps
 local function build_capabilities()
-  local ok, mod = pcall(require, "lsp.core.capabilities")
-  if ok and mod and type(mod.get) == "function" then
-    local caps, warnings = mod.get(integrations.capability_contributors())
+  local ok, caps, warnings =
+    try_module("lsp.core.capabilities", "get", integrations.capability_contributors())
+  if ok and type(caps) == "table" then
     for _, w in ipairs(warnings or {}) do
       _warnings[#_warnings + 1] = tostring(w.msg)
       if w.level == "error" then
@@ -94,6 +119,11 @@ local function build_capabilities()
     return caps
   end
 
+  if not ok and caps ~= nil then
+    _warnings[#_warnings + 1] = ("capabilities: lsp.core.capabilities.get() failed: %s"):format(
+      tostring(caps)
+    )
+  end
   _warnings[#_warnings + 1] = "capabilities: using Neovim's fallback (no cmp/blink)"
   notify.warn("Using fallback capabilities (no cmp/blink)")
   return vim.lsp.protocol.make_client_capabilities()
@@ -104,14 +134,19 @@ end
 ---@param cfg LspNvim.Config
 ---@return { on_attach: function, on_init: function }
 local function build_attach(cfg)
-  local ok, mod = pcall(require, "lsp.core.attach")
-  if ok and mod and type(mod.build) == "function" then
-    return mod.build({
-      use_workspace_diagnostics = cfg.attach.use_workspace_diagnostics,
-      hooks = integrations.attach_hooks(),
-    })
+  local ok, built = try_module("lsp.core.attach", "build", {
+    use_workspace_diagnostics = cfg.attach.use_workspace_diagnostics,
+    hooks = integrations.attach_hooks(),
+  })
+  if ok and type(built) == "table" then
+    return built
   end
 
+  if not ok and built ~= nil then
+    _warnings[#_warnings + 1] = ("attach: lsp.core.attach.build() failed: %s"):format(
+      tostring(built)
+    )
+  end
   _warnings[#_warnings + 1] = "attach: using minimal handlers"
   notify.warn("Using minimal attach handlers")
   return {
@@ -136,14 +171,19 @@ end
 ---@param cfg LspNvim.Config
 ---@return table
 local function build_formatter(cfg)
-  local ok, mod = pcall(require, "lsp.formatter")
-  if ok and mod and type(mod.build) == "function" then
-    return mod.build({
-      format_on_save = cfg.formatter.on_save,
-      timeout_ms = cfg.formatter.timeout_ms,
-    })
+  local ok, built = try_module("lsp.formatter", "build", {
+    format_on_save = cfg.formatter.on_save,
+    timeout_ms = cfg.formatter.timeout_ms,
+  })
+  if ok and type(built) == "table" then
+    return built
   end
 
+  if not ok and built ~= nil then
+    _warnings[#_warnings + 1] = ("formatter: lsp.formatter.build() failed: %s"):format(
+      tostring(built)
+    )
+  end
   _warnings[#_warnings + 1] = "formatter: module unavailable, formatting disabled"
   return {
     format = function()
@@ -170,14 +210,18 @@ end
 ---@param shared table # capabilities / on_attach / on_init / formatter
 ---@return string[] enabled
 local function setup_servers(cfg, shared)
-  local ok, registry = pcall(require, "lsp.core.registry")
-  if not (ok and registry and type(registry.setup_all) == "function") then
-    _warnings[#_warnings + 1] = "registry missing; no server was set up"
-    notify.warn("LSP registry missing; skipping server setup")
+  local ok, names, setup_warnings =
+    try_module("lsp.core.registry", "setup_all", shared, cfg.servers)
+  if not ok then
+    if names ~= nil then
+      _warnings[#_warnings + 1] = ("registry: setup_all() failed: %s"):format(tostring(names))
+    else
+      _warnings[#_warnings + 1] = "registry missing; no server was set up"
+    end
+    notify.warn("LSP registry unusable; skipping server setup")
     return {}
   end
 
-  local names, setup_warnings = registry.setup_all(shared, cfg.servers)
   for _, w in ipairs(setup_warnings or {}) do
     _warnings[#_warnings + 1] = w
   end
