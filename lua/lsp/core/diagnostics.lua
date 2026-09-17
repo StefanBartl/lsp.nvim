@@ -118,6 +118,24 @@ end
 ---@type table|nil
 local _applied = nil
 
+--- What `vim.diagnostic.config()` held before this module first wrote to it,
+--- and every top-level key this module has written since.
+---
+--- Both exist because `vim.diagnostic.config()` is not a setter but an
+--- accumulator: its body is `for k, v in pairs(opts) do t[k] = v end`, so a
+--- key it is NOT given keeps whatever the previous call left there. Dropping
+--- a contribution and re-applying therefore could not undo it. Measured: a
+--- contribution of `{ jump = { float = true } }`, then `forget()` + `apply()`
+--- -- `M.applied().jump` came back `nil` while the live
+--- `vim.diagnostic.config().jump` was still `{ on_jump = <function> }`,
+--- instead of Neovim's `{ wrap = true }`. `M.sources()` exists to answer
+--- "where did this come from", and it was answering about a table that was
+--- not the one in force.
+---@type table|nil
+local _pristine = nil
+---@type table<string, true>
+local _written = {}
+
 --- Keys that live in `opts.diagnostics` for lsp.nvim's own use and would be
 --- passed verbatim to an API that does not know them.
 ---
@@ -265,7 +283,34 @@ function M.apply(user_opts)
     effective = merge(effective, user)
   end
 
-  vim.diagnostic.config(effective)
+  -- Snapshot Neovim's own configuration before the first write, so a key this
+  -- module stops wanting can be put back rather than left behind (see
+  -- `_pristine`). Taken lazily here and not at module load: requiring this
+  -- module must not depend on when it happens relative to anyone else.
+  if _pristine == nil then
+    _pristine = vim.diagnostic.config()
+  end
+
+  -- `effective` is what we claim to have applied, so it stays the report.
+  -- `send` is that plus the restore entries, which are not a layer and must
+  -- not show up in `M.applied()`.
+  local send = {}
+  for key, value in pairs(effective) do
+    send[key] = value
+  end
+  for key in pairs(_written) do
+    if send[key] == nil then
+      -- nil when Neovim never had the key either; `vim.diagnostic.config()`
+      -- has no way to unset one, so such a key stays. Every key Neovim
+      -- actually reads carries a default, so this is the theoretical half.
+      send[key] = _pristine[key]
+    end
+  end
+  for key in pairs(send) do
+    _written[key] = true
+  end
+
+  vim.diagnostic.config(send)
 
   _applied = { effective = effective, __user = user }
   return effective
@@ -273,6 +318,11 @@ end
 
 ---@internal
 --- Forget every contribution and the applied state. Tests only.
+---
+--- `_pristine`/`_written` are deliberately NOT reset: they track the live
+--- `vim.diagnostic` globals, which this function does not touch. Clearing
+--- them would strand whatever the last `apply` wrote there, which is the very
+--- thing they exist to undo.
 ---@return nil
 function M.__reset()
   _contributions = {}

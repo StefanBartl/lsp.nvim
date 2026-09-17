@@ -421,14 +421,17 @@ function M.remove(dir, bufnr)
       end
     end
 
-    if raw == nil then
-      -- Silent: a client that never held the folder is not a failure, and
-      -- listing every unrelated client would bury the ones that matter.
-      local reason = unswitchable_reason(client)
-      if reason then
-        skipped[#skipped + 1] = ("%s: %s"):format(client.name, reason)
-      end
-    else
+    -- A client that never held the folder is passed over in silence, without
+    -- exception -- the capability gate is not consulted for it at all. It used
+    -- to be, and that is what buried the clients that mattered: measured with
+    -- one `holder` plus html/jsonls/cssls (three servers declaring no
+    -- workspaceFolders support, i.e. the ordinary webdev buffer), `remove()`
+    -- returned `ok=true, removed={"holder"}` and a three-entry `skipped`, so
+    -- `workspace_picker.announce` reported a removal that fully succeeded as
+    -- "Removed <dir> (holder); 3 client(s) skipped". The gate only has
+    -- something to say about a client that HOLDS the folder and cannot drop
+    -- it, which is what remains below.
+    if raw ~= nil then
       local reason = unswitchable_reason(client)
       if reason then
         skipped[#skipped + 1] = ("%s: %s"):format(client.name, reason)

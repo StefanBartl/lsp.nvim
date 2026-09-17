@@ -73,11 +73,15 @@ local notify = require("lib.nvim.notify").create("[lsp.workspace_diagnostics]")
 
 local M = {}
 
---- Tunables for the populate path. `extensions` is what the workspace walk
---- keeps; the plugin still filters the result against each client's
---- `config.filetypes`, so this only has to be a cheap pre-filter that avoids
---- running `vim.filetype.match` over the whole tree.
----@type { max_files: integer, extensions: table<string, boolean>, delay_ms: integer, chunk_size: integer, chunk_delay_ms: integer }
+--- Tunables for the populate path.
+---
+--- There is deliberately no `extensions` entry: the extensions the walk keeps
+--- are derived per client from its own `config.filetypes`
+--- (`client_extensions` below), because a single global set would count every
+--- Markdown file in the repo against lua_ls's `max_files` budget. The type
+--- used to declare one anyway, which described a knob nothing set and nothing
+--- read.
+---@type { max_files: integer, delay_ms: integer, chunk_size: integer, chunk_delay_ms: integer }
 local opts = {
   max_files = 800,
   delay_ms = 1500,
@@ -188,21 +192,55 @@ function M.toggle()
   return M.set(not state)
 end
 
---- Per-client-shape file lists. Keyed by the sorted extension set, so two
---- clients covering the same filetypes share one walk. A `false` value means
---- "computed, and rejected by the size gate" -- distinct from `nil` ("not
---- computed yet"), so the gate is not re-evaluated on every attach.
+--- Per-workspace, per-client-shape file lists. Keyed by the walk's root AND
+--- the sorted extension set, so two clients covering the same filetypes in
+--- the same repo share one walk and two clients in DIFFERENT repos do not. A
+--- `false` value means "computed, and rejected by the size gate" -- distinct
+--- from `nil` ("not computed yet"), so the gate is not re-evaluated on every
+--- attach.
+---
+--- The root used to be absent from the key, which is what made this cache a
+--- cross-workspace leak rather than a cache -- see `workspace_root` below.
 ---@type table<string, string[]|false>
 local files_cache = {}
 ---@type table<string, fun(files: string[])[]>
 local waiters = {}
 
+---@param root string
 ---@param ext_set table<string, boolean>
 ---@return string
-local function cache_key(ext_set)
+local function cache_key(root, ext_set)
   local keys = vim.tbl_keys(ext_set)
   table.sort(keys)
-  return table.concat(keys, ",")
+  -- NUL as the separator: it cannot occur in a path or an extension, so no
+  -- root/extension pair can spell another pair's key.
+  return root .. "\0" .. table.concat(keys, ",")
+end
+
+--- The repository the populate for `client`/`bufnr` should walk.
+---
+--- Resolved from the buffer being populated, not from `nvim_buf_get_name(0)`.
+--- Reading the current buffer is wrong twice over: `schedule_populate` defers
+--- by `delay_ms` (1.5s by default), so the user has usually moved on by the
+--- time it runs, and `populate_now` walks every attached client of one
+--- buffer, which need not be the current one either. The client's own
+--- `root_dir` is the fallback, and the cwd the last resort.
+---@param client vim.lsp.Client|nil
+---@param bufnr integer|nil
+---@return string|nil
+local function workspace_root(client, bufnr)
+  local buf_path = ""
+  if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
+    buf_path = vim.api.nvim_buf_get_name(bufnr)
+  end
+
+  local from = buf_path
+  if from == "" then
+    from = (client and client.root_dir) or vim.uv.cwd() or "."
+  end
+
+  local finder = require("lib.nvim.fs.find_root")({ markers = { ".git" } })
+  return finder.find(from) or (client and client.root_dir) or nil
 end
 
 ---@param key string
@@ -216,15 +254,16 @@ local function flush_waiters(key, files)
   end
 end
 
---- Collect the candidate files for one client without blocking the main
---- loop. Calls `cb` with the list, or with an empty list when there is no
---- root or the size gate rejected the workspace. Concurrent calls for the
---- same extension set are queued onto the running walk, not duplicated.
+--- Collect the candidate files under `root` without blocking the main loop.
+--- Calls `cb` with the list, or with an empty list when the size gate
+--- rejected the workspace. Concurrent calls for the same root and extension
+--- set are queued onto the running walk, not duplicated.
+---@param root string
 ---@param ext_set table<string, boolean>
 ---@param cb fun(files: string[])
 ---@return nil
-local function collect_files_async(ext_set, cb)
-  local key = cache_key(ext_set)
+local function collect_files_async(root, ext_set, cb)
+  local key = cache_key(root, ext_set)
 
   local cached = files_cache[key]
   if cached ~= nil then
@@ -237,15 +276,6 @@ local function collect_files_async(ext_set, cb)
     return
   end
   waiters[key] = { cb }
-
-  local buf_path = vim.api.nvim_buf_get_name(0)
-  local finder = require("lib.nvim.fs.find_root")({ markers = { ".git" } })
-  local root = finder.find(buf_path ~= "" and buf_path or vim.uv.cwd() or ".")
-  if not root then
-    files_cache[key] = false
-    flush_waiters(key, {})
-    return
-  end
 
   local ignore_set = require("lib.nvim.fs.ignore.list").as_set()
 
@@ -401,7 +431,15 @@ function M.schedule_populate(client, bufnr)
       return
     end
 
-    collect_files_async(ext_set, function(files)
+    -- Resolved here, from `bufnr`, and only then handed to the walk: the
+    -- buffer the user is looking at after `delay_ms` is routinely a different
+    -- one, in a different repo.
+    local root = workspace_root(client, bufnr)
+    if not root then
+      return
+    end
+
+    collect_files_async(root, ext_set, function(files)
       if #files == 0 then
         return
       end
@@ -430,20 +468,31 @@ function M.populate_now(bufnr)
   end
 
   local scheduled = 0
+  local with_filetypes = 0
   for _, client in ipairs(clients) do
     local ext_set = client_extensions(client)
     if ext_set then
-      scheduled = scheduled + 1
-      collect_files_async(ext_set, function(files)
-        if #files > 0 then
-          send_did_open(client, bufnr, files, true)
-        end
-      end)
+      with_filetypes = with_filetypes + 1
+      local root = workspace_root(client, bufnr)
+      if root then
+        scheduled = scheduled + 1
+        collect_files_async(root, ext_set, function(files)
+          if #files > 0 then
+            send_did_open(client, bufnr, files, true)
+          end
+        end)
+      end
     end
   end
 
   if scheduled == 0 then
-    return false, "no attached client declares config.filetypes"
+    -- Two different "nothing happened"s, and they want different fixes:
+    -- a client with no `config.filetypes` cannot be scoped at all, while a
+    -- buffer outside any repository has nothing to walk.
+    if with_filetypes == 0 then
+      return false, "no attached client declares config.filetypes"
+    end
+    return false, "no workspace root for this buffer (no .git above it, and no client root_dir)"
   end
   return true, scheduled
 end
