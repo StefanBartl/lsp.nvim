@@ -56,6 +56,15 @@ jobs:
           path: .deps/ui.nvim
       - uses: rhysd/action-setup-vim@v1
         with: { neovim: true, version: stable }
+      # TESTS/lsp/probe_live_spec.lua runs `:LspDoctor probe` against a real
+      # server -- the one case in the suite that verifies the diagnostics chain
+      # end to end instead of stubbing it. Without a server installed that case
+      # skips, and a gate that skips itself still counts as green, so it is
+      # written to *fail* under CI when it finds none. This step is what keeps
+      # it honest; ts_ls is the cheapest of the three candidates to install
+      # (node is already on the runner) and answered in ~1s when measured.
+      - name: language server for the live probe
+        run: npm install -g typescript typescript-language-server
       - name: plenary specs
         env:
           PLENARY_PATH: .deps/plenary.nvim

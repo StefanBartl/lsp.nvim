@@ -1,10 +1,11 @@
 # Tests
 
-Two layers, run by CI and both runnable locally.
+Three layers, run by CI and all runnable locally.
 
 | What | File(s) | Needs |
 | ---- | ------- | ----- |
 | Spec suite | `TESTS/lsp/*_spec.lua` | plenary.nvim, lib.nvim, ui.nvim (`pack_spec.lua`) |
+| Live probe gate | `TESTS/lsp/probe_live_spec.lua` | one of `lua-language-server`, `typescript-language-server`, `gopls` (+`go`) |
 | Smoke test | `TESTS/smoke.lua` | lib.nvim, ui.nvim (`step("lspdoctor", ...)` runs unconditionally) |
 
 ## Run
@@ -60,6 +61,7 @@ instead of this plugin.
 | `start_spec.lua` | That the expected-server list is derived from the registered `vim.lsp.config` entries rather than a hardcoded filetype table -- which server declares which filetype, and that a registered-but-not-enabled config is not expected. |
 | `symbol_picker_spec.lua` | That `:TypeDefPick` sends its argument as fzf-lua's `lsp_query` (the server-side `workspace/symbol` query) and not as `query` (fzf's local filter over a full workspace dump), plus the `<cword>` fallback and the missing-fzf-lua path. |
 | `recovery_spec.lua` | That servers are started through `supervisor.start` rather than `vim.lsp.enable`, and the two counter guards -- a name with no config spends no attempt, and `:Lsp recover` clears a counter the supervisor left exhausted. |
+| `probe_live_spec.lua` | The diagnostics chain against a **real** server: start it, hand `:LspDoctor probe` a file with a syntax error, require an answer. The only case in the suite that is not stubbed -- see below. |
 | `smoke.lua` | End-to-end: every module loads, `setup()` runs the whole bootstrap, servers and commands are registered. |
 
 The specs run against stubs, not against real servers or plugins: a real
@@ -67,6 +69,33 @@ The specs run against stubs, not against real servers or plugins: a real
 process configured, and a real adapter's behaviour depends on whether its
 plugin happens to be installed. What is worth pinning down is the resolution
 and the failure handling around them.
+
+### The one exception: `probe_live_spec.lua`
+
+`:LspDoctor probe` is the only report that verifies the chain end to end rather
+than querying a state, and stubbing it would test everything about it except
+that. So this case runs it for real: it starts a language server in a temporary
+directory, lets `probe` build its broken buffer, and requires diagnostics back.
+
+It needs a server, and not every machine has one. The skip is therefore built
+so it cannot be mistaken for a pass:
+
+- it names every candidate it looked for and what was missing about each,
+- it writes that to stderr as well as to plenary's `PENDING` line, because
+  plenary still tallies a pending case under `Success`,
+- and under `CI` it **fails** instead of skipping -- the workflow installs
+  `typescript-language-server` for this case, so "no server found" there means
+  the workflow broke, not the machine,
+- while a server that is present, starts, initializes and then says nothing
+  about content it cannot parse is always a failure. That is the state the
+  report exists to catch.
+
+Candidates, cheapest first, each verified to answer before being listed:
+`lua_ls` (~0.8s), `ts_ls` (~1.1s), `gopls` (~15s cold, and skipped unless `go`
+is also on PATH). The first available one runs; the others are not tried.
+Timeouts are 30s for start-up and 30s for the probe -- generous, because a
+loaded CI runner is slower than a laptop, and finite, because a hanging test
+produces no output at all and takes the suite with it.
 
 ## Why these areas
 
