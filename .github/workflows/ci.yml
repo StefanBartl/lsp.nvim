@@ -64,7 +64,16 @@ jobs:
       # it honest; ts_ls is the cheapest of the three candidates to install
       # (node is already on the runner) and answered in ~1s when measured.
       - name: language server for the live probe
-        run: npm install -g typescript typescript-language-server
+        run: |
+          npm install -g typescript typescript-language-server
+          # ts_ls resolves "typescript" the way Node itself does, and the
+          # probe's root_dir is a bare temp directory with no
+          # node_modules/typescript of its own -- so a global-only install
+          # is invisible to it without NODE_PATH pointing at where npm -g
+          # actually put it. Without this, initialize fails with "Could not
+          # find a valid TypeScript installation" and the probe times out
+          # waiting for a client that already gave up.
+          echo "NODE_PATH=$(npm root -g)" >> "$GITHUB_ENV"
       - name: plenary specs
         env:
           PLENARY_PATH: .deps/plenary.nvim
