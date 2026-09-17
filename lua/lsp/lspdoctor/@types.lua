@@ -55,6 +55,17 @@
 ---@field running string[] Clients actually attached to the buffer
 ---@field completion string[] What `:Lsp start` would offer, i.e. expected minus running
 
+--- One client on the inspected buffer.
+---
+--- Carried as a list rather than a `name -> client` map, because two clients
+--- can share a name -- two roots of one server in a monorepo -- and a map
+--- loses one of them. `label` is what the report prints: the plain name, or
+--- `name#id` where that name is not unique on this buffer.
+---@class Lsp.Doctor.InspectClient
+---@field client vim.lsp.Client
+---@field name string The client's own name, which is what `formatter_priority` matches
+---@field label string How the report refers to it, disambiguated only when it has to be
+
 --- What `buffer` and `capabilities` (`lspdoctor.inspect`) report.
 ---
 --- The detail lives in the lines; this carries the verdict and the one-line

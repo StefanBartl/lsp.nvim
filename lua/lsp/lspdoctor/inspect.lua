@@ -47,35 +47,56 @@ local function take(t, n)
   return out
 end
 
----@param list string[]
----@param value string
----@return boolean
-local function contains(list, value)
-  for _, v in ipairs(list) do
-    if v == value then
-      return true
-    end
-  end
-  return false
-end
-
 -- Collection ------------------------------------------------------------------
 
+--- Every client on the buffer, one entry each, sorted.
+---
+--- Keyed by nothing: this used to build a `name -> client` map and a parallel
+--- list of names, which silently loses a client whenever two of them share a
+--- name -- two `lua_ls` for two roots in a monorepo, the same server started
+--- twice for different projects. The map kept the last one, the list held the
+--- name twice, and the report then printed one client's data under both
+--- entries while the other was invisible to every check that walked the map.
+---
+--- Measured: two `lua_ls`, one `utf-16` and one `utf-8`, produced
+--- "✅ All clients: `utf-8`", `ok = true` and the same `root_dir` printed
+--- twice -- an encoding mismatch missed by the very section that exists to
+--- catch it.
+---
+--- `label` is the name, and only becomes `name#id` where the name is not
+--- unique on this buffer, so the usual report reads exactly as before.
 ---@param bufnr integer
----@return table<string, vim.lsp.Client> clients_by_name, string[] names
+---@return Lsp.Doctor.InspectClient[] entries
 local function collect_clients(bufnr)
   if type(bufnr) ~= "number" or not api.nvim_buf_is_valid(bufnr) then
-    return {}, {}
+    return {}
   end
-  local by_name, names = {}, {}
-  local clients = lsp.get_clients({ bufnr = bufnr }) or {}
-  for _, c in ipairs(clients) do
+
+  ---@type Lsp.Doctor.InspectClient[]
+  local entries = {}
+  local seen = {}
+  for _, c in ipairs(lsp.get_clients({ bufnr = bufnr }) or {}) do
     local name = c.name or ("client#" .. tostring(c.id or "?"))
-    by_name[name] = c
-    names[#names + 1] = name
+    seen[name] = (seen[name] or 0) + 1
+    entries[#entries + 1] = { client = c, name = name, label = name }
   end
-  table.sort(names)
-  return by_name, names
+
+  for _, e in ipairs(entries) do
+    if seen[e.name] > 1 then
+      e.label = ("%s#%s"):format(e.name, tostring(e.client.id or "?"))
+    end
+  end
+
+  -- By name first so the report keeps its alphabetical order, then by id so
+  -- two clients of one name have a stable order between runs.
+  table.sort(entries, function(a, b)
+    if a.name ~= b.name then
+      return a.name < b.name
+    end
+    return (a.client.id or 0) < (b.client.id or 0)
+  end)
+
+  return entries
 end
 
 ---@param bufnr integer
@@ -103,16 +124,19 @@ end
 
 -- Checks ----------------------------------------------------------------------
 
----@param clients_by_name table<string, vim.lsp.Client>
+---@param entries Lsp.Doctor.InspectClient[]
 ---@return string[] unique_encs, string[] mismatches
-local function check_offset_encoding(clients_by_name)
+local function check_offset_encoding(entries)
   local set, order = {}, {}
-  for name, c in pairs(clients_by_name) do
-    local enc = (c.offset_encoding or "utf-16")
+  -- Over the list, not a map: `pairs` on a map also made the order of the
+  -- names inside one encoding group vary between runs, so two reports of an
+  -- unchanged session did not diff clean.
+  for _, e in ipairs(entries) do
+    local enc = (e.client.offset_encoding or "utf-16")
     if not set[enc] then
       set[enc] = {}
     end
-    set[enc][#set[enc] + 1] = name
+    set[enc][#set[enc] + 1] = e.label
   end
   for enc, _ in pairs(set) do
     order[#order + 1] = enc
@@ -127,21 +151,21 @@ local function check_offset_encoding(clients_by_name)
   return order, mismatches
 end
 
----@param clients_by_name table<string, vim.lsp.Client>
+---@param entries Lsp.Doctor.InspectClient[]
 ---@return string[] conflicts
-local function detect_conflicts(clients_by_name)
+local function detect_conflicts(entries)
   local conflicts = {}
   local fmt, diagp = {}, {}
-  for name, c in pairs(clients_by_name) do
-    local caps = c.server_capabilities or {}
+  for _, e in ipairs(entries) do
+    local caps = e.client.server_capabilities or {}
     if caps.documentFormattingProvider == true then
-      fmt[#fmt + 1] = name
+      fmt[#fmt + 1] = e.label
     end
     -- Only pull diagnostics are visible here: push diagnostics
     -- (`textDocument/publishDiagnostics`) carry no server capability,
     -- so a server that sends them cannot be counted as a provider.
     if caps.diagnosticProvider then
-      diagp[#diagp + 1] = name
+      diagp[#diagp + 1] = e.label
     end
   end
   if #fmt > 1 then
@@ -197,29 +221,37 @@ end
 ---a TypeScript buffer that `prettierd` was formatting -- a diagnostic tool
 ---naming the wrong culprit, which is the one thing a diagnostic tool must not
 ---do.
----@param clients_by_name table<string, vim.lsp.Client>
+---@param entries Lsp.Doctor.InspectClient[]
 ---@return string|nil winner, string[] candidates, string reason
-local function pick_formatter(clients_by_name)
-  local candidates = {}
-  for name, c in pairs(clients_by_name) do
-    local caps = c.server_capabilities or {}
+local function pick_formatter(entries)
+  -- Two lists on purpose: `formatter_priority` is written against server
+  -- *names*, so matching it against a disambiguated label would silently stop
+  -- honouring the option the moment a second client of that name shows up.
+  -- What is printed is the label.
+  local labels, names = {}, {}
+  for _, e in ipairs(entries) do
+    local caps = e.client.server_capabilities or {}
     if caps.documentFormattingProvider == true then
-      candidates[#candidates + 1] = name
+      labels[#labels + 1] = e.label
+      names[#names + 1] = e.name
     end
   end
-  table.sort(candidates)
 
-  if #candidates == 0 then
-    return nil, candidates, "no formatting provider"
+  if #labels == 0 then
+    return nil, labels, "no formatting provider"
   end
 
   for _, prefer in ipairs(Opts.formatter_priority or {}) do
-    if contains(candidates, prefer) then
-      return prefer, candidates, "priority list"
+    for i, name in ipairs(names) do
+      if name == prefer then
+        return labels[i], labels, "priority list"
+      end
     end
   end
 
-  return candidates[1], candidates, "alphabetical fallback"
+  -- `entries` is already sorted by name, so the first candidate is the
+  -- alphabetical one -- no second sort, and the label stays with its client.
+  return labels[1], labels, "alphabetical fallback"
 end
 
 -- Report generation -----------------------------------------------------------
@@ -231,15 +263,20 @@ local function generate_report(mode, bufnr)
   local lines = {}
   local report = { mode = mode, ok = true }
 
-  local clients_by_name, names = collect_clients(bufnr)
+  local entries = collect_clients(bufnr)
   local counts, total = collect_diagnostics(bufnr)
 
   -- Clients
   lines[#lines + 1] = "### LSP Clients (current buffer)"
-  if #names == 0 then
+  if #entries == 0 then
     lines[#lines + 1] = "No LSP client attached"
   else
-    local display = mode == "buffer" and take(names, Opts.list_limit or 10) or names
+    ---@type string[]
+    local labels = {}
+    for _, e in ipairs(entries) do
+      labels[#labels + 1] = e.label
+    end
+    local display = mode == "buffer" and take(labels, Opts.list_limit or 10) or labels
     for _, n in ipairs(display) do
       lines[#lines + 1] = string.format("- `%s`", n)
     end
@@ -259,8 +296,8 @@ local function generate_report(mode, bufnr)
   lines[#lines + 1] = ""
 
   -- Conflicts
-  if Opts.show_conflicts and #names > 1 then
-    local conf = detect_conflicts(clients_by_name)
+  if Opts.show_conflicts and #entries > 1 then
+    local conf = detect_conflicts(entries)
     lines[#lines + 1] = "### Provider Conflicts"
     if #conf > 0 then
       for _, c in ipairs(conf) do
@@ -273,7 +310,7 @@ local function generate_report(mode, bufnr)
   end
 
   -- Offset encoding
-  local encs, mismatches = check_offset_encoding(clients_by_name)
+  local encs, mismatches = check_offset_encoding(entries)
   if #encs > 0 then
     lines[#lines + 1] = "### Offset Encodings"
     if #mismatches > 0 then
@@ -289,7 +326,7 @@ local function generate_report(mode, bufnr)
   end
 
   -- Formatter: what actually runs first, then what this report merely ranks.
-  local winner, all, reason = pick_formatter(clients_by_name)
+  local winner, all, reason = pick_formatter(entries)
   lines[#lines + 1] = "### Formatter"
 
   local chain, lsp_after = conform_chain(bufnr)
@@ -318,10 +355,10 @@ local function generate_report(mode, bufnr)
   -- `capabilities` only: everything the capped `buffer` report leaves out
   if mode == "capabilities" then
     -- Workspace
-    if Opts.show_workspace and #names > 0 then
-      for _, n in ipairs(names) do
-        local c = clients_by_name[n]
-        lines[#lines + 1] = string.format("### Workspace: %s", n)
+    if Opts.show_workspace and #entries > 0 then
+      for _, e in ipairs(entries) do
+        local c = e.client
+        lines[#lines + 1] = string.format("### Workspace: %s", e.label)
         local root = (c.config and c.config.root_dir) or c.root_dir
         lines[#lines + 1] = "  root_dir: `" .. tostring(root) .. "`"
 
@@ -345,11 +382,11 @@ local function generate_report(mode, bufnr)
     end
 
     -- Capabilities
-    if Opts.show_capabilities and #names > 0 then
-      for _, n in ipairs(names) do
-        local c = clients_by_name[n]
+    if Opts.show_capabilities and #entries > 0 then
+      for _, e in ipairs(entries) do
+        local c = e.client
         local caps = c.server_capabilities or {}
-        lines[#lines + 1] = string.format("### Capabilities: %s", n)
+        lines[#lines + 1] = string.format("### Capabilities: %s", e.label)
         lines[#lines + 1] =
           string.format("  offsetEncoding: `%s`", tostring(c.offset_encoding or "nil"))
         lines[#lines + 1] =
@@ -369,13 +406,13 @@ local function generate_report(mode, bufnr)
   end
 
   -- Summary
-  if #names == 0 then
+  if #entries == 0 then
     report.ok = false
     report.summary = "No LSP client attached"
   else
     report.summary = string.format(
       "Clients: %d, Diagnostics: %d (E:%d W:%d I:%d H:%d)",
-      #names,
+      #entries,
       total,
       counts.ERROR,
       counts.WARN,
