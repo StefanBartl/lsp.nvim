@@ -497,14 +497,15 @@ typo in a config should cost a feature, not a startup. Each warning also names
 the layer the value came from: `(from setup())`, `(from preset "lean")`, `(from
 .nvim-lsp.json)`.
 
-Every enum is checked this way, and so is every value the config layer clamps
-(`diagnostics.debounce_ms`, `lightbulb.debounce_ms`, `auto_restart.*`,
-`servers`, `inlay_hints.filetypes`, `lightbulb.filetypes`). Three numeric
-fields are not checked there and reach `:Lsp status` unaltered:
-`lightbulb.priority`, `formatter.timeout_ms` and `lspdoctor.list_limit`. Their
-consumers defend themselves -- a non-numeric `lightbulb.priority` draws at the
-default 20 -- so nothing raises, but no warning is recorded either, and the
-report shows what you typed rather than what is running.
+Every enum is checked this way, and so is every numeric field, every list and
+every filetype map. The numeric rule has no exceptions: the set is derived from
+`DEFAULTS` rather than listed by hand, so a field cannot be added without one.
+Six of the twelve used to have no check and reached `:Lsp status` unaltered --
+`lightbulb.priority`, `formatter.timeout_ms`, `lspdoctor.list_limit`,
+`lspdoctor.probe_timeout`, `lspdoctor.scratch_threshold` and
+`lspdoctor.semantic_tokens_timeout`. Nothing raised, because the consumers
+defend themselves, but the report then showed what you typed rather than what
+was running, which is the one thing a status report must not do.
 
 `integrations` is the one option in this document's history that never
 arrived: nothing reads it, and a default nothing reads is a promise the plugin

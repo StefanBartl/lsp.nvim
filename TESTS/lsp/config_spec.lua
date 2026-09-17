@@ -323,3 +323,80 @@ describe("lsp.config", function()
     end)
   end)
 end)
+
+describe("lsp.config numeric options", function()
+  -- Derived from DEFAULTS, not from a list written here. Six of these twelve
+  -- reached their consumers unchecked: `lightbulb.priority`,
+  -- `formatter.timeout_ms` and `lspdoctor.list_limit` were found by reading,
+  -- and `lspdoctor.probe_timeout`, `.scratch_threshold` and
+  -- `.semantic_tokens_timeout` only turned up once the set was derived instead
+  -- of typed -- the same miss as `menu` in the switch audit. So the derivation
+  -- is the test, and a new numeric option cannot be added without one.
+  local DEFAULTS = require("lsp.config.DEFAULTS")
+
+  ---@return table
+  local function reload()
+    package.loaded["lsp.config"] = nil
+    return require("lsp.config")
+  end
+
+  --- Every `<key>.<field>` in DEFAULTS whose default is a number.
+  ---@return table[] # { key, field, default }
+  local function numeric_options()
+    local out = {}
+    for key, sub in pairs(DEFAULTS) do
+      if type(sub) == "table" then
+        for field, value in pairs(sub) do
+          if type(value) == "number" then
+            out[#out + 1] = { key = key, field = field, default = value }
+          end
+        end
+      end
+    end
+    table.sort(out, function(a, b)
+      return a.key .. "." .. a.field < b.key .. "." .. b.field
+    end)
+    return out
+  end
+
+  it("declares at least the twelve this suite was written against", function()
+    -- A drop would mean a case below silently stopped covering anything.
+    assert.is_true(#numeric_options() >= 12, "numeric options disappeared from DEFAULTS")
+  end)
+
+  for _, opt in ipairs(numeric_options()) do
+    local path = opt.key .. "." .. opt.field
+
+    it(("%s degrades and warns on a non-number"):format(path), function()
+      local config = reload()
+      config.setup({ [opt.key] = { [opt.field] = "not a number" } })
+
+      assert.are.equal(
+        opt.default,
+        config.get()[opt.key][opt.field],
+        path .. " kept a value its consumer cannot use"
+      )
+
+      local named = false
+      for _, w in ipairs(config.warnings()) do
+        if w:find(path, 1, true) then
+          named = true
+        end
+      end
+      assert.is_true(named, path .. " was corrected without saying so, or not at all")
+    end)
+
+    it(("%s accepts a legitimate value unchanged"):format(path), function()
+      -- The other half: a normalizer that always falls back is not a
+      -- normalizer, and would pass the case above.
+      local config = reload()
+      local wanted = opt.default + 1
+      config.setup({ [opt.key] = { [opt.field] = wanted } })
+
+      assert.are.equal(wanted, config.get()[opt.key][opt.field])
+      for _, w in ipairs(config.warnings()) do
+        assert.is_nil(w:find(path, 1, true), path .. " warned about a value it accepted")
+      end
+    end)
+  end
+end)

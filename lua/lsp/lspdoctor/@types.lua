@@ -5,7 +5,7 @@
 
 ---@class Lsp.Doctor.Options
 ---@field use_notify? boolean Render via vim.notify instead of print (default: false)
----@field list_limit? integer Max items per section in the `buffer` report; `capabilities` is uncapped (default: 10)
+---@field list_limit? integer Max items per section in the `buffer` report; `capabilities` is uncapped (default: 8 from `config.DEFAULTS`; 10 only when the module is set up with no options at all)
 ---@field show_capabilities? boolean Include per-client capability table in the `capabilities` report (default: true)
 ---@field show_workspace? boolean Include workspace folders and root_dir checks (default: true)
 ---@field show_tools? boolean Check for common external tools (default: true)
