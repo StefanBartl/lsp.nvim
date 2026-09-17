@@ -54,6 +54,20 @@ local function group_of(name)
   if name == "rename" then
     return "  Rename"
   end
+  -- The two on/off pairs the catalogue carries (`hints_toggle`,
+  -- `hints_toggle_filetype`, `lightbulb_toggle`,
+  -- `lightbulb_toggle_filetype`) and `workspace_folder_add` used to reach the
+  -- fall-through below. Measured against the default preset: "Navigation"
+  -- came back with 15 children, five of which navigate nowhere. They are
+  -- named to the same convention as everything else here, so the header's
+  -- claim -- that following the convention groups an entry correctly -- was
+  -- what failed, not the names.
+  if name:match("^hints_") or name:match("^lightbulb_") then
+    return "  Toggles"
+  end
+  if name:match("^workspace_") then
+    return "  Workspace"
+  end
   return "  Navigation" -- goto_*, document_symbols, code_action, signature_help, root_scope_pick, marksman_hints
 end
 
@@ -80,7 +94,16 @@ end
 function M.items()
   local cfg = require("lsp.config").get()
   local mcfg = cfg and cfg.menu
-  if mcfg and mcfg.enable == false then
+  -- `mcfg == false` spelled out, not folded into the `and`: the guard used to
+  -- read `if mcfg and mcfg.enable == false`, which takes a plain
+  -- `menu = false` -- the shortest way anyone writes "off" -- through the
+  -- *enabled* branch, because `false and …` is false. Measured with
+  -- `lsp.config.get()` answering `{ menu = false }`: four fly-out groups came
+  -- back where the opt-out asked for none. `config/init.lua` normalizes `menu`
+  -- to a table today, so nothing in-tree reaches this with a boolean; that is
+  -- the config layer holding the line for a guard that does not, which is one
+  -- normalization away from being the bug it looks like.
+  if mcfg == false or (mcfg and mcfg.enable == false) then
     return {}
   end
 
