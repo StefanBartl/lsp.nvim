@@ -315,6 +315,11 @@ function M.try_providers(clients, params, opts)
 
   -- iterate clients one by one; try providers on each until one produces output
   local ci = 1
+
+  --- One answer reaches the caller, however many clients are still in flight.
+  ---@type boolean
+  local answered = false
+
   local function next_client()
     local client = clients[ci]
     ci = ci + 1
@@ -332,22 +337,42 @@ function M.try_providers(clients, params, opts)
       return
     end
     local timeout_ms = 800
-    timer:start(
-      timeout_ms,
-      0,
-      vim.schedule_wrap(function()
-        next_client()
-      end)
-    )
 
-    -- wrapped callback to cancel timer when preview shown
-    local wrapped_cb = function(buf, win)
+    --- Give the handle back. A one-shot uv timer that has *fired* is still an
+    --- open handle, and only the answer path used to close one -- so every
+    --- client that timed out leaked its guard for the rest of the session.
+    --- Measured: three runs over three silent clients left nine timers behind.
+    --- This path is reached from insert-mode cursor movement, so it
+    --- accumulates at typing speed against a server without these providers.
+    local function release()
       if timer and not timer:is_closing() then
         pcall(function()
           timer:stop()
           timer:close()
         end)
       end
+    end
+
+    timer:start(
+      timeout_ms,
+      0,
+      vim.schedule_wrap(function()
+        release()
+        next_client()
+      end)
+    )
+
+    -- wrapped callback to cancel timer when preview shown
+    local wrapped_cb = function(buf, win)
+      release()
+      -- At most one answer reaches the caller. The guard above advances to the
+      -- next client after 800ms, and the one it gave up on can still answer
+      -- afterwards -- measured, that called the caller back a second time and
+      -- put a second floating preview on top of the first.
+      if answered then
+        return
+      end
+      answered = true
       if callback then
         callback(buf, win)
       end

@@ -199,16 +199,18 @@ local function ensure_tools(tools, log_prefix, seen)
     end
     seen[name] = true
 
-    -- gate by system deps
-    local allowed, reason = (function()
-      --- CDX: self-require path is stale ("config.mason.ensure_install"); it never resolves in
-      --- this repo, so this always falls through to the local gate_by_system_deps below.
-      local ok_gate, gate = pcall(require, "config.mason.ensure_install") -- self-require is safe
-      if ok_gate and type(gate.gate_by_system_deps) == "function" then
-        return gate.gate_by_system_deps(name)
-      end
-      return gate_by_system_deps(name)
-    end)()
+    -- Gate by system deps. Straight to the local function: this used to try
+    -- `require("config.mason.ensure_install")` first and fall through, which
+    -- the comment there already recorded as never resolving.
+    --
+    -- Two reasons it is gone rather than left as harmless dead weight.
+    -- `config.*` is the *user's* module namespace, not this plugin's, so
+    -- anyone who happened to create a module by that name would silently take
+    -- over which packages this installs -- a plugin reaching into a
+    -- configuration namespace for behaviour. And a failed `require` is not
+    -- cached: the whole search path was walked once per package, measured at
+    -- 23ms for forty of them, every time `enable()` runs.
+    local allowed, reason = gate_by_system_deps(name)
     if allowed == false then
       table.insert(SESSION.results.skipped[category], ("%s (%s)"):format(name, reason or "skipped"))
       goto continue

@@ -77,8 +77,14 @@ function M.setup(cfg)
 
   ---@type string[]
   local warnings = {}
-  for name, reason in pairs(_failed) do
-    warnings[#warnings + 1] = ("integration %s failed to load: %s"):format(name, reason)
+  -- Over `ADAPTERS`, not `pairs(_failed)`: these end up in `:checkhealth lsp`
+  -- and `:Lsp status`, and a `pairs` order means two runs of an unchanged
+  -- session print the same warnings in a different order.
+  for _, name in ipairs(ADAPTERS) do
+    local reason = _failed[name]
+    if reason ~= nil then
+      warnings[#warnings + 1] = ("integration %s failed to load: %s"):format(name, reason)
+    end
   end
 
   for _, name in ipairs(ADAPTERS) do

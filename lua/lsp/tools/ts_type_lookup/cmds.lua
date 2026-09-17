@@ -29,23 +29,88 @@ local function get_root()
   return fn.getcwd()
 end
 
---- Request LSP workspace/symbol for given query
+--- Request LSP workspace/symbol for given query.
+---
+--- `cb` is called exactly once, with every answering client's results merged.
+---
+--- It used to go through `lsp.buf_request`, whose handler runs **once per
+--- client** -- and both callers treat their callback as the single answer.
+--- On a TypeScript buffer that is the normal case, not an edge one: `ts_ls`
+--- and `eslint` both attach. Measured with two clients where the first
+--- answered empty and the second had the symbol: the callback fired twice, so
+--- `go_to_type_definition_for` ran its node_modules fallback *and* opened a
+--- split, and `peek_type_definition_for` opened two floating previews. The
+--- fallback is a blocking `rg` over the whole `node_modules` tree, so the
+--- spurious one is not free.
+---
+--- The other half `buf_request` got wrong is silence: with no client
+--- supporting the method it never calls the handler at all, so
+--- `peek_type_definition_for` -- which has no client guard of its own --
+--- simply did nothing, with no message and no fallback.
 ---@param bufnr number
 ---@param query string
----@param cb function
+---@param cb fun(results: table[]|nil, err: any)
 local function workspace_symbol(bufnr, query, cb)
   local params = { query = query }
-  lsp.buf_request(bufnr, "workspace/symbol", params, function(err, result)
-    if err then
-      cb(nil, err)
+
+  ---@type vim.lsp.Client[]
+  local clients = {}
+  for _, client in ipairs(lsp.get_clients({ bufnr = bufnr })) do
+    if client.supports_method and client:supports_method("workspace/symbol") then
+      clients[#clients + 1] = client
+    end
+  end
+  if #clients == 0 then
+    cb(nil, "no attached client answers workspace/symbol")
+    return
+  end
+
+  local pending = #clients
+  ---@type table[]
+  local merged = {}
+  local first_err = nil
+  local settled = false
+
+  --- Answer once, when every client that was asked has replied.
+  local function settle()
+    if settled then
       return
     end
-    if not result or vim.tbl_isempty(result) then
-      cb(nil, "no results")
-      return
+    settled = true
+    if #merged > 0 then
+      cb(merged, nil)
+    else
+      cb(nil, first_err or "no results")
     end
-    cb(result, nil)
-  end)
+  end
+
+  for _, client in ipairs(clients) do
+    -- A client may answer synchronously; the flag keeps the refusal branch
+    -- from counting it a second time and settling while a request is still
+    -- out -- the same shape `core/lightbulb.lua` documents.
+    local answered = false
+    local ok, id = client:request("workspace/symbol", params, function(err, result)
+      answered = true
+      if err ~= nil and first_err == nil then
+        first_err = err
+      end
+      for _, item in ipairs(result or {}) do
+        merged[#merged + 1] = item
+      end
+      pending = pending - 1
+      if pending <= 0 then
+        settle()
+      end
+    end, bufnr)
+
+    if not (ok and id) and not answered then
+      -- Refused outright: nothing will ever call the handler for it.
+      pending = pending - 1
+      if pending <= 0 then
+        settle()
+      end
+    end
+  end
 end
 
 --- Normalize Location or LocationLink -> fname, srow, scol, erow, ecol
