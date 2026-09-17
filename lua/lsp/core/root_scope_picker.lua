@@ -23,14 +23,14 @@ function M.open()
 
   select.open({
     items = items,
-    title = "LSP Root-Scope (aktuell: " .. current .. ")",
+    title = "LSP root scope (current: " .. current .. ")",
     on_select = function(_, idx)
       local scope = root_scope.SCOPES[idx]
       if not scope then
         return
       end
       if root_scope.set(scope) then
-        notify.info("Root-Scope: " .. root_scope.label(scope))
+        notify.info("Root scope: " .. root_scope.label(scope))
       end
     end,
   })

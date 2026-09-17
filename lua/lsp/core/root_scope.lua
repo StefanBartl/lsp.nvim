@@ -12,9 +12,9 @@ M.SCOPES = { "cwd", "git", "path" }
 
 ---@type table<LspRootScope, string>
 M.LABELS = {
-  cwd = "cwd — aktuelles Arbeitsverzeichnis",
-  git = "git — nächstes Repo-Root (.git/.hg/.svn)",
-  path = "path — Verzeichnis der aktuellen Datei",
+  cwd = "cwd — current working directory",
+  git = "git — nearest repository root (.git/.hg/.svn)",
+  path = "path — directory of the current file",
 }
 
 ---@type { scope: LspRootScope }
