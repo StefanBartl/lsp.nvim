@@ -83,8 +83,6 @@ function M.organize_imports_sync(bufnr, kind, timeout_ms)
     return false
   end
 
-  local enc = eligible[1].offset_encoding or "utf-16"
-
   local line_count = api.nvim_buf_line_count(bufnr)
   local td = lsp.util.make_text_document_params(bufnr)
 
@@ -98,28 +96,58 @@ function M.organize_imports_sync(bufnr, kind, timeout_ms)
     context = { only = { kind }, diagnostics = {} },
   }
 
-  local results = lsp.buf_request_sync(bufnr, "textDocument/codeAction", params, timeout_ms or 1000)
-  if not results then
-    return false
-  end
+  -- Asked per eligible client, not through `lsp.buf_request_sync`. That call
+  -- is buffer-wide: it asks every client that supports `textDocument/
+  -- codeAction` and waits for all of them, so the `eligible` list above was
+  -- computed and then thrown away. One attached client that is not eligible
+  -- and does not answer made the whole call time out and return nothing.
+  --
+  -- Measured with an eligible, cooperative client: alone it applied the action
+  -- in 0ms; with one ineligible mute client also on the buffer the identical
+  -- call returned `false` after the full 1549ms. This runs on `BufWritePre`,
+  -- so that is organize-on-save silently not happening *and* a second added to
+  -- every `:w`.
+  --
+  -- One deadline across all of them, rather than the timeout per client: the
+  -- caller is blocking a write and asked for a bound on the whole thing.
+  local uv = vim.uv or vim.loop
+  local deadline = uv.hrtime() + (timeout_ms or 1000) * 1e6
 
   local applied = false
-  for _, res in pairs(results) do
-    local actions = res and res.result
+  for _, client in ipairs(eligible) do
+    local remaining = math.floor((deadline - uv.hrtime()) / 1e6)
+    if remaining <= 0 then
+      break
+    end
+
+    local ok, res = pcall(function()
+      return client:request_sync("textDocument/codeAction", params, remaining, bufnr)
+    end)
+    local actions = ok and type(res) == "table" and res.result or nil
+
     if type(actions) == "table" then
       for _, action in ipairs(actions) do
         if action.edit then
-          vim.lsp.util.apply_workspace_edit(action.edit, enc)
+          -- This client's encoding, not the first eligible one's. Edits from a
+          -- `utf-8` server were being applied as `utf-16` whenever a `utf-16`
+          -- client happened to sort first -- wrong columns on every line with
+          -- a non-ASCII character, which is exactly the damage the
+          -- offset-encoding warning in `:LspDoctor buffer` exists to predict.
+          lsp.util.apply_workspace_edit(action.edit, client.offset_encoding or "utf-16")
           applied = true
         end
+
+        -- To the client that offered the command, not to every eligible one:
+        -- a command is the issuing server's own, and the others have no reason
+        -- to know it.
         local cmd = action.command
-        if cmd then
-          for _, c in ipairs(eligible) do
-            if c.supports_method and c:supports_method("workspace/executeCommand") then
-              c:request("workspace/executeCommand", cmd, function() end, bufnr)
-              applied = true
-            end
-          end
+        if
+          cmd
+          and client.supports_method
+          and client:supports_method("workspace/executeCommand")
+        then
+          client:request("workspace/executeCommand", cmd, function() end, bufnr)
+          applied = true
         end
       end
     end

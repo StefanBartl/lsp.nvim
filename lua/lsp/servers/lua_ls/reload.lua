@@ -8,33 +8,33 @@ local Autocmd = require("lib.nvim.bindings.autocmd")
 
 local M = {}
 
---- Start the lua_ls server config (as registered via vim.lsp.config) and
---- attach it to the given buffer.
+--- Start lua_ls and attach it to the given buffer.
+---
+--- Through `lsp.core.supervisor`, which is the only place that starts a
+--- registered server correctly. This used to do it here, and got both halves
+--- wrong:
+---
+--- * it looked the config up with `vim.lsp.config.get()`, which does not exist
+---   -- `vim.lsp.config` is a table with an `__index` resolver -- so the list
+---   was always empty, no config was ever found, and this function could only
+---   ever return `false` (roadmap B16, a third copy of it);
+--- * and `vim.lsp.start` does not resolve a function-valued `root_dir`, which
+---   is exactly what `lua_ls` registers. Even with the lookup fixed it would
+---   have started in single-file mode -- in the function whose whole purpose
+---   is to recompute the root.
+---
+--- What that cost: `recompute_root` stops every `lua_ls` client and then calls
+--- this to bring them back. It never could, so one `<leader>lsp` scope switch
+--- killed `lua_ls` for the session and said "root recomputed (0 buffer(s))"
+--- about it. Measured: one client before, zero after.
 ---@param bufnr integer
 ---@return boolean success
 local function start_lua_ls(bufnr)
-  if type(vim.lsp.config) ~= "table" then
+  local ok, supervisor = pcall(require, "lsp.core.supervisor")
+  if not ok or type(supervisor.start) ~= "function" then
     return false
   end
-
-  local config_list = vim.lsp.config.get and vim.lsp.config.get() or {}
-  local server_config = nil
-  for _, cfg in pairs(config_list) do
-    if cfg.name == "lua_ls" then
-      server_config = cfg
-      break
-    end
-  end
-  if not server_config then
-    return false
-  end
-
-  -- The server table is assembled by `lsp.servers.*`, not written here;
-  -- LuaLS matches it against vim.lsp.start's own meta, which wants `cmd`
-  -- even when the resolved config supplies it dynamically.
-  ---@diagnostic disable-next-line: missing-fields
-  local ok, client_id = pcall(vim.lsp.start, server_config, { bufnr = bufnr })
-  return ok and client_id ~= nil
+  return supervisor.start("lua_ls", bufnr)
 end
 
 --- Restart every attached lua_ls client so `root_dir` is recomputed for the
@@ -48,10 +48,25 @@ function M.recompute_root()
   end
 
   local bufs = {}
+  ---@type integer[]
+  local ids = {}
   for _, c in ipairs(clients) do
+    ids[#ids + 1] = c.id
     for bufnr in pairs(c.attached_buffers or {}) do
       bufs[bufnr] = true
     end
+  end
+
+  -- Declared before stopping, the way `:Lsp stop`, `:Lsp restart` and
+  -- `:Lsp recover` all do it. `on_exit` cannot tell a wanted stop from a
+  -- crash, so intent is declared rather than guessed -- and this was the one
+  -- deliberate-stop site in the plugin that never declared it. A scope switch
+  -- therefore logged "lua_ls exited with code 1, signal 15; restarting in
+  -- 1000ms (attempt 1/4)" at the user and raced the supervisor's own backoff
+  -- restart against the one below.
+  local ok_supervisor, supervisor = pcall(require, "lsp.core.supervisor")
+  if ok_supervisor and type(supervisor.expect_stop) == "function" then
+    supervisor.expect_stop(ids)
   end
 
   for _, c in ipairs(clients) do
