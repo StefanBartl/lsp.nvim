@@ -24,7 +24,18 @@ local function prepend_env(var)
     -- require() of something not already cached in package.loaded, failing
     -- with "module not found" and no file candidate anywhere near the real
     -- checkout.
-    vim.opt.rtp:prepend(vim.fn.fnamemodify(path, ":p"))
+    --
+    -- `vim.fs.normalize` on top of `:p`, not `:p` alone. `:p` appends a path
+    -- separator when the directory exists -- a backslash on Windows -- and an
+    -- rtp entry ending in one stops `runtime plugin/plenary.vim` finding
+    -- anything: measured, `exists(":PlenaryBustedDirectory")` is 0 with
+    -- `...\plenary.nvim\` on the rtp and 2 with the same path bare, so the
+    -- whole suite fails to start with "E492: Not an editor command". On Linux
+    -- the appended `/` merely doubles a separator that `runtime` tolerates,
+    -- which is why CI did not see this. `normalize` also gives the forward
+    -- slashes the comment above wants, so it replaces the manual handling
+    -- rather than adding to it.
+    vim.opt.rtp:prepend(vim.fs.normalize(vim.fn.fnamemodify(path, ":p")))
   end
 end
 
