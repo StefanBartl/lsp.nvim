@@ -64,13 +64,19 @@ jobs:
       # it honest; ts_ls is the cheapest of the three candidates to install
       # (node is already on the runner) and answered in ~1s when measured.
       - name: language server for the live probe
-        run: npm install -g typescript typescript-language-server
+        # `typescript`, not "typescript@latest": 7.0.2 is TypeScript's own
+        # native-compiled rewrite and no longer ships lib/tsserver.js at
+        # all, which the installed typescript-language-server still expects
+        # -- measured against the real CI failure ("provides no
+        # tsserver.js"), not assumed. Pinned to the last classic-architecture
+        # major.
+        run: npm install -g typescript@5 typescript-language-server
         # ts_ls does not resolve a global-only "typescript" install from a
         # bare temp root_dir with no node_modules of its own (its own
-        # lookup, not Node's require() -- NODE_PATH does not help, measured
-        # here). TESTS/lsp/probe_live_spec.lua's ts_ls candidate points
-        # `init_options.tsserver.path` at `npm root -g` itself instead, so
-        # nothing CI-specific belongs here beyond the install.
+        # lookup, not Node's require() -- NODE_PATH did not change the
+        # outcome, measured). TESTS/lsp/probe_live_spec.lua's ts_ls
+        # candidate symlinks a real node_modules/typescript into its temp
+        # root_dir from wherever `npm root -g` says this install landed.
       - name: plenary specs
         env:
           PLENARY_PATH: .deps/plenary.nvim
