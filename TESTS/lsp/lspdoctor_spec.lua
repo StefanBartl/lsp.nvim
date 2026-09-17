@@ -389,6 +389,51 @@ describe("lsp.lspdoctor", function()
       package.loaded["lsp.usercmds.start"] = saved.start_mod
     end)
 
+    -- `executable_for` went through `vim.lsp.config`'s `__index` resolver and
+    -- an `exepath`, and ran twice for every server: once for the "Executable:"
+    -- line and once again for the hint below it, for the same answer.
+    it("resolves each server's executable once, not once per line that shows it", function()
+      local resolved = {}
+      local real = vim.lsp.config
+      -- A stand-in for the resolver, counting what it is asked about. The
+      -- servers are reported as *not* running and with no executable, which is
+      -- the branch that used to ask twice.
+      ---@diagnostic disable-next-line: duplicate-set-field
+      vim.lsp.config = setmetatable({}, {
+        __index = function(_t, name)
+          resolved[name] = (resolved[name] or 0) + 1
+          return { cmd = { "definitely-not-on-path-" .. name } }
+        end,
+      })
+
+      vim.lsp.get_clients = function()
+        return {}
+      end
+      package.loaded["lsp.usercmds.start"] = {
+        get_servers_for_buffer = function()
+          return { "server_a", "server_b" }
+        end,
+      }
+
+      package.loaded["lsp.lspdoctor.health"] = nil
+      local health = require("lsp.lspdoctor.health")
+      health.setup({ show_tools = true })
+
+      local ok, err = pcall(health.check, vim.api.nvim_get_current_buf())
+      vim.lsp.config = real
+      assert.is_true(ok, tostring(err))
+
+      -- Once per server for `config_exists`, once for the executable. What it
+      -- must not be is once more for the hint, which is what doubled it.
+      for _, name in ipairs({ "server_a", "server_b" }) do
+        assert.are.equal(
+          2,
+          resolved[name],
+          ("%s was resolved %s times"):format(name, tostring(resolved[name]))
+        )
+      end
+    end)
+
     it("asks the named client for semantic tokens, not the whole buffer", function()
       local went_buffer_wide = false
       ---@diagnostic disable-next-line: duplicate-set-field
@@ -561,6 +606,68 @@ describe("lsp.lspdoctor", function()
         #names,
         "expected two distinctly named reports, got: " .. vim.inspect(names)
       )
+    end)
+  end)
+
+  -- `Lsp.Doctor.Report` declared `sections` and `extras`; no report ever
+  -- returned either, `Lsp.Doctor.Section` had no producer at all, and nothing
+  -- could notice -- not one `---@return` pointed at the class, luacheck does
+  -- not read annotations, and lua-language-server cannot check a type nobody
+  -- claims.
+  --
+  -- The replacement classes are attached to the `---@return` annotations,
+  -- which stops them describing nobody but does not stop them going stale. So
+  -- the shapes are asserted here, where the reports are actually run: the keys
+  -- each class declares against the keys each report builds, in both
+  -- directions.
+  describe("the result shapes match what `@types.lua` declares", function()
+    ---@param value table
+    ---@return string[]
+    local function keys_of(value)
+      local out = vim.tbl_keys(value)
+      table.sort(out)
+      return out
+    end
+
+    it("resolve carries every field of Lsp.Doctor.ResolveInfo", function()
+      -- The public reports return the result alone; the `lines, result`
+      -- pair is the submodules' shape, not theirs.
+      local info = doctor().resolve(0, false)
+      assert.are.same({
+        "completion",
+        "configured",
+        "enabled",
+        "expected",
+        "filetype",
+        "registered",
+        "running",
+      }, keys_of(info))
+    end)
+
+    it("buffer and capabilities carry Lsp.Doctor.InspectReport and nothing else", function()
+      local mod = doctor()
+      for _, name in ipairs({ "buffer", "capabilities" }) do
+        local report = mod[name](0, false)
+        assert.are.same({ "mode", "ok", "summary" }, keys_of(report), name)
+      end
+    end)
+
+    it("startup returns a list of Lsp.Doctor.StartupEntry, not a report object", function()
+      local results = doctor().startup(0, false)
+      assert.are.equal("table", type(results))
+      -- A list: empty when no server is configured for this buffer, and every
+      -- entry carries the five fields the class names.
+      for _, entry in ipairs(results) do
+        assert.are.same(
+          { "attempts", "config_exists", "last_error", "name", "running" },
+          keys_of(entry)
+        )
+      end
+      assert.is_nil(results.mode, "a list, not a report object")
+    end)
+
+    it("all returns Lsp.Doctor.CombinedReport, and probe is not in it", function()
+      assert.are.same({ "capabilities", "resolve", "startup" }, keys_of(doctor().all(0, false)))
     end)
   end)
 end)
