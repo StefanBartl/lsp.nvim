@@ -125,11 +125,13 @@ one pick of `packages/web`, and definitions across the package boundary resolve
 off, `:Lsp root list` shows what `add` would offer without opening a picker.
 
 Two limits worth knowing before you reach for it. The scope switch only reaches
-servers whose `root_dir` is a function — `lua_ls` and `marksman`; `gopls`,
-`ts_ls`, `clangd` and `csharp` declare `root_markers` and Neovim resolves those
-itself, so for them the folder is the only lever. And a server that never
-advertised `changeNotifications` is skipped rather than sent a notification it
-did not ask for; `:Lsp root show` names it, with the reason.
+a server whose root resolver actually reads it, and `lua_ls` is the only one
+that does. `marksman` and `csharp` do resolve through a `root_dir` function, but
+both of them search upward for a marker and never look at the scope, and
+`gopls`, `ts_ls` and `clangd` declare `root_markers` for Neovim to resolve
+itself — so for everything but `lua_ls` the folder is the only lever. And a
+server that never advertised `changeNotifications` is skipped rather than sent a
+notification it did not ask for; `:Lsp root show` names it, with the reason.
 
 lua_ls additionally treats the Neovim config directory as a root of its own,
 which is what its workspace library needs; that is not affected by the scope
@@ -164,11 +166,17 @@ because Neovim has to see whether an `s` follows. That is the deliberate price
 of a prefixless three-character mapping — if it bothers you mid-session, the
 answer is `keymaps.map` per action, not `keymaps.enable = false`.
 
-`grn` and `grt` collide with Neovim 0.11's own `gr*` maps, which are set
-**buffer-locally** on `LspAttach` and therefore beat a global mapping. The
-plugin re-binds those two on `LspAttach` so the catalogue's version runs, which
-is what makes `rename.provider` actually decide the rename — both bound keys run
-one rename action, and they can no longer disagree about which backend that is.
+`grn` and `grt` take Neovim's own `gr*` left-hand sides. Those defaults are
+**global**, not buffer-local: `$VIMRUNTIME/lua/vim/_core/defaults.lua` sets all
+six at startup, "mapped unconditionally to avoid different behavior depending on
+whether an LSP client is attached", and a `--headless --noplugin` session with no
+client at all reports `maparg("grn", "n", false, true).buffer == 0`. So the
+catalogue replaces them outright the moment the binder runs, which is what makes
+`rename.provider` actually decide the rename — both bound keys run one rename
+action, and they can no longer disagree about which backend that is. The plugin
+also re-binds those two buffer-locally on `LspAttach`; that handler was written
+for a shadowing that does not happen, and only re-asserts a key the catalogue
+already owns.
 
 `docs/BINDINGS.md` is generated from `lua/lsp/config/KEYMAPS.lua` and CI checks
 it with `--check`. Editing the table by hand is pointless; change the catalogue.

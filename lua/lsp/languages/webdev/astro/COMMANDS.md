@@ -28,8 +28,12 @@
 | BufWritePre  | *.astro | Runs the LSP code action for organising imports              |
 | FileType     | astro   | Sets buffer-local options (indent, tabs, commentstring)      |
 | FileType     | astro   | Defines syntax highlighting for the Astro frontmatter        |
-| VimLeavePre  | *.astro | Terminates running astro dev processes when leaving Neovim   |
-| BufWritePost | *.astro | Checks used components for missing import statements         |
+
+Those four are the whole group: `:autocmd AstroQoL` lists exactly them. A
+`VimLeavePre` that killed the dev server and a `BufWritePost` that checked for
+missing component imports used to sit here too; both moved to insights.nvim
+(`devserver` / `unimported`), generalised past Astro and configured through its
+own `setup()` spec.
 
 ---
 
@@ -66,7 +70,7 @@
 | Astro LSP       | Code actions, formatting                 |
 | astro CLI       | Dev server, build, preview               |
 | pkill           | Process termination (Linux/macOS)        |
-| xdg-open / open | Browser preview (Linux/macOS)            |
+| a platform opener | Browser preview. Picked by `vim.ui.open` (`xdg-open`, `open`, `start`, …) rather than hard-coded, so `<leader>ap` is not Linux/macOS-only |
 
 ---
 

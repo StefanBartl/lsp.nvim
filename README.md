@@ -67,7 +67,7 @@ says what each one answers.
 
 - [Features](docs/FEATURES/README.md) — what the plugin does, one page per area, with the reasoning, including the [context-menu and breadcrumb integrations](docs/FEATURES/INTEGRATIONS.md).
 - [Workflow](docs/WORKFLOW.md) — how the pieces combine day to day, and which route answers which question.
-- [Autocommands](docs/autocmds.md) — all 33 of them across 25 groups, not just the four that back keymaps.
+- [Autocommands](docs/autocmds.md) — all 34 of them across 25 groups, not just the four that back keymaps.
 - [Architecture](docs/architecture.md) — the three layers, and which way the arrows point.
 - [Health check](docs/health.md) — how to read `:checkhealth lsp`.
 - [Contributing](docs/CONTRIBUTING.md) — ground rules, project layout, and how to add a server or an integration.

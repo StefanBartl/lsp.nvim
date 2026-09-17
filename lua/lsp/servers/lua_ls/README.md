@@ -10,10 +10,14 @@ The setup consists of several interconnected modules that provide a robust and p
 lsp/servers/lua_ls/
 ├── init.lua              # main module: LSP server configuration
 ├── rootresolver.lua      # project root detection
-├── build_library.lua     # workspace library construction
+├── library_profiles.lua  # the library before_init installs, and the scan profiles
+├── build_library.lua     # workspace library construction (debug path only)
 ├── find_type_dirs.lua    # scanner for type directories
 ├── ignore.lua            # central ignore configuration
-└── debug.lua             # debugging utilities
+├── error_handler.lua     # guards malformed textDocument requests
+├── reload.lua            # :LuaLsReloadLibrary/InspectLibrary/SetProfile, root recomputation
+├── debug.lua             # debugging utilities
+└── docs/TROUBLESHOOTING.md
 ```
 
 ## 🎯 Main features
@@ -33,6 +37,10 @@ The workspace libraries are built dynamically per project root:
 - **Third-party definitions** (`${3rd}/...`):
   - `${3rd}/luv/library` - type definitions for vim.uv/vim.loop
   - `${3rd}/busted/library` - type definitions for the Busted test framework
+  - `${3rd}/luassert/library` - `assert.are.equal` and friends. Busted without
+    luassert is half a test environment, and a `.luarc.json` cannot supply it:
+    naming `workspace.library` there *replaces* this list instead of adding to
+    it
 
 - **Neovim runtime**: all Neovim runtime paths for `vim.*` API detection
 
@@ -76,7 +84,8 @@ require("lsp.servers.lua_ls").setup({
 ```
 
 **Important features:**
-- Uses the native `vim.lsp.config()` API (Neovim 0.10+)
+- Uses the native `vim.lsp.config()` API (Neovim 0.11+; `setup` is a no-op
+  where `type(vim.lsp.config) ~= "table"`)
 - Library configuration via the `before_init` hook -- **not** `on_new_config`,
   which is an lspconfig concept that `vim.lsp.config` never calls
 - LuaJIT runtime for Neovim optimisation
@@ -92,11 +101,24 @@ local root = require("lsp.servers.lua_ls.rootresolver")
 local project_root = root(bufnr)  -- or: root(filename)
 ```
 
+The argument handling — buffer number or filename, the unnamed-buffer
+fallback, the optional callback the `vim.lsp` `root_dir` contract allows —
+comes from `lib.nvim.fs.polymorphic_rootresolver`. Only the algorithm below is
+local, supplied through that module's `resolve` hook.
+
 **Algorithm:**
-1. Check whether we are inside `stdpath("config")` → use the config dir
-2. Search upward for a VCS root (`.git`, etc.)
-3. Search upward for Lua markers (`.luarc.json`, etc.)
-4. Fall back to the start directory
+1. Check whether we are inside `stdpath("config")` → use the config dir.
+   **First**, before everything else, not as a correction afterwards
+2. Consult the root-scope switch (`<leader>lsp`, `lsp.core.root_scope`):
+   `"cwd"` returns the working directory and `"path"` returns the start
+   directory, both bypassing steps 3–5. `"git"` (the default) continues
+3. Search upward for a VCS root (`.git`, `.hg`, `.svn`)
+4. Search upward for Lua markers (`.luarc.json`, `.neoconf.json`,
+   `selene.toml`, `stylua.toml`)
+5. Fall back to the start directory
+
+Measured on `lua/lsp/init.lua` in this repo: scope `git` → the repo root,
+scope `cwd` → the working directory, scope `path` → `…/lua/lsp`.
 
 ### `build_library.lua` - library construction
 
@@ -110,9 +132,18 @@ local library = require("lsp.servers.lua_ls.build_library")(root)
 **Library sources:**
 - `${3rd}/luv/library` - luv types
 - `${3rd}/busted/library` - Busted types
-- project type directories via the scanner
+- `${3rd}/luassert/library` - luassert types
+- project type directories **and standalone type files** via the scanner
+  (`types.lua` / `@types.lua` count too)
+- Neovim runtime paths, minus the project root itself
 - LuaRocks, global & local
 - local dependencies (`lua_modules`, etc.)
+- local dev plugin `lua/` directories, guarded by `fs_stat`
+
+Measured on this repo: 22 entries, of which 3 are `${3rd}` placeholders the
+server expands itself, 2 are standalone `@types.lua` files and 17 are
+directories. **This is not what a running server receives** — see
+[The before_init hook](#the-before_init-hook).
 
 ### `find_type_dirs.lua` - type scanner
 
@@ -130,9 +161,17 @@ local type_dirs = scanner(root, {
 - Breadth-first search (BFS) algorithm, so a tight `max_results` is spent on
   the shallowest matches
 - Finds `types/` and `@types/` directories, plus any directory whose name ends
-  in `types` or starts with `@types` (`mytypes`, `@typescript`)
+  in `types` or starts with `@types` (`mytypes`, `@typescript`). The name test
+  is case-sensitive even on Windows, so `TYPES` does not match
+- A directory only counts if it actually holds a `.lua` file, checked one level
+  deep
+- Also finds **standalone files** named `types.lua` or `@types.lua`, unless
+  `include_files = false`. Measured on this repo with `{ max_results = 100,
+  max_depth = 10 }`: 9 paths, 7 directories and 2 files
 - Respects the ignore lists
-- Configurable limits for performance
+- `max_results` bounds the **result list**, not the walk: the cost tracks the
+  number of directories below the root, which is why lowering it does not make
+  the scan cheap (see the figure under *Optimised performance*)
 
 ### `ignore.lua` - central ignore configuration
 
@@ -164,19 +203,42 @@ local debug = require("lsp.servers.lua_ls.debug")
 -- Root for the current buffer
 local root = debug.root_for_buf(bufnr)
 
--- Library paths for a root
+-- Library paths for a root: a *sorted array of strings*, not build_library's
+-- `{ [path] = true }` map
 local libs = debug.debug_library(root)
 
 -- Print debug info
 debug.print_debug_info(bufnr)
 ```
 
-**Example output:**
+`root_for_buf` delegates to `rootresolver` rather than carrying its own copy of
+the algorithm, so it honours the `stdpath("config")`-first rule and the
+`<leader>lsp` root-scope switch and cannot disagree with the root the server
+actually resolved.
+
+**Example output** (abridged; every path is printed):
 ```
-LuaLS Debug Info:
-Root: /home/user/projects/my-plugin
-Library paths: /home/user/.config/nvim, /home/user/projects/my-plugin/types, ...
+[lsp.servers.lua_ls.debug] === LuaLS Debug Info ===
+[lsp.servers.lua_ls.debug] Root: E:/repos/lsp.nvim
+[lsp.servers.lua_ls.debug]
+Type Directories (17):
+[lsp.servers.lua_ls.debug]   C:\Program Files\Neovim\share\nvim\runtime
+[lsp.servers.lua_ls.debug]   E:/repos/lsp.nvim/lua/lsp/@types
+[lsp.servers.lua_ls.debug]   …
+[lsp.servers.lua_ls.debug]
+Type Files (2):
+[lsp.servers.lua_ls.debug]   E:/repos/lsp.nvim/lua/lsp/diagnostics/@types.lua
+[lsp.servers.lua_ls.debug]   E:/repos/lsp.nvim/lua/lsp/lspdoctor/@types.lua
+[lsp.servers.lua_ls.debug]
+Not on disk -- server-expanded or stale (3):
+[lsp.servers.lua_ls.debug]   ${3rd}/busted/library
+[lsp.servers.lua_ls.debug]   ${3rd}/luassert/library
+[lsp.servers.lua_ls.debug]   ${3rd}/luv/library
 ```
+
+The third bucket is the point: an entry `fs_stat` cannot see used to be dropped
+with no trace, and printing "17 directories, 2 files" for a 22-entry library is
+how a missing `${3rd}` entry stays invisible.
 
 ## 🔧 Installation & setup
 
@@ -194,10 +256,18 @@ Library paths: /home/user/.config/nvim, /home/user/projects/my-plugin/types, ...
 
 ### 2. Dependencies
 
-Make sure these helper modules exist:
-- `lib.fs.is_subpath`
-- `lib.fs.find_upward_dir`
-- `lib.fs.ignore.list`
+Make sure these helper modules exist. They all live under `lib.nvim.*`; the
+`lib.fs.*` spelling this section used to carry is from an older layout and
+resolves to nothing:
+- `lib.nvim.fs.polymorphic_rootresolver`
+- `lib.nvim.fs.is_subpath`
+- `lib.nvim.fs.ignore.list`
+- `lib.nvim.notify`
+- `lib.nvim.system.env`
+- `lib.nvim.bindings.usercmd` and `lib.nvim.bindings.autocmd` (for `reload.lua`)
+
+`lib.nvim.fs.find_upward_dir` used to be listed here; nothing under
+`lsp/servers/lua_ls/` requires it.
 
 ### 3. LSP setup
 
@@ -255,15 +325,20 @@ workspace = {
 
 ### Adding further ${3rd} libraries
 
-In `build_library.lua`:
+For a **running server**, in `library_profiles.build_runtime_library()` — that
+is the list `before_init` installs:
 ```lua
-library["${3rd}/luasocket/library"] = true
-library["${3rd}/lfs/library"] = true
+library[#library + 1] = "${3rd}/luasocket/library"
 ```
+
+Adding one in `build_library.lua` instead only changes what `debug` /
+`:LuaLsInspectLibrary` report. That list is not on the startup path.
 
 ### Extending the ignore list
 
-In `lib.fs.ignore.list`:
+In `lib.nvim.fs.ignore.list` (which exposes `basenames`; this module derives
+`names()`, `as_set()` and `as_luals_patterns()` from that array — 31 basenames,
+62 patterns):
 ```lua
 return {
   "node_modules",
@@ -285,54 +360,75 @@ local lua_markers = vim.fs.find(
 
 ## 📊 Architecture diagram
 
+Two paths, and the split between them is the thing to see: **the startup path
+does not scan**.
+
 ```
 ┌─────────────────────────────────────────┐
 │         init.lua (Main Setup)           │
 │  ┌────────────────────────────────────┐ │
 │  │ vim.lsp.config("lua_ls", {         │ │
-│  │   root_dir = rootresolver,        │ │
+│  │   root_dir = rootresolver,         │ │
 │  │   settings = { ... },              │ │
 │  │   before_init = ...                │ │
 │  │ })                                 │ │
 │  └────────────────────────────────────┘ │
 └──────────────┬──────────────────────────┘
                │
-               ├─────────────────────┐
-               │                     │
-               ▼                     ▼
-    ┌──────────────────┐  ┌──────────────────┐
-    │  rootresolver()  │  │   before_init    │
-    │                  │  │      Hook        │
-    │ • VCS markers    │  └────────┬─────────┘
-    │ • Lua configs    │           │
-    │ • stdpath check  │           ▼
-    └──────────────────┘  ┌──────────────────┐
-                          │ build_library()  │
-                          │                  │
-                          │ • ${3rd} libs    │
-                          │ • Runtime paths  │
-                          │ • Type dirs ──┐  │
-                          │ • LuaRocks    │  │
-                          └───────────────┼──┘
-                                          │
-                                          ▼
-                          ┌──────────────────────┐
-                          │  find_type_dirs()    │
-                          │                      │
-                          │  • BFS scan          │
-                          │  • Ignore check ───┐ │
-                          │  • Collect types   │ │
-                          └────────────────────┼─┘
-                                               │
-                                               ▼
-                                    ┌─────────────────┐
-                                    │    ignore()     │
-                                    │                 │
-                                    │ • Shared list   │
-                                    │ • as_set()      │
-                                    │ • as_patterns() │
-                                    └─────────────────┘
+               ├──────────────────────┐
+               │                      │
+               ▼                      ▼
+   ┌────────────────────┐  ┌──────────────────────────┐
+   │   rootresolver()   │  │      before_init         │
+   │                    │  │        Hook              │
+   │ • stdpath first    │  └────────────┬─────────────┘
+   │ • root-scope switch│               │
+   │ • VCS markers      │               ▼
+   │ • Lua configs      │  ┌──────────────────────────────┐
+   │  (via lib.nvim     │  │ library_profiles             │
+   │   polymorphic_     │  │   .build_runtime_library()   │
+   │   rootresolver)    │  │                              │
+   └────────────────────┘  │ • ${3rd} luv/busted/luassert │
+                           │ • $VIMRUNTIME/lua            │
+                           │ 4 entries, ~0.01 ms, no I/O  │
+                           └──────────────────────────────┘
+
+              ── the scan is NOT on the path above ──
+
+   debug.print_debug_info() / :LuaLsInspectLibrary
+               │
+               ▼
+   ┌──────────────────┐
+   │ build_library()  │
+   │                  │
+   │ • ${3rd} libs    │
+   │ • Runtime paths  │
+   │ • Type dirs ──┐  │
+   │ • LuaRocks    │  │
+   │ • local deps  │  │
+   └───────────────┼──┘
+                   │
+                   ▼
+   ┌──────────────────────┐
+   │  find_type_dirs()    │
+   │                      │
+   │  • BFS scan          │
+   │  • Ignore check ───┐ │
+   │  • Collect types   │ │
+   └────────────────────┼─┘
+                        │
+                        ▼
+             ┌─────────────────┐
+             │    ignore()     │
+             │                 │
+             │ • Shared list   │
+             │ • as_set()      │
+             │ • as_patterns() │
+             └─────────────────┘
 ```
+
+`ignore()` reaches the server by a third route as well: `as_luals_patterns()`
+is what `settings.Lua.workspace.ignoreDir` is built from, in `init.lua`.
 
 ## 🔍 Important concepts
 

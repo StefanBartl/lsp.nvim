@@ -9,10 +9,14 @@ something rather than only wiring a plugin up.
 `require("lsp").status().keymaps` — the resolved keymap catalogue, with the
 active `keymaps.preset` and any `keymaps.map` overrides already applied —
 in the shape [nvzone/menu](https://github.com/nvzone/menu) expects, grouped
-into fly-outs (Navigation, Rename, Formatter, Diagnostics, Trouble, Picker)
-derived from each entry's catalogue name. Entries whose `requires` names an
-uninstalled plugin are skipped. No `menu` dependency here; a host composes
-the entries into its own menu.
+into fly-outs (Navigation, Diagnostics, Formatter, Toggles, Picker, Rename,
+Trouble, Workspace) derived from each entry's catalogue name. Toggles and
+Workspace exist because the naming convention alone put the two on/off pairs
+and `workspace_folder_add` into Navigation, which came back with fifteen
+children, five of which navigate nowhere. Entries whose `requires` names an
+uninstalled plugin are skipped, so the groups you actually get are the subset
+whose plugins are there. No `menu` dependency here; a host composes the entries
+into its own menu.
 
 - **Module:** `integrations/menu.lua` (`M.items`, `M.submenu`)
 - **Config:** `menu.enable` (default `true`)

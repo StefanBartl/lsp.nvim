@@ -47,16 +47,29 @@ function signatures and hover information**. It offers:
    * `<Esc>` inside the popup closes the window immediately.
 
 2. **LSP integration**:
-   * Uses `textDocument/signatureHelp` by preference.
-   * If signatures are not available, `textDocument/hover` is queried.
+   * Uses `textDocument/signatureHelp` by preference — the first attached client
+     that advertises `signatureHelpProvider`.
+   * If signatures are not available, `textDocument/hover` is queried across
+     **all** attached clients at once, and the first displayable answer wins.
+     Not one after the other: a sequential chain advances on an *answer*, so a
+     client that never produces one ends the search at itself, and "one attached
+     client is silent" is the normal state for a buffer with a linter and a
+     language server on it.
+   * The position is sent in each client's own negotiated `offset_encoding`
+     (Neovim's default, and what a server gets unless it insists otherwise, is
+     `utf-16`), so two clients on one buffer need not agree about columns.
    * Takes modern Neovim APIs (`client.server_capabilities`) into account for LSP
      feature detection.
 
-1. **Floating popup**:
-   * A focusable window, usable for scrolling or copying.
+3. **Floating popup**:
+   * Focusable and entered **in normal mode only**. From insert mode the popup
+     opens with `focusable = false` and focus stays in the buffer, so typing
+     continues uninterrupted — measured: `nvim_win_get_config(win).focusable`
+     is `true` for mode `n` and `false` for mode `i`.
    * Maximum width: 60% of the screen width.
    * Automatic positioning above or below the cursor, depending on the available space.
    * Border style: `rounded`.
+   * `<Esc>` and `q` (normal or visual) both close it.
 
 ---
 
@@ -119,8 +132,11 @@ highlight LspSignatureActiveParam guifg=#ffffff guibg=#005f87 gui=bold
 ## Wiring it into the project
 
 ```lua
-require("mappings.lsp_signature").setup()
+require("lsp.tools.lsp_signature").setup()
 ```
+
+(The module moved out of `mappings.lsp_signature`; that path raises
+`module 'mappings.lsp_signature' not found`.)
 
 * `<C-b>` is bound for **insert and normal mode**.
 * Optionally, the highlight groups can be adjusted in your own colorscheme file.
@@ -174,12 +190,30 @@ local custom_signatures = {
 local name = vim.fn.expand("<cword>")
 local sig = custom_signatures[name]
 if sig then
-  local format_signature_help = require("mappings.lsp_signature.format_signature_help")
-  local open_floating_preview = require("mappings.lsp_signature.open_floating_preview")
-  local lines, hl = format_signature_help(sig)
-  local buf, win = open_floating_preview(lines)
+  local api = vim.api
+  local format_signature_help =
+    require("lsp.tools.lsp_signature.format_signature_help")
+  local open_floating_preview =
+    require("lsp.tools.lsp_signature.open_floating_preview")
 
-  -- Highlighting for the custom signature
+  -- `format_signature_help` takes a whole `signatureHelp` *result*, not a bare
+  -- SignatureInformation: it reads `result.signatures` (or
+  -- `result.value.signatures`) and returns nil for anything else. Handing it
+  -- `sig` directly returns nil lines and the popup silently never opens.
+  local lines, hl = format_signature_help({
+    signatures = { sig },
+    activeSignature = 0,
+    activeParameter = 0,   -- 0-based; omit if no parameter is active
+  })
+  if not lines then
+    return
+  end
+
+  -- `focus = true` to make the popup enterable, as the normal-mode path does.
+  local buf, win = open_floating_preview(lines, { focus = true })
+
+  -- Highlighting for the custom signature. `hl` is nil when no parameter is
+  -- active or its label could not be located, so it has to be checked.
   if hl and buf and api.nvim_buf_is_valid(buf) then
     local ns = api.nvim_create_namespace("LspSignatureCustom")
     vim.hl.range(buf, ns, "LspSignatureActiveParam",
@@ -189,6 +223,13 @@ if sig then
   end
 end
 ```
+
+`format_signature_help` returns four values, not two:
+`lines, hl, signature, active_param`. The last two are the resolved active
+`SignatureInformation` and the 0-based active-parameter index, handed back so a
+caller does not have to dig them out of the result a second time — which is
+what `request_and_show` uses to colour *every* parameter rather than only the
+active one.
 
 ### Applying it to other languages / libraries
 
@@ -209,8 +250,10 @@ the popup, so that `<C-b>` works universally.
 3. **Adjust the popup options**: size, position, border style.
 4. **Wire in further signatures**: lookup tables or automatic parsers (e.g. from
    docstrings or header files).
-5. **Insert mode**: the popup is focusable, you can scroll or copy, and insert mode
-   is preserved.
+5. **Insert mode**: insert mode is preserved, because the popup is opened
+   *un*focusable there and is never entered. Scrolling and copying are the
+   normal-mode behaviour; `focus` is `mode == "n"` on both the signature and
+   the hover path.
 
 -
 
@@ -240,22 +283,28 @@ parameter highlighting.
 
 ### Project structure
 
+This is the module as it actually sits in `lsp.nvim`:
+
 ```sh
-nvim-lsp-signature-demo/
-├─ lua/
-│  └─ custom/
-│     └─ lsp_signature/
-│        ├─ init.lua
-│        ├─ request_and_show.lua
-│        ├─ open_floating_preview.lua
-│        ├─ format_signature_help.lua
-│        ├─ format_hover.lua
-│        └─ split_lines.lua
-├─ after/
-│  └─ plugin/
-│     └─ lsp_signature.lua   -- keymap and toggle setup
-└─ README.md
+lua/lsp/tools/lsp_signature/
+├─ init.lua                    -- setup(): the <C-b> mapping, i and n
+├─ request_and_show.lua        -- signatureHelp, then hover, then fallbacks
+├─ show_hover.lua              -- hover across all clients + the LRU cache
+├─ fallback_providers.lua      -- typeDefinition / implementation / references
+├─ open_floating_preview.lua   -- the popup itself
+├─ format_signature_help.lua
+├─ format_hover.lua
+├─ split_lines.lua
+├─ state.lua                   -- the single tracked popup; close()
+├─ @types/init.lua
+├─ highlights/parameters.lua   -- LspSignatureParam1..4, LspSignatureActiveParam
+├─ utils/helper.lua
+└─ Readme.md
 ```
+
+An `after/plugin/lsp_signature.lua` is one way to call `setup()` from a
+standalone config; in this plugin the call comes from the tools bootstrap
+instead.
 
 ---
 

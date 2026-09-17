@@ -9,8 +9,9 @@
 
 ## Optional
 
-Each detected at runtime and degrading to nothing when absent — the pack
-installs and configures them for you, or bring your own:
+Each detected at runtime and degrading to nothing when absent. The pack installs
+and configures most of them for you; mason.nvim, nvzone/menu and ui.nvim it does
+not, so those are bring-your-own either way:
 
 | | |
 | --- | --- |

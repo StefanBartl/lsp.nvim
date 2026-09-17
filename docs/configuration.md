@@ -72,8 +72,20 @@ name.
 **continuous** work -- virtual text redrawn per push, the `signatureHelp` round
 trip fired per keystroke inside an argument list, the workspace scan on attach,
 the ~25 legacy command registrations at startup. What it does not touch is the
-on-demand work: `gd`, hover, rename and code actions behave exactly as they do
-under `default`. That split is what makes it usable rather than merely smaller.
+on-demand work: definition, hover, rename and code actions are neither
+throttled nor switched off, and answer exactly as they do under `default`. That
+split is what makes it usable rather than merely smaller.
+
+The one thing `lean` does move that is not a performance dial is
+`keymaps.preset`, which it sets to `"minimal"` -- so the catalogue's own keys
+for that on-demand work (`lsd`, `lsa`, `lsr`, `lsi`, `lss`, `grn`, `]d`/`[d`
+and the per-symbol Trouble views) are not bound under it. The actions remain,
+and most of them keep a key: Neovim's own global `gra`, `grr`, `gri`, `grt` and
+`gO` cover code action, references, implementations, type definition and
+document symbols, and `<leader>rn` still renames. Go-to-definition is the one
+with no native equivalent — it is `vim.lsp.buf.definition()` or nothing under
+`minimal`. Set `keymaps = { preset = "default" }` alongside the profile to keep
+the catalogue's keys as well.
 
 `full` is the inverse trade: `update_in_insert`, inlay hints on, a 50ms
 throttle instead of 150, and the code-action indicator unfiltered rather than
@@ -118,10 +130,18 @@ one.
 `inlay_hints`, `lightbulb`, `attach`, `workspace`, `tools`, `languages` are
 accepted; everything else is dropped with a warning. The line is not "what
 could break" but *whose question is this*. Those nine describe the codebase, so
-the codebase may answer them. `keymaps`, `usrcmds`, `which_key` and `menu` describe
-you — opening a repository must not move a key. `mason` installs software.
-`preset` is a property of the machine. `completion.personal_names.labels` is a
-function and could not be expressed anyway.
+the codebase may answer them. The other eleven top-level keys do not, and the
+omissions are named rather than left to be inferred. `keymaps`, `usrcmds`,
+`which_key` and `menu` describe you — opening a repository must not move a key
+or drop a command. `mason` installs software. `preset` is a property of the
+machine. `auto_restart` is a supervision policy: how often this editor
+relaunches a crashed process belongs to the machine running the servers, and it
+is the one omission a repository could otherwise turn into a restart loop.
+`lspdoctor` is report formatting and `rename` a personal habit, neither of them
+a property of the code being edited. `completion` is host data —
+`personal_names.labels` is a function and could not be expressed anyway. And
+`project` itself: a file naming its own successor is a loop with nothing to
+gain.
 
 **Read once, at `setup()`.** Nearly everything here is consumed while the
 plugin bootstraps: servers are enabled, tools are set up, commands are
@@ -165,7 +185,9 @@ keymaps = {
 `scripts/gen_bindings.lua`, and CI checks it, so the documented list cannot
 drift from the bound one. [BINDINGS.md](BINDINGS.md) has the full catalogue and
 the two left-hand sides worth knowing about (`ls*`'s `timeoutlen` cost, and the
-`gr*` collision with Neovim's own buffer-local defaults).
+`gr*` collision with Neovim's own defaults — which are *global*, not
+buffer-local, so `grn` and `grt` replace them outright the moment the binder
+runs).
 
 ## lspdoctor.formatter_priority does not choose a formatter
 
@@ -174,8 +196,9 @@ says so — it sits under `lspdoctor`, not under `formatter`.
 
 What actually formats a buffer is `lsp.formatter`: conform's chain for the
 filetype, with LSP as the fallback conform falls back *to*. On every filetype
-conform covers (`lua`, `ts`, `js`, `json`, `css`, `html`, `cs`, `markdown`,
-`sh`) no LSP client formats at all, whatever this list says.
+conform covers (`lua`, `javascript`, `typescript`, `javascriptreact`,
+`typescriptreact`, `json`, `css`, `html`, `cs`, `markdown`, `sh`, `bash`,
+`zsh`) no LSP client formats at all, whatever this list says.
 
 The report used to hide that. On a Lua buffer it printed `Winner: **lua_ls**`
 while `stylua` was doing the work — a diagnostic tool naming the wrong culprit,
