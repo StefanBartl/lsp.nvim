@@ -302,5 +302,134 @@ describe("lsp.lspdoctor", function()
       local _, buffer_report = mod.buffer(0)
       assert.are.equal("buffer", buffer_report.mode)
     end)
+
+    -- Two clients can share a name: two roots of one server in a monorepo, or
+    -- the same server started twice for different projects. The report kept a
+    -- `name -> client` map, so the second one overwrote the first and became
+    -- invisible to every check that walked the map -- while the parallel list
+    -- of names still held the name twice, so the count said two and the detail
+    -- printed one client's data under both entries.
+    --
+    -- Measured against two real `lua_ls`, one `utf-16` and one `utf-8`: the
+    -- report said "✅ All clients: `utf-8`" and `ok = true`. A mismatch missed
+    -- by the section whose whole job is to catch it.
+    describe("two clients of the same name", function()
+      local saved_get_clients
+
+      before_each(function()
+        saved_get_clients = vim.lsp.get_clients
+        vim.lsp.get_clients = function()
+          return {
+            { id = 7, name = "lua_ls", offset_encoding = "utf-16", server_capabilities = {} },
+            { id = 9, name = "lua_ls", offset_encoding = "utf-8", server_capabilities = {} },
+          }
+        end
+      end)
+
+      after_each(function()
+        vim.lsp.get_clients = saved_get_clients
+      end)
+
+      it("sees both, and catches the encoding mismatch between them", function()
+        local mod = inspect()
+        mod.setup({ show_workspace = true, show_capabilities = true, show_conflicts = true })
+        local lines, report = mod.capabilities(vim.api.nvim_get_current_buf())
+        local rendered = table.concat(lines, "\n")
+
+        assert.is_false(report.ok, "a mixed offset encoding is not ok\n" .. rendered)
+        assert.is_truthy(rendered:find("Mismatch detected", 1, true), rendered)
+        -- Disambiguated by id, or the two are indistinguishable in the report.
+        assert.is_truthy(rendered:find("lua_ls#7", 1, true), rendered)
+        assert.is_truthy(rendered:find("lua_ls#9", 1, true), rendered)
+        assert.is_truthy(rendered:find("Clients: 2", 1, true), rendered)
+      end)
+
+      -- The disambiguation is not paid for by everyone: one client of a name
+      -- keeps the plain name, so the ordinary report reads as it always did.
+      it("leaves a unique name alone", function()
+        vim.lsp.get_clients = function()
+          return {
+            { id = 7, name = "lua_ls", offset_encoding = "utf-16", server_capabilities = {} },
+          }
+        end
+        local mod = inspect()
+        local lines = mod.capabilities(vim.api.nvim_get_current_buf())
+        local rendered = table.concat(lines, "\n")
+        assert.is_nil(rendered:find("lua_ls#", 1, true), rendered)
+        assert.is_truthy(rendered:find("`lua_ls`", 1, true), rendered)
+      end)
+    end)
+  end)
+
+  -- The semantic-tokens line used to go through `lsp.buf_request_sync`, which
+  -- is buffer-wide: it asks every client on the buffer that supports the
+  -- method and waits for all of them, so one unrelated client that never
+  -- answers makes it return nothing. The line is written about *one* named
+  -- server, so it then reported that server as mute because of a neighbour.
+  --
+  -- Measured against a real `lua_ls`: alone it answered within 8000ms and the
+  -- report said so; with any silent client on the same buffer the identical
+  -- `lua_ls`, asked directly, still answered while this line flipped to
+  -- "no answer". It was also one broadcast per expected server, each blocking
+  -- up to `semantic_tokens_timeout`.
+  describe("startup", function()
+    local saved
+
+    before_each(function()
+      saved = {
+        get_clients = vim.lsp.get_clients,
+        buf_request_sync = vim.lsp.buf_request_sync,
+        start_mod = package.loaded["lsp.usercmds.start"],
+      }
+    end)
+
+    after_each(function()
+      vim.lsp.get_clients = saved.get_clients
+      vim.lsp.buf_request_sync = saved.buf_request_sync
+      package.loaded["lsp.usercmds.start"] = saved.start_mod
+    end)
+
+    it("asks the named client for semantic tokens, not the whole buffer", function()
+      local went_buffer_wide = false
+      ---@diagnostic disable-next-line: duplicate-set-field
+      vim.lsp.buf_request_sync = function()
+        went_buffer_wide = true
+        return nil
+      end
+
+      local asked
+      vim.lsp.get_clients = function()
+        return {
+          {
+            id = 3,
+            name = "fake_ls",
+            server_capabilities = { semanticTokensProvider = {} },
+            request_sync = function(_self, method, _params, _timeout, _bufnr)
+              asked = method
+              return { result = { data = {} } }
+            end,
+          },
+        }
+      end
+      package.loaded["lsp.usercmds.start"] = {
+        get_servers_for_buffer = function()
+          return { "fake_ls" }
+        end,
+      }
+
+      package.loaded["lsp.lspdoctor.health"] = nil
+      local health = require("lsp.lspdoctor.health")
+      health.setup({ semantic_tokens_timeout = 50, show_tools = false })
+
+      local lines = health.check(vim.api.nvim_get_current_buf())
+      local rendered = table.concat(lines, "\n")
+
+      assert.is_false(
+        went_buffer_wide,
+        "the probe broadcast to the buffer instead of asking the server it reports on"
+      )
+      assert.are.equal("textDocument/semanticTokens/full", asked)
+      assert.is_truthy(rendered:find("Semantic tokens: ✅", 1, true), rendered)
+    end)
   end)
 end)

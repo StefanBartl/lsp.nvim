@@ -267,6 +267,12 @@ If clients attached to the same buffer use different `offset_encoding` values
 Mixed encodings cause subtle position and edit errors that look like the server
 misbehaving.
 
+Two clients can share a name — two roots of one server in a monorepo, or the
+same server started twice for different projects. Where that happens the report
+writes them as `name#id` (`lua_ls#1`, `lua_ls#2`) so the two can be told apart;
+a name that is unique on the buffer is printed plain. `formatter_priority` is
+still matched against the server *name*, not the label.
+
 ---
 
 ## API

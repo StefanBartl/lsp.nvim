@@ -176,24 +176,42 @@ local function semantic_tokens_probe(name, bufnr)
   end
 
   local timeout = Opts.semantic_tokens_timeout or 300
-  local ok, responses = pcall(
-    lsp.buf_request_sync,
-    bufnr,
-    "textDocument/semanticTokens/full",
-    { textDocument = lsp.util.make_text_document_params(bufnr) },
-    timeout
-  )
 
-  if not ok or responses == nil then
+  -- `client:request_sync`, not `lsp.buf_request_sync`. The buffer-wide call
+  -- asks *every* client on the buffer that supports the method and waits for
+  -- all of them, so one unrelated client that never answers makes it return
+  -- nothing -- and this line then reports the server it is actually about as
+  -- mute. Measured: `lua_ls` alone answers within 8000ms and the report says
+  -- so; put any silent client on the same buffer and the identical `lua_ls`,
+  -- asked directly, still answers while this line flipped to "no answer".
+  -- Blaming a working server for a neighbour's silence is the one thing a
+  -- diagnostic report must not do.
+  --
+  -- It was also N broadcasts per report, one per expected server, each
+  -- blocking up to `semantic_tokens_timeout`.
+  local ok, response = pcall(function()
+    return client:request_sync(
+      "textDocument/semanticTokens/full",
+      { textDocument = lsp.util.make_text_document_params(bufnr) },
+      timeout,
+      bufnr
+    )
+  end)
+
+  if not ok then
+    -- Kept apart from a timeout: "the request raised" and "the server stayed
+    -- silent" have nothing in common except an empty result.
+    return ("  Semantic tokens: ❌ the request raised: %s"):format(tostring(response))
+  end
+  if type(response) ~= "table" then
     return ("  Semantic tokens: ❌ no answer within %dms"):format(timeout)
   end
-  for _, response in pairs(responses) do
-    if response.result ~= nil then
-      return ("  Semantic tokens: ✅ answered within %dms"):format(timeout)
-    end
-    if response.error ~= nil then
-      return ("  Semantic tokens: ❌ error: %s"):format(tostring(response.error.message))
-    end
+  if response.err ~= nil then
+    local message = type(response.err) == "table" and response.err.message or response.err
+    return ("  Semantic tokens: ❌ error: %s"):format(tostring(message))
+  end
+  if response.result ~= nil then
+    return ("  Semantic tokens: ✅ answered within %dms"):format(timeout)
   end
   return ("  Semantic tokens: ❌ no answer within %dms"):format(timeout)
 end
@@ -242,9 +260,14 @@ function M.check(bufnr)
       lines[#lines + 1] = string.format("  Config: %s", has_config and "✅ Yes" or "❌ No")
       lines[#lines + 1] = string.format("  Attempts: %d", attempts)
 
+      -- Resolved once and reused by the hint below. It goes through
+      -- `vim.lsp.config`'s `__index` resolver and an `exepath`, and it used to
+      -- be run twice per server for the same answer.
+      local exe_found, exe_detail
       if Opts.show_tools ~= false then
-        local found, detail = executable_for(name)
-        lines[#lines + 1] = string.format("  Executable: %s %s", found and "✅" or "❌", detail)
+        exe_found, exe_detail = executable_for(name)
+        lines[#lines + 1] =
+          string.format("  Executable: %s %s", exe_found and "✅" or "❌", exe_detail)
       end
 
       if last_error then
@@ -263,7 +286,7 @@ function M.check(bufnr)
         if not has_config then
           lines[#lines + 1] =
             "  💡 **Action**: Server not configured - check `lsp.config` or registry"
-        elseif Opts.show_tools ~= false and not executable_for(name) then
+        elseif Opts.show_tools ~= false and not exe_found then
           -- Checked before the generic hints: "the binary is not on $PATH" is
           -- both the commonest cause and the only one with a different fix.
           lines[#lines + 1] =
