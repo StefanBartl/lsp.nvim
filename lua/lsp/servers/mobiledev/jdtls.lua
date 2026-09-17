@@ -25,23 +25,41 @@ local function is_java_available()
   return true, nil
 end
 
----Detect project root for Java projects
----@param fname string
----@return string|nil
-local function java_root_dir(fname)
-  local markers = {
-    "gradlew",
-    "build.gradle",
-    "build.gradle.kts",
-    "pom.xml",
-    "settings.gradle",
-    "settings.gradle.kts",
-    ".git",
-  }
-
-  local dir = vim.fs.dirname(fname)
-  return vim.fs.root(dir, markers)
-end
+---@internal
+--- Project markers for a Java project, in priority order.
+---
+--- These used to be wrapped in a `root_dir = function(fname)` -- the
+--- *lspconfig* contract. The native `vim.lsp` pipeline calls
+--- `root_dir(bufnr, on_dir)` instead (see |lsp-root_dir()| and
+--- `lsp_enable_callback()` in `vim/lsp.lua`), so the buffer number arrived
+--- where a filename was expected and `vim.fs.dirname()` raised. Measured by
+--- opening a `.java` buffer with jdtls enabled:
+---
+---     FileType Autocommands for "*": Vim(append):Lua callback:
+---     vim/fs.lua:89: file: expected string, got number
+---     ... jdtls.lua:42: in function 'root_dir'
+---     ... vim/lsp.lua:550: in function 'lsp_enable_callback'
+---
+--- and afterwards `#vim.lsp.get_clients{ name = "jdtls" } == 0`. The raise
+--- happens inside the FileType autocmd, so it aborted `:edit` itself -- every
+--- Java file opened with an error and no language server. Even without the
+--- raise the wrapper could not have worked: the native contract wants
+--- `on_dir(root)` *called*, and a returned string is discarded.
+---
+--- A plain `root_markers` list is what every sibling module here uses and has
+--- the same semantics the wrapper was reaching for -- `vim.fs.root()` walks the
+--- markers in order and takes the first that resolves upward -- with none of
+--- the signature to get wrong.
+---@type string[]
+local java_root_markers = {
+  "gradlew",
+  "build.gradle",
+  "build.gradle.kts",
+  "pom.xml",
+  "settings.gradle",
+  "settings.gradle.kts",
+  ".git",
+}
 
 ---@param shared {capabilities?:table,on_attach?:fun(client,bufnr),on_init?:fun(client,init_result):boolean}|nil
 ---@param opts { enable?: boolean }|nil
@@ -78,7 +96,7 @@ function M.setup(shared, opts)
       workspace_dir,
     },
     filetypes = { "java" },
-    root_dir = java_root_dir,
+    root_markers = java_root_markers,
     capabilities = shared.capabilities,
     on_attach = shared.on_attach,
     on_init = shared.on_init,

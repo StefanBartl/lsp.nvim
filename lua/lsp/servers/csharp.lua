@@ -51,6 +51,47 @@ local function find_omnisharp()
   return nil
 end
 
+---@internal
+--- Resolve a C# project root, to the native `root_dir` contract.
+---
+--- This replaces `root_markers = { ".git", ".sln", ".csproj" }`. Those two
+--- dotted entries look like extensions but `root_markers` entries are *file
+--- names*: `vim.fs.root()` hands each one to `vim.fs.find()`, which stats
+--- `<dir>/<name>` literally (`vim/fs.lua`, the non-function branch of
+--- `test`). Measured against a tree holding `App.sln` and `App.csproj`:
+---
+---     vim.fs.root(".../proj/src/Q.cs", { "App.sln" })         -> .../proj
+---     vim.fs.root(".../proj/src/Q.cs", { ".sln", ".csproj" }) -> nil
+---     vim.fs.root(".../proj/src/Q.cs", { "*.sln", "*.csproj" })-> nil
+---
+--- So a C# project root only ever came from `.git`, and a solution checked out
+--- inside a larger repository got that repository as its root. Globbing is not
+--- available through `root_markers` at all -- `vim.fs.find` only takes a
+--- predicate for that -- which is why this is a `root_dir` function.
+---
+--- `on_dir` is called, never returned: the native pipeline passes a callback
+--- and discards the return value (|lsp-root_dir()|). Not calling it is how a
+--- config declines to start, which is what an unnamed buffer gets.
+---@param bufnr integer
+---@param on_dir fun(root_dir?: string)
+---@return nil
+local function csharp_root_dir(bufnr, on_dir)
+  local fname = vim.api.nvim_buf_get_name(bufnr)
+  if fname == "" then
+    return
+  end
+
+  local dir = vim.fs.dirname(fname)
+  local found = vim.fs.find(function(name)
+    return name:match("%.sln$") ~= nil or name:match("%.csproj$") ~= nil
+  end, { upward = true, path = dir, limit = 1 })
+
+  local root = found[1] and vim.fs.dirname(found[1]) or vim.fs.root(dir, { ".git" })
+  if root then
+    on_dir(root)
+  end
+end
+
 ---@param shared {capabilities?:table,on_attach?:fun(client,bufnr),on_init?:fun(client,init_result):boolean}|nil
 ---@param opts { enable?: boolean }|nil
 ---@return nil
@@ -75,7 +116,7 @@ function M.setup(shared, opts)
         on_init = shared.on_init,
         enable_roslyn_analyzers = true,
         organize_imports_on_format = true,
-        root_markers = { ".git", ".sln", ".csproj" },
+        root_dir = csharp_root_dir,
       })
     end)
 

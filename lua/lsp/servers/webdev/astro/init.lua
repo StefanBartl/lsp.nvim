@@ -17,8 +17,17 @@ function M.setup(shared, opts)
     return
   end
 
-  -- Extend capabilities with Astro-specific features.
-  local caps = shared.capabilities or vim.lsp.protocol.make_client_capabilities()
+  -- Extend capabilities with Astro-specific features -- on a copy.
+  --
+  -- `shared.capabilities` is the one table `lsp.init` builds once and hands to
+  -- every server module, so writing into it here is not an Astro decision, it
+  -- is a decision for whichever servers happen to be set up afterwards.
+  -- Measured with `shared.capabilities = { textDocument = {} }`: after
+  -- `astro.setup(shared)` the caller's own table came back carrying
+  -- `textDocument.completion.completionItem.snippetSupport = true`, and
+  -- `rawequal(shared.capabilities, vim.lsp.config["astro"].capabilities)` was
+  -- true -- so Astro also had no capability set of its own to extend.
+  local caps = vim.deepcopy(shared.capabilities or vim.lsp.protocol.make_client_capabilities())
 
   -- Auto-close tags support
   if not caps.textDocument then

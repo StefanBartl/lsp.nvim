@@ -37,7 +37,14 @@ function M.setup(shared, opts)
 
   vim.lsp.config("sourcekit", {
     cmd = { "sourcekit-lsp" },
-    filetypes = { "swift", "objective-c", "objective-cpp" },
+    -- `objc`/`objcpp`, not `objective-c`/`objective-cpp`: `filetypes` is
+    -- matched against `vim.bo.filetype` (`can_start()` in `vim/lsp.lua` does a
+    -- `tbl_contains`), and Neovim has no filetype by either hyphenated name --
+    -- `runtime/lua/vim/filetype/detect.lua` returns `objc` and `objcpp`, and
+    -- those are the names the syntax files carry too. `lsp.servers.clangd` in
+    -- this same plugin already spells them that way. As written, sourcekit
+    -- covered Swift only and silently never attached to an Objective-C buffer.
+    filetypes = { "swift", "objc", "objcpp" },
     root_markers = {
       "Package.swift",
       ".git",

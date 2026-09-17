@@ -74,20 +74,25 @@ function M.setup(shared, opts)
         client.server_capabilities.documentFormattingProvider = false
       end
     end,
-    on_init = function(client, init_result)
-      -- Register handler for workspace/diagnostic/refresh (html LSP sends this)
-      if client.server_capabilities then
-        vim.lsp.handlers["workspace/diagnostic/refresh"] = function()
-          -- No-op: ignore this request
-          return vim.NIL
-        end
-      end
-
-      if type(shared.on_init) == "function" then
-        return shared.on_init(client, init_result)
-      end
-      return true
-    end,
+    -- `workspace/diagnostic/refresh` is answered for *this client only*.
+    --
+    -- This used to be an assignment to `vim.lsp.handlers[...]` from `on_init`,
+    -- which is the global table every client falls back to
+    -- (`Client:_resolve_handler` = `self.handlers[m] or vim.lsp.handlers[m]`).
+    -- Neovim ships a real default for that method -- measured on 0.12.2:
+    -- `type(vim.lsp.handlers["workspace/diagnostic/refresh"]) == "function"`
+    -- before html's `on_init`, a *different* function after it -- so the first
+    -- html buffer of a session silently replaced pull-diagnostics refresh with
+    -- a no-op for ts_ls, gopls and everything else attached at the time.
+    --
+    -- A per-config `handlers` entry is checked before the global one, so the
+    -- same suppression now costs exactly the client that asked for it.
+    handlers = {
+      ["workspace/diagnostic/refresh"] = function()
+        return vim.NIL
+      end,
+    },
+    on_init = shared.on_init,
     settings = {
       html = {
         suggest = { html5 = true },
