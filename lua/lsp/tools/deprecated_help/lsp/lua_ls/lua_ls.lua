@@ -21,6 +21,17 @@ local M = {}
 
 local defaults = require("lsp.tools.deprecated_help.defaults")
 
+--- The most recently detected deprecated symbol, per buffer.
+---
+--- `defaults.keymap` is documented as "open help for last detected symbol in
+--- the current buffer", and the mapping used to carry the symbol in its own
+--- closure -- which only produced that behaviour because the "set once" guard
+--- was broken and re-set the mapping every time. With the guard fixed the
+--- closure would have frozen on the first symbol, so the symbol lives here
+--- instead and the mapping reads it at press time.
+---@type table<number, string>
+M.last_symbol = {}
+
 -- Show help for symbol.
 -- This uses Vim's :help command; it will error silently if no help exists.
 ---@param bufnr number
@@ -92,17 +103,17 @@ local function on_publish(_err, result, ctx, _config)
         )
         notify.warn(notify_msg)
 
-        -- set buffer-local keymap to open help for this symbol
-        -- mapping will call our module function with the symbol captured by a closure
+        -- set buffer-local keymap to open help for the newest symbol
+        M.last_symbol[bufnr] = symbol
         local lhs = defaults.keymap
         local rhs_fn = function()
-          M.show_help(bufnr, symbol)
+          M.show_help(bufnr, M.last_symbol[bufnr])
         end
         helper.set_buf_keymap_once(
           bufnr,
           lhs,
           rhs_fn,
-          { desc = "Open help for deprecated symbol: " .. symbol }
+          { desc = "Open help for the last deprecated symbol in this buffer" }
         )
       end
     end
