@@ -323,6 +323,68 @@ local function normalize_table(cfg, key)
 end
 
 ---@internal
+--- Force a numeric sub-option back to its default when it is not a usable
+--- number, and warn with the layer that supplied it.
+---
+--- Three options reached their consumers unchecked -- `lightbulb.priority`,
+--- `formatter.timeout_ms` and `lspdoctor.list_limit`. Measured, each survived
+--- `setup()` intact with **zero** warnings, while every option that does go
+--- through a check here degrades *and* names its layer. Nothing crashed,
+--- because the consumers defend themselves: `core/lightbulb.lua` tests
+--- `type(...) == "number" and ... > 0` and falls back to 20, and
+--- `lspdoctor/health.lua` reads `Opts.list_limit or 10`. But a value the config
+--- reports and the code ignores is worse than either alone -- `:Lsp status` and
+--- `:checkhealth lsp` showed `priority "nope"` while the lightbulb ran at 20,
+--- so the one place a user looks to find out what is in effect was the one
+--- place that disagreed with it. Raw, the values do raise:
+--- `nvim_buf_set_extmark` answers `Invalid 'priority': Expected Lua number` and
+--- `vim.list_slice(t, 1, "big")` answers `'for' limit must be a number`.
+---
+--- The three numeric options that already had a check keep their hand-written
+--- blocks below: their wording is asserted by specs, and converting them is a
+--- tidy-up, not a fix. This produces the same two message shapes so the family
+--- still reads as one.
+---@param cfg LspNvim.Config
+---@param key string # Top-level key, e.g. `"lightbulb"`.
+---@param field string # Sub-field, e.g. `"priority"`.
+---@param allow_zero boolean # Whether 0 is a legitimate value.
+---@return nil
+local function normalize_number(cfg, key, field, allow_zero)
+  local opts = cfg[key]
+  if type(opts) ~= "table" then
+    return -- `normalize_table` already put a default here and warned.
+  end
+
+  local value = opts[field]
+  local ok = type(value) == "number" and (allow_zero and value >= 0 or value > 0)
+  if ok then
+    opts[field] = math.floor(value)
+    return
+  end
+
+  -- Same trap `normalize_table` documents: indexing DEFAULTS with a variable
+  -- yields the union of every field's type, so the claim goes on the value.
+  local defaults = DEFAULTS[key]
+  ---@cast defaults table
+  local fallback = defaults[field]
+  -- nil is the option being absent, which is what a default is for -- only a
+  -- value the user actually supplied is worth a warning.
+  if value ~= nil then
+    warn(
+      ("%s.%s: expected a %s number, using %d"):format(
+        key,
+        field,
+        allow_zero and "non-negative" or "positive",
+        fallback
+      ),
+      key,
+      field
+    )
+  end
+  opts[field] = fallback
+end
+
+---@internal
 --- Force a `filetype -> boolean` override map into shape.
 ---
 --- This map is the one config value a typo turns into a silent no-op: a stray
@@ -462,6 +524,20 @@ function M.setup(user_opts)
     normalize_table(cfg, key)
   end
   normalize_workspace(cfg)
+
+  -- After the loop, because each of these reads a field off a table the loop
+  -- is what guarantees is a table. See `normalize_number` for what reaching
+  -- their consumers unchecked cost.
+  normalize_number(cfg, "lightbulb", "priority", false)
+  normalize_number(cfg, "formatter", "timeout_ms", false)
+  normalize_number(cfg, "lspdoctor", "list_limit", false)
+  -- These three came from driving the check off `DEFAULTS` instead of off a
+  -- list written by hand. The hand-written list had the first three; the
+  -- derived one found six. That is the same miss as `menu` in the switch audit,
+  -- and the reason `config_spec.lua` asserts the set rather than spelling it.
+  normalize_number(cfg, "lspdoctor", "probe_timeout", false)
+  normalize_number(cfg, "lspdoctor", "scratch_threshold", false)
+  normalize_number(cfg, "lspdoctor", "semantic_tokens_timeout", false)
 
   -- After the loop above, not before it. `rename` was the one top-level option
   -- of seventeen that raised instead of degrading: `rename = false` reached
