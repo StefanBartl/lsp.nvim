@@ -86,13 +86,24 @@ function M.enable()
   -- No `[severity]` here: these two step through the quickfix list itself
   -- (`:cnext`/`:cprevious`), not through diagnostics, and the list has already
   -- been filtered by whatever `:DiagQF` put in it.
+  --
+  -- No `bang` either. `ACTIONS.md` documented `:DiagNextQF!` as "forces
+  -- navigation in the workspace even when the loclist is active" and
+  -- `:DiagNextLoc!` as its buffer-local counterpart. Measured: the two QF
+  -- commands declared `bang = true`, so the bang parsed and then nothing read
+  -- `ctx.bang` -- it changed exactly nothing; the two Loc commands never
+  -- declared it, so `:DiagNextLoc!` failed with E477. There is no "active
+  -- list" mode in this module to force out of: `next_loc` always steps
+  -- diagnostics and `next_qf` always steps the quickfix list. A modifier that
+  -- is half rejected and half ignored is worse than no modifier, so the
+  -- declaration is gone and `ACTIONS.md` no longer promises it.
   usercmd.create("DiagNextQF", function()
     quickfix.next_qf()
-  end, { bang = true, desc = "Jump to the next quickfix entry" })
+  end, { desc = "Jump to the next quickfix entry" })
 
   usercmd.create("DiagPrevQF", function()
     quickfix.prev_qf()
-  end, { bang = true, desc = "Jump to the previous quickfix entry" })
+  end, { desc = "Jump to the previous quickfix entry" })
 end
 
 return M

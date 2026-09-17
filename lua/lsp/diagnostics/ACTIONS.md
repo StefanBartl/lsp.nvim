@@ -23,12 +23,6 @@
 * `:DiagPrevQF`
   Jumps to the previous entry in the quickfix list.
 
-* `:DiagNextQF!`
-  Forces navigation in the workspace (quickfix), even when the loclist is active.
-
-* `:DiagPrevQF!`
-  Forces navigation in the workspace (quickfix), even when the loclist is active.
-
 ### Loclist (buffer-local)
 
 * `:DiagLoc [severity]`
@@ -41,11 +35,12 @@
 * `:DiagPrevLoc [severity]`
   Jumps to the previous diagnostic in the current buffer.
 
-* `:DiagNextLoc! [severity]`
-  Forces buffer-local navigation (loclist), independently of the quickfix list.
-
-* `:DiagPrevLoc! [severity]`
-  Forces buffer-local navigation (loclist), independently of the quickfix list.
+None of these commands takes a `!`. This file used to list `:DiagNextQF!`,
+`:DiagPrevQF!`, `:DiagNextLoc!` and `:DiagPrevLoc!` as ways to force one list
+or the other; there is no mode to force. `:DiagNextLoc` always steps the
+current buffer's diagnostics and `:DiagNextQF` always steps the quickfix list,
+whatever else is open. The two QF commands did accept the bang and then ignored
+it; the two Loc commands answered `E477: No ! allowed`.
 
 Severity arguments (optional, the same everywhere):
 
