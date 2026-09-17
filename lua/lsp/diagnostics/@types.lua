@@ -1,62 +1,37 @@
 ---@meta
 ---@module 'lsp.diagnostics.@types'
-
----@class Lsp.Diagnostics.QfOpts
----@field open? boolean            # open quickfix/loclist window immediately
----@field severity? integer|string # numeric severity (vim.diagnostic.severity.*) or string ("error","warn","info","hint","all")
----@field bufnr? integer           # target buffer; nil = all buffers (workspace) for quickfix, or current buffer for loclist
----@field namespace? integer       # namespace filter; nil = all namespaces
----@field win_id? integer          # window id for loclist; defaults to 0 (current window)
-
----@class Lsp.Diagnostics.NavigationOpts
----@field wrap? boolean            # wrap at buffer ends (true = cycle, false = stop)
----@field float? boolean|table     # float window options when jumping to diagnostics
----@field severity? integer        # numeric severity
-
----@class Lsp.Diagnostics.SeverityMap
----@field error integer
----@field err integer
----@field e integer
----@field warn integer
----@field warning integer
----@field w integer
----@field info integer
----@field i integer
----@field hint integer
----@field h integer
-
----@class Lsp.Diagnostics.Quickfix
----@field to_qf fun(opts: Lsp.Diagnostics.QfOpts): nil
----@field qf_next fun(): nil
----@field qf_prev fun(): nil
-
----@class Lsp.Diagnostics.Loclist
----@field to_loc fun(opts: Lsp.Diagnostics.QfOpts): nil
----@field loc_next fun(): nil
----@field loc_prev fun(): nil
-
----@class Lsp.Diagnostics.Navigation
----@field goto_next fun(severity: integer?, opts: Lsp.Diagnostics.NavigationOpts?): nil
----@field goto_prev fun(severity: integer?, opts: Lsp.Diagnostics.NavigationOpts?): nil
----@field workspace_next fun(severity: integer?): nil
----@field workspace_prev fun(severity: integer?): nil
----@field parse_severity fun(s: string|integer?): integer?
-
----@class Lsp.Diagnostics.Commands
----@field setup fun(): nil
-
----@class Lsp.Diagnostics.Keymaps
----@field setup fun(map: fun()?): nil
-
----@class Lsp.Diagnostics
----@field setup fun(opts: table?): nil
+---
+--- This file used to declare nine classes. Measured against what the directory
+--- actually exports:
+---
+---   lsp.diagnostics           setup
+---   lsp.diagnostics.commands  enable
+---   lsp.diagnostics.quickfix  to_qf, next_qf, prev_qf
+---   lsp.diagnostics.loclist   to_loc, next_loc, prev_loc
+---   lsp.diagnostics.util      to_severity, parse_severity, complete_severity,
+---                             SEVERITY_TOKENS
+---
+--- `Lsp.Diagnostics.Quickfix` declared `qf_next`/`qf_prev`, `Lsp.Diagnostics.
+--- Loclist` declared `loc_next`/`loc_prev`, and `Lsp.Diagnostics.Commands`
+--- declared `setup` -- none of those names exist, and the first two *redefined*
+--- classes that `quickfix.lua` and `loclist.lua` already declare on their own
+--- `M`, so the annotation contradicted the module it described.
+--- `Lsp.Diagnostics.Navigation` and `Lsp.Diagnostics.Keymaps` described
+--- `lsp/diagnostics/navigation.lua` and `keymaps.lua`; neither module exists
+--- (the keymaps moved to `config/KEYMAPS.lua` in migration phase 3).
+--- `Lsp.Diagnostics.SeverityMap` described a lookup table -- `util.to_severity`
+--- is an if-chain, deliberately, so that `error`/`err`/`e` cannot resolve in
+--- whichever order `pairs` feels like. `Lsp.Diagnostics.QfOpts` was a duplicate
+--- of `ListOpts` under an older name and nothing referenced it.
+---
+--- What is left is the one type the code actually uses.
 
 --- Shared option type for diagnostics list builders.
 ---@class Lsp.Diagnostics.ListOpts
 ---@field open? boolean            # Open the list window immediately.
 ---@field severity? integer|string # Numeric severity or string ("error","warn","info","hint","all").
----@field bufnr? integer           # Target buffer; nil = workspace (quickfix) or current buffer (loclist).
+---@field bufnr? integer           # Quickfix: target buffer, nil = the whole workspace. Ignored by `to_loc` -- a location list takes its buffer from its window, see `win_id`.
 ---@field namespace? integer       # Diagnostic namespace; nil = all namespaces.
----@field win_id? integer          # Window id for loclist; defaults to 0 (current window).
+---@field win_id? integer          # Loclist: window whose diagnostics to list; nil/0 = the current one, resolved to a real window when the cursor sits in a quickfix or location-list window.
 
 return {}

@@ -51,6 +51,34 @@ function M.build(opts)
     return util.any_client_can_format(bufnr)
   end
 
+  --- The single client the LSP fallback formats with, or nil.
+  ---
+  --- `vim.lsp.buf.format` with no `id`/`filter` requests *every* attached
+  --- client that advertises `textDocument/formatting`, one after another, and
+  --- gives each one the full `timeout_ms`. Measured with three formatting-
+  --- capable fake clients, two of which never answer: `timeout_ms = 1000`,
+  --- `format()` took 2083 ms. `@types` promises `timeout_ms` is what gets
+  --- "passed to the LSP fallback", i.e. a bound on the save; per client it is
+  --- not one. The last client to answer also silently overwrites what the
+  --- previous one wrote, which is not what "fallback" (singular) means -- it
+  --- is what Conform's own `lsp_fallback` does not do either.
+  ---
+  --- Lowest client id = the one attached first, so the choice is stable across
+  --- saves rather than whatever order `get_clients` happens to return.
+  ---@param bufnr integer
+  ---@return vim.lsp.Client|nil
+  local function lsp_format_client(bufnr)
+    local chosen = nil
+    for _, client in
+      ipairs(vim.lsp.get_clients({ bufnr = bufnr, method = "textDocument/formatting" }))
+    do
+      if chosen == nil or client.id < chosen.id then
+        chosen = client
+      end
+    end
+    return chosen
+  end
+
   -- Collect per-window views for all windows currently showing bufnr.
   ---@param bufnr integer
   ---@return table<integer, table>
@@ -123,10 +151,12 @@ function M.build(opts)
       -- Fall through to LSP if Conform failed
     end
 
-    -- LSP fallback (synchronous) with view restore
-    if can_lsp_format(bufnr) then
+    -- LSP fallback (synchronous, one client) with view restore
+    local client = can_lsp_format(bufnr) and lsp_format_client(bufnr) or nil
+    if client then
       local ok_lsp = pcall(vim.lsp.buf.format, {
         bufnr = bufnr,
+        id = client.id, -- one request, so timeout_ms really bounds the save
         async = false, -- ensure edits are applied before restoring
         timeout_ms = opts.timeout_ms,
       })

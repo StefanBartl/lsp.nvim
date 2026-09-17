@@ -1,7 +1,11 @@
 ---@module 'lsp.formatter.conform'
 --- Conform setup and utilities.
 --- Adds a helper to format while preserving all window views that display the buffer.
---- Linux/macOS focused; works when Conform is available.
+---
+--- This is the file that *does* carry the OS-specific bits -- the PATH
+--- separator, the Mason bin path, the `.cmd` suffix -- and it branches on all
+--- three. The header used to say "Linux/macOS focused", which was already
+--- untrue of the code below it on the day it was written.
 
 local notify = require("lib.nvim.notify").create("[lsp.formatter.conform]")
 local sys_env = require("lib.nvim.system.env")
@@ -92,6 +96,7 @@ end
 
 -- Public helper: Format with Conform while preserving all window views.
 -- Synchronous formatting is used to avoid race conditions with subsequent write.
+-- `bufnr` and `async` are not negotiable: `opts` cannot override them, see below.
 ---@param bufnr integer|nil
 ---@param opts table|nil
 ---@return boolean
@@ -105,16 +110,22 @@ function M.format_preserve_view(bufnr, opts)
     return false
   end
   local views = collect_views(bufnr)
-  -- Force synchronous run; after edits, restore views deterministically.
-  local ok = pcall(
-    conform.format,
-    vim.tbl_extend("force", {
-      bufnr = bufnr,
-      async = false, -- critical for deterministic restore
-      timeout_ms = 1200,
-      lsp_fallback = true,
-    }, opts or {})
-  )
+  -- "Force synchronous" used to be a comment on a `tbl_extend("force", defaults,
+  -- opts)` whose *caller* side won, so `async = true` passed in by a caller
+  -- overrode the very thing this helper exists to guarantee. Measured with a
+  -- fake Conform that edits the buffer from `vim.schedule` (what a real async
+  -- formatter does): with `{ async = true }`, save 1 wrote the unformatted
+  -- "save one" to disk and save 2 wrote the formatted text -- the edit landed
+  -- one save late, and `restore_views` below ran before the edit existed.
+  -- So: take the caller's options first, then nail down the two fields that
+  -- are this function's contract rather than a preference.
+  local call_opts = vim.tbl_extend("force", {
+    timeout_ms = 1200,
+    lsp_fallback = true,
+  }, opts or {})
+  call_opts.bufnr = bufnr
+  call_opts.async = false -- critical for deterministic restore
+  local ok = pcall(conform.format, call_opts)
   restore_views(views)
   return ok == true
 end
