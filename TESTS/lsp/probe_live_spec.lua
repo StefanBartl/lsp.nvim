@@ -83,22 +83,24 @@ describe("lsp.lspdoctor.probe (live)", function()
       seed = { file = "probe_seed.ts", lines = { "export const probe = 1" } },
       root = {},
       -- ts_ls resolves "typescript" from root_dir's own node_modules, which
-      -- this bare temp directory does not have. CI's `npm install -g
-      -- typescript` is invisible to that resolution (NODE_PATH does not
-      -- help either -- measured, not assumed: ts_ls does its own lookup,
-      -- not Node's require()), so `tsserver.path` -- the override
-      -- ts_ls's own initialize error names -- is pointed at wherever `npm
-      -- root -g` says the global install actually is.
-      init_options = function()
+      -- this bare temp directory does not have. Neither NODE_PATH nor
+      -- init_options.tsserver.path changed the outcome -- both measured
+      -- against the real failure, not assumed -- so this gives it the one
+      -- thing every resolution strategy agrees on: a real
+      -- node_modules/typescript, symlinked from wherever `npm root -g`
+      -- says CI's `npm install -g typescript` actually put it.
+      ---@param dir string
+      prepare = function(dir)
         local out = vim.fn.system({ "npm", "root", "-g" })
         if vim.v.shell_error ~= 0 then
-          return nil
+          return
         end
-        local g_root = vim.trim(out)
-        if g_root == "" then
-          return nil
+        local target = vim.trim(out) .. "/typescript"
+        if vim.fn.isdirectory(target) ~= 1 then
+          return
         end
-        return { tsserver = { path = g_root .. "/typescript/lib" } }
+        vim.fn.mkdir(dir .. "/node_modules", "p")
+        vim.uv.fs_symlink(target, dir .. "/node_modules/typescript", { dir = true })
       end,
     },
     {
@@ -251,6 +253,9 @@ describe("lsp.lspdoctor.probe (live)", function()
       local path = vim.fs.joinpath(dir, file)
       assert.are.equal(0, vim.fn.writefile(lines, path), "could not write " .. path)
     end
+    if type(candidate.prepare) == "function" then
+      candidate.prepare(dir)
+    end
 
     -- The seed file is *valid*. Its job is to give the server a document to
     -- attach to; the broken content is the probe's to supply, and seeding it
@@ -262,14 +267,10 @@ describe("lsp.lspdoctor.probe (live)", function()
     seed_buf = bufnr
     vim.api.nvim_set_option_value("filetype", candidate.filetype, { buf = bufnr })
 
-    local init_options = type(candidate.init_options) == "function" and candidate.init_options()
-      or candidate.init_options
-
     client_id = vim.lsp.start({
       name = candidate.name,
       cmd = cmd,
       root_dir = dir,
-      init_options = init_options,
     }, { bufnr = bufnr })
     assert.is_truthy(client_id, ("%s could not be started from %s"):format(candidate.name, cmd[1]))
 
