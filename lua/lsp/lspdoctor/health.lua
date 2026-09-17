@@ -36,10 +36,10 @@ local lsp = vim.lsp
 --- Options handed down by `lsp.lspdoctor.setup()`.
 ---
 --- This used to assign to a bare `Opts`, i.e. to a global.
----@type table
+---@type Lsp.Doctor.Options
 local Opts = {}
 
----@param opts table
+---@param opts Lsp.Doctor.Options
 ---@return nil
 function M.setup(opts)
   Opts = opts or {}
@@ -200,7 +200,7 @@ end
 
 --- Perform health check
 ---@param bufnr integer
----@return string[] lines, table results
+---@return string[] lines, Lsp.Doctor.StartupEntry[] results
 function M.check(bufnr)
   local lines = {}
   local results = {}

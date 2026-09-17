@@ -16,9 +16,10 @@ local api = vim.api
 local lsp = vim.lsp
 local diag = vim.diagnostic
 
+---@type Lsp.Doctor.Options
 local Opts = {}
 
----@param opts table
+---@param opts Lsp.Doctor.Options
 function M.setup(opts)
   Opts = opts or {}
 end
@@ -225,7 +226,7 @@ end
 
 ---@param mode '"buffer"'|'"capabilities"'
 ---@param bufnr integer
----@return string[] lines, table report
+---@return string[] lines, Lsp.Doctor.InspectReport report
 local function generate_report(mode, bufnr)
   local lines = {}
   local report = { mode = mode, ok = true }
@@ -391,13 +392,13 @@ local function generate_report(mode, bufnr)
 end
 
 ---@param bufnr integer
----@return string[] lines, table report
+---@return string[] lines, Lsp.Doctor.InspectReport report
 function M.buffer(bufnr)
   return generate_report("buffer", bufnr)
 end
 
 ---@param bufnr integer
----@return string[] lines, table report
+---@return string[] lines, Lsp.Doctor.InspectReport report
 function M.capabilities(bufnr)
   return generate_report("capabilities", bufnr)
 end

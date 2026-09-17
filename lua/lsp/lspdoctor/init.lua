@@ -201,7 +201,7 @@ end
 ---Why a server is, or is not, running for this buffer.
 ---@param bufnr integer|nil
 ---@param use_scratch boolean|nil
----@return table results
+---@return Lsp.Doctor.StartupEntry[] results
 function M.startup(bufnr, use_scratch)
   bufnr = bufnr or 0
   local lines, results = health.check(bufnr)
@@ -212,7 +212,7 @@ end
 ---Where the filetype to server resolution chain breaks.
 ---@param bufnr integer|nil
 ---@param use_scratch boolean|nil
----@return table info
+---@return Lsp.Doctor.ResolveInfo info
 function M.resolve(bufnr, use_scratch)
   bufnr = bufnr or 0
   local lines, info = debug.info(bufnr)
@@ -223,7 +223,7 @@ end
 ---What is going on in this buffer right now.
 ---@param bufnr integer|nil
 ---@param use_scratch boolean|nil
----@return table report
+---@return Lsp.Doctor.InspectReport report
 function M.buffer(bufnr, use_scratch)
   bufnr = bufnr or 0
   local lines, report = inspect.buffer(bufnr)
@@ -234,7 +234,7 @@ end
 ---What the servers attached here can actually do, plus their workspaces.
 ---@param bufnr integer|nil
 ---@param use_scratch boolean|nil
----@return table report
+---@return Lsp.Doctor.InspectReport report
 function M.capabilities(bufnr, use_scratch)
   bufnr = bufnr or 0
   local lines, report = inspect.capabilities(bufnr)
@@ -249,7 +249,7 @@ end
 ---up to `probe_timeout` for something to come back. See `lsp.lspdoctor.probe`.
 ---@param bufnr integer|nil
 ---@param use_scratch boolean|nil
----@return table report
+---@return Lsp.Doctor.ProbeReport report
 function M.probe(bufnr, use_scratch)
   bufnr = bufnr or 0
   local lines, report = probe.run(bufnr)
@@ -274,7 +274,7 @@ M.MODES = { "startup", "resolve", "buffer", "capabilities", "probe", "all" }
 ---stay instant and harmless.
 ---@param bufnr integer|nil
 ---@param use_scratch boolean|nil
----@return table combined
+---@return Lsp.Doctor.CombinedReport combined
 function M.all(bufnr, use_scratch)
   bufnr = bufnr or 0
 
