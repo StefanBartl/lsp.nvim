@@ -223,12 +223,16 @@ end)
 -- ===========================================================================
 
 describe("lsp.languages.app.dart", function()
+  local starting_cwd
+
   before_each(function()
+    starting_cwd = vim.fn.getcwd()
     unload({ "lsp.languages.app.dart" })
   end)
 
   after_each(function()
     pcall(vim.api.nvim_del_augroup_by_name, "LangDart")
+    vim.fn.chdir(starting_cwd)
   end)
 
   ---@param calls table[]
@@ -239,6 +243,25 @@ describe("lsp.languages.app.dart", function()
       calls[#calls + 1] = { cmd = cmd, opts = opts }
       return 1
     end
+  end
+
+  --- A Flutter-shaped project (a `pubspec.yaml`) in one temp directory, and
+  --- Neovim's own cwd left in a *different*, unrelated one -- the ordinary
+  --- shape of "opened a file from a picker without `autochdir`".
+  ---@return string project_dir, integer bufnr
+  local function flutter_project_buffer()
+    local project = vim.fs.normalize(vim.fn.tempname())
+    vim.fn.mkdir(project .. "/lib", "p")
+    vim.fn.writefile({ "name: my_app" }, project .. "/pubspec.yaml")
+    vim.fn.writefile({ "void main() {}" }, project .. "/lib/main.dart")
+
+    local unrelated = vim.fs.normalize(vim.fn.tempname())
+    vim.fn.mkdir(unrelated, "p")
+    vim.fn.chdir(unrelated)
+
+    local bufnr = vim.fn.bufadd(project .. "/lib/main.dart")
+    vim.fn.bufload(bufnr)
+    return project, bufnr
   end
 
   it("still sets the 2-space Dart indent on FileType", function()
@@ -293,6 +316,65 @@ describe("lsp.languages.app.dart", function()
 
     vim.fn.jobstart = orig_jobstart
     assert.are.equal(1, #calls, "flutter run was not launched as a job")
+  end)
+
+  -- `jobstart()`'s own docs: "cwd: (string, default=|current-directory|)" --
+  -- Neovim's *global* cwd, not the directory of the buffer that triggered the
+  -- keybinding. Nothing here keeps those in sync, so a `.dart` file opened
+  -- from anywhere else launched `flutter run` whichever directory Neovim
+  -- happened to be sitting in -- at best "No pubspec.yaml file found", at
+  -- worst a *different* Flutter project that happens to have one.
+  it("runs from the Dart project's own root, not Neovim's cwd", function()
+    local orig_jobstart = vim.fn.jobstart
+    local calls = {}
+    stub_jobstart(calls)
+
+    local project, bufnr = flutter_project_buffer()
+    vim.api.nvim_set_current_buf(bufnr)
+    require("lsp.languages.app.dart")._run_or_focus()
+
+    vim.fn.jobstart = orig_jobstart
+    assert.are.equal(1, #calls)
+    assert.are.equal(project, calls[1].opts.cwd)
+    assert.are_not.equal(
+      vim.fn.getcwd(),
+      calls[1].opts.cwd,
+      "resolved to Neovim's cwd instead of the project's"
+    )
+  end)
+
+  it("falls back to the file's own directory when no project marker exists", function()
+    local orig_jobstart = vim.fn.jobstart
+    local calls = {}
+    stub_jobstart(calls)
+
+    local lone_dir = vim.fs.normalize(vim.fn.tempname())
+    vim.fn.mkdir(lone_dir, "p")
+    vim.fn.writefile({ "void main() {}" }, lone_dir .. "/scratch.dart")
+    local bufnr = vim.fn.bufadd(lone_dir .. "/scratch.dart")
+    vim.fn.bufload(bufnr)
+    vim.api.nvim_set_current_buf(bufnr)
+
+    require("lsp.languages.app.dart")._run_or_focus()
+
+    vim.fn.jobstart = orig_jobstart
+    assert.are.equal(lone_dir, calls[1].opts.cwd)
+  end)
+
+  it("falls back to getcwd() rather than raising on an unnamed buffer", function()
+    local orig_jobstart = vim.fn.jobstart
+    local calls = {}
+    stub_jobstart(calls)
+
+    local scratch = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_set_current_buf(scratch)
+
+    assert.has_no.errors(function()
+      require("lsp.languages.app.dart")._run_or_focus()
+    end)
+
+    vim.fn.jobstart = orig_jobstart
+    assert.are.equal(vim.fn.getcwd(), calls[1].opts.cwd)
   end)
 
   it("focuses the running instance instead of launching a second one", function()
