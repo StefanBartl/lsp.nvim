@@ -24,7 +24,12 @@ function M.setup(shared, opts)
         shared.on_attach(client, bufnr)
       end
 
-      -- Semantic Highlighting aktivieren
+      -- Enable semantic highlighting: `wat_server` does not advertise the
+      -- capability itself, and setting it here -- before Neovim's own
+      -- scheduled capability registration runs after `on_attach` -- is the
+      -- documented place to opt a client into one it never declared
+      -- (`client.lua`'s own comment on that scheduling: "give the above
+      -- on_attach ... callbacks the ability to schedule wrap the opt-out").
       if client.server_capabilities then
         client.server_capabilities.semanticTokensProvider = {
           full = true,
