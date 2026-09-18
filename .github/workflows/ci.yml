@@ -39,7 +39,7 @@ jobs:
     # dependency of the plugin itself. ui.nvim is a soft one (lspdoctor, the
     # root/workspace pickers, ...) that TESTS/lsp/pack_spec.lua exercises.
     name: test (${{ matrix.os }})
-    runs-on: ${{{{ matrix.os }}}}
+    runs-on: ${{ matrix.os }}
     strategy:
       # One platform failing must not cancel the others: which of the three
       # broke is the whole information content of this job.
