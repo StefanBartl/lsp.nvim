@@ -72,11 +72,22 @@ describe("lsp.servers (the modules without their own spec)", function()
   end
 
   --- A throwaway directory tree, plus a loaded buffer on one file in it.
+  ---
+  --- `root` is returned in the spelling the *operating system* reports for
+  --- it, which is the one a resolved root will carry: `vim.fs.root(bufnr,
+  --- ...)` walks up from the buffer's name, and Neovim canonicalizes a path
+  --- on the way into a buffer name. On macOS `$TMPDIR` sits under the `/var`
+  --- -> `/private/var` symlink, so the resolver *correctly* answers
+  --- `/private/var/...` while the raw `tempname()` still reads `/var/...` --
+  --- two spellings of one directory, which is what failed on macOS and
+  --- nowhere else. Resolved after the tree exists, which `fs_realpath` needs.
   ---@param files string[] # paths relative to the tree root
   ---@param open string # which of them to open
   ---@return string root, integer bufnr
   local function tree(files, open)
     local root = vim.fs.normalize(vim.fn.tempname())
+    vim.fn.mkdir(root, "p")
+    root = vim.fs.normalize((vim.uv or vim.loop).fs_realpath(root) or root)
     for _, rel in ipairs(files) do
       local path = root .. "/" .. rel
       vim.fn.mkdir(vim.fs.dirname(path), "p")

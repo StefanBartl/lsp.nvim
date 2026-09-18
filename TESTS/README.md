@@ -45,6 +45,34 @@ config directory on the runtimepath, and while a config carries its own
 `lua/lsp/**` an appended entry loses — the tests would silently exercise that
 instead of this plugin.
 
+## Temp directories: resolve before you compare
+
+A case that builds a tree under `vim.fn.tempname()` and then compares a path
+the plugin produced against that tempname has to resolve the directory first:
+
+```lua
+local dir = vim.fn.tempname()
+vim.fn.mkdir(dir, "p")                                   -- realpath needs it to exist
+dir = vim.fs.normalize((vim.uv or vim.loop).fs_realpath(dir) or dir)
+```
+
+Everything the plugin hands back is already in the spelling the operating
+system reports: Neovim canonicalizes a path on the way into a buffer name, and
+`uv.cwd()` resolves symlinks, so a root resolved from a buffer or found by
+walking up from the working directory comes back resolved. `tempname()` does
+not. On macOS `$TMPDIR` sits under the `/var` → `/private/var` symlink, which
+makes those two spellings of one directory differ — `/private/var/folders/…`
+against `/var/folders/…` — and on Windows `%TEMP%` can be the 8.3 short form
+(`C:/Users/STEFAN~1/…`) for the same reason. Fifteen cases across six specs
+failed on the macOS runner the first time CI ran there, all of them this and
+none of them a defect in the plugin.
+
+It is not only a false red: an assertion comparing the wrong spelling can also
+pass for the wrong reason. `workspace_folders_spec.lua`'s "leaves out what is
+already a workspace folder" hands a stub client a folder and then requires it
+to be absent from the candidates — which it trivially is when the two can no
+longer match at all, exclusion or no exclusion.
+
 ## What is covered
 
 | Spec | Covers |
