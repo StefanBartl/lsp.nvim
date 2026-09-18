@@ -272,11 +272,19 @@ local function check_keymap_collisions()
     return
   end
 
+  -- Two spellings claim this plugin's keymaps, not one: the catalogue
+  -- registers under "LSP" (keymap.register("LSP", ...)), but lib.nvim's
+  -- plugin_of() derives a plugin name for any DIRECT (non-register) call --
+  -- e.g. rebind_buffer_local()'s defensive gr* re-bind, or the direct
+  -- map()/keymap.set() calls under languages/, lspdoctor/, tools/ -- from
+  -- the source file's own path, which is the lowercase "lsp" (lua/lsp/...).
+  -- A case-sensitive match against "LSP" alone missed every collision
+  -- involving one of those direct calls, silently.
   ---@type Lib.Keymap.Conflict[]
   local ours = {}
   for _, c in ipairs(keymap.conflicts()) do
     for _, claimant in ipairs(c.claimants) do
-      if claimant.plugin == "LSP" then
+      if claimant.plugin:lower() == "lsp" then
         ours[#ours + 1] = c
         break
       end
