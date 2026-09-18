@@ -125,12 +125,23 @@ describe("lsp.config layers", function()
     --- module while the working directory is a temp dir depends on how the
     --- runner set the runtimepath up, which is not what any of these cases is
     --- about -- only `setup()` needs to run from inside the project.
+    ---
+    --- The directory is returned in the spelling the *operating system*
+    --- reports for it, which is the one `lsp.config.project` will find: the
+    --- lookup starts at `vim.uv.cwd()`, and `chdir` + `cwd()` resolves
+    --- symlinks. On macOS `$TMPDIR` sits under the `/var` -> `/private/var`
+    --- symlink, so `layers().project` names `/private/var/...` while the raw
+    --- `tempname()` still reads `/var/...` -- two spellings of one directory,
+    --- and the prefix assertion below then fails there and nowhere else.
+    --- Resolved after `mkdir`, because `fs_realpath` needs the directory to
+    --- exist.
     ---@param content string|nil # File body; nil writes no file at all.
     ---@param name string|nil # File name, default `.nvim-lsp.json`.
     ---@return string dir
     local function project_dir(content, name)
       local dir = vim.fn.tempname()
       vim.fn.mkdir(dir, "p")
+      dir = vim.fs.normalize((vim.uv or vim.loop).fs_realpath(dir) or dir)
       created[#created + 1] = dir
       if content ~= nil then
         vim.fn.writefile(vim.split(content, "\n"), dir .. "/" .. (name or ".nvim-lsp.json"))

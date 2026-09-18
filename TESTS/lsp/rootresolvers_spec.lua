@@ -31,10 +31,34 @@ local function touch(dir, name)
   vim.fn.writefile({}, dir .. "/" .. name)
 end
 
+--- A created temp directory, in the spelling the *operating system* reports
+--- for it -- which is the spelling every path that reaches these resolvers
+--- already carries.
+---
+--- `vim.fn.tempname()` alone is not that spelling. On macOS `$TMPDIR` lives
+--- under the `/var` -> `/private/var` symlink, so tempname() answers
+--- `/var/folders/...` while Neovim canonicalizes a buffer name on the way in
+--- (`nvim_buf_get_name` after `bufadd`/`:edit` gives `/private/var/...`) and
+--- `uv.cwd()` does the same for the working directory. A resolver handed a
+--- buffer therefore *correctly* returns the resolved spelling, and comparing
+--- it against the raw tempname compares two spellings of one directory.
+--- Measured on macOS CI: `/private/var/folders/.../9` vs
+--- `/var/folders/.../9`. Windows has the same trap when `%TEMP%` is the 8.3
+--- short form (`C:/Users/STEFAN~1/...`).
+---
+--- `fs_realpath` needs the directory to exist, so this resolves after
+--- `mkdir`, not before.
+---@param path string  # a path that exists on disk
+---@return string
+local function real(path)
+  return norm((vim.uv or vim.loop).fs_realpath(path) or path)
+end
+
 ---@param fn fun(dir: string): nil
 local function with_tempdir(fn)
   local dir = norm(vim.fn.tempname())
   vim.fn.mkdir(dir .. "/sub", "p")
+  dir = real(dir)
   local ok, err = pcall(fn, dir)
   pcall(vim.fn.delete, dir, "rf")
   assert(ok, err)

@@ -240,6 +240,16 @@ describe("lsp.core.workspace_diagnostics", function()
   before_each(function()
     sink = {}
     tmp = vim.fs.normalize(vim.fn.tempname())
+    vim.fn.mkdir(tmp, "p")
+    -- The spelling the *operating system* reports, because that is the one
+    -- the populate will use: the walk's root is resolved from the buffer's
+    -- name, and Neovim canonicalizes a path on the way into a buffer name.
+    -- On macOS `$TMPDIR` sits under the `/var` -> `/private/var` symlink, so
+    -- the `didOpen` URIs read `/private/var/...` while the raw `tempname()`
+    -- still reads `/var/...` -- two spellings of one directory, and the
+    -- lookups into `sink` below then miss on macOS and nowhere else.
+    -- Resolved after `mkdir`: `fs_realpath` needs the directory to exist.
+    tmp = vim.fs.normalize(uv.fs_realpath(tmp) or tmp)
     repo_a, repo_b = tmp .. "/repoA", tmp .. "/repoB"
     vim.fn.mkdir(repo_a .. "/.git", "p")
     vim.fn.mkdir(repo_b .. "/.git", "p")

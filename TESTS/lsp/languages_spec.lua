@@ -15,6 +15,23 @@ local function unload(names)
   end
 end
 
+--- `path`, in the spelling the *operating system* reports for it.
+---
+--- Everything the plugin hands back is already in that spelling: Neovim
+--- canonicalizes a path on the way into a buffer name, and `uv.cwd()`
+--- resolves symlinks too. `vim.fn.tempname()` is not -- on macOS `$TMPDIR`
+--- sits under the `/var` -> `/private/var` symlink, so a project root
+--- *correctly* resolved from a buffer comes back as `/private/var/...` while
+--- the tempname the case built it from still reads `/var/...`. Comparing the
+--- two spellings of one directory is what failed on macOS and nowhere else.
+--- The path has to exist before this is called: `fs_realpath` has nothing to
+--- resolve otherwise.
+---@param path string
+---@return string
+local function real(path)
+  return vim.fs.normalize((vim.uv or vim.loop).fs_realpath(path) or path)
+end
+
 --- A listed, loaded scratch buffer in the current window, wiped afterwards.
 ---@param fn fun(bufnr: integer): nil
 ---@param lines string[]|nil
@@ -252,6 +269,7 @@ describe("lsp.languages.app.dart", function()
   local function flutter_project_buffer()
     local project = vim.fs.normalize(vim.fn.tempname())
     vim.fn.mkdir(project .. "/lib", "p")
+    project = real(project)
     vim.fn.writefile({ "name: my_app" }, project .. "/pubspec.yaml")
     vim.fn.writefile({ "void main() {}" }, project .. "/lib/main.dart")
 
@@ -350,6 +368,7 @@ describe("lsp.languages.app.dart", function()
 
     local lone_dir = vim.fs.normalize(vim.fn.tempname())
     vim.fn.mkdir(lone_dir, "p")
+    lone_dir = real(lone_dir)
     vim.fn.writefile({ "void main() {}" }, lone_dir .. "/scratch.dart")
     local bufnr = vim.fn.bufadd(lone_dir .. "/scratch.dart")
     vim.fn.bufload(bufnr)

@@ -260,6 +260,19 @@ describe("lsp.core.workspace_folders", function()
 
     before_each(function()
       root = vim.fs.normalize(vim.fn.tempname())
+      mkdir(root)
+      -- The spelling the *operating system* reports for the directory, which
+      -- is the one `candidates()` works in: it starts at the buffer's own
+      -- directory, and Neovim canonicalizes a path on the way into a buffer
+      -- name. On macOS `$TMPDIR` sits under the `/var` -> `/private/var`
+      -- symlink, so the candidates come back as `/private/var/...` while the
+      -- raw `tempname()` still reads `/var/...`. Two spellings of one
+      -- directory make every assertion here meaningless, in both directions:
+      -- the membership checks fail, and -- worse -- "leaves out what is
+      -- already a workspace folder" would pass without the exclusion ever
+      -- running, because the folder it hands the stub client could no longer
+      -- match a candidate. Resolved after `mkdir`, which `fs_realpath` needs.
+      root = vim.fs.normalize(uv.fs_realpath(root) or root)
       -- A monorepo: a VCS root, one package the buffer lives in, one sibling
       -- it does not, and a directory with no marker that must not be offered.
       mkdir(root .. "/.git")
