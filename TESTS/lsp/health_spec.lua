@@ -310,6 +310,7 @@ describe("lsp.health", function()
     local function reset()
       keymap.register("LSP", { actions = {} }, {})
       keymap.register("collision_probe", { actions = {} }, {})
+      keymap.register("lsp", { actions = {} }, {})
     end
 
     before_each(reset)
@@ -349,6 +350,55 @@ describe("lsp.health", function()
       assert.is_truthy(entry.msg:find("<leader>Zqz", 1, true))
       assert.is_truthy(entry.msg:find("collision_probe", 1, true))
     end)
+
+    it(
+      "still reports a collision between a lowercase 'lsp' claimant and a third plugin "
+        .. "-- neither one literally 'LSP'",
+      function()
+        -- Regression: lib.nvim's plugin_of() derives "lsp" (lowercase, from
+        -- lua/lsp/...) for any DIRECT (non-register) keymap.set() call this
+        -- plugin makes -- rebind_buffer_local's gr* re-bind, and the direct
+        -- calls under languages/, lspdoctor/, tools/. A case-sensitive match
+        -- against only "LSP" used to still catch a conflict where the
+        -- catalogue itself ("LSP") was one of the two claimants -- the
+        -- filter loop only needs ONE claimant in the pair to match. What it
+        -- silently missed was a conflict where "LSP" isn't a claimant at
+        -- all: a lowercase-"lsp" direct call colliding with some UNRELATED
+        -- third plugin, exactly what this simulates.
+        keymap.register("LSP", {
+          actions = {
+            probe = {
+              default = "<leader>Zother",
+              mode = "n",
+              rhs = "<cmd>echo 1<cr>",
+              desc = "probe",
+            },
+          },
+        }, {})
+        keymap.register("lsp", {
+          actions = {
+            direct = {
+              default = "<leader>Zqz",
+              mode = "n",
+              rhs = "<cmd>echo 2<cr>",
+              desc = "direct call, plugin_of()-derived",
+            },
+          },
+        }, {})
+        keymap.register("collision_probe", {
+          actions = {
+            steal = { default = "<leader>Zqz", mode = "n", rhs = "<cmd>echo 3<cr>", desc = "steal" },
+          },
+        }, {})
+
+        setup({}).check()
+
+        local entry = find("claimed by more than one registration")
+        assert.is_not_nil(entry)
+        assert.are.equal("warn", entry.level)
+        assert.is_truthy(entry.msg:find("<leader>Zqz", 1, true))
+      end
+    )
 
     it("ignores a collision between two other plugins, not naming the catalogue", function()
       keymap.register("collision_probe", {
