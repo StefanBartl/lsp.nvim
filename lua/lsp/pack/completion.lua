@@ -44,7 +44,24 @@ return {
         if vim.bo.buftype ~= "" then
           return false
         end
-        return type(previous) ~= "function" or previous()
+
+        -- `type(previous) ~= "function" or previous()` looked like the same
+        -- thing and was not: it treats *any* non-function value as "nothing
+        -- set, default to enabled" -- which also covers a host's own literal
+        -- `enabled = false`, a normal, documented nvim-cmp opts shape (many
+        -- configs disable cmp globally or per-filetype that way, no function
+        -- involved). Measured: with `previous = false`, the old expression
+        -- returned `true` regardless -- the host's explicit "off" silently
+        -- overridden the moment this fragment merged in. `nil` (never set)
+        -- is the only case that should default to enabled; any other value,
+        -- function or not, is the host's own decision and is honoured as-is.
+        if type(previous) == "function" then
+          return previous()
+        end
+        if previous == nil then
+          return true
+        end
+        return previous
       end
     end,
   },
