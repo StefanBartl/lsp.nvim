@@ -88,6 +88,96 @@ describe("lsp.servers (the modules without their own spec)", function()
   end
 
   ------------------------------------------------------------------------------
+  -- mobiledev/dartls
+  ------------------------------------------------------------------------------
+
+  describe("mobiledev.dartls", function()
+    ---@return table cfg
+    local function register()
+      forget("dartls")
+      local orig_executable = vim.fn.executable
+      local orig_exepath = vim.fn.exepath
+      vim.fn.executable = function(name)
+        return name == "dart" and 1 or orig_executable(name)
+      end
+      -- Resolvable via PATH, so find_flutter_sdk() takes the flutter_bin
+      -- branch rather than falling back to FLUTTER_ROOT/FLUTTER_SDK.
+      vim.fn.exepath = function(name)
+        return name == "flutter" and "/opt/flutter/bin/flutter" or orig_exepath(name)
+      end
+      local ok, err = pcall(function()
+        fresh("lsp.servers.mobiledev.dartls").setup(shared, { enable = false })
+      end)
+      vim.fn.executable, vim.fn.exepath = orig_executable, orig_exepath
+      assert.is_true(ok, tostring(err))
+      return vim.lsp.config["dartls"]
+    end
+
+    --- A fake `vim.lsp.Client`, shaped like `Client:initialize()` leaves it the
+    --- moment `on_init` runs: `settings` already holds whatever the static
+    --- `vim.lsp.config()` call declared, and `workspace/didChangeConfiguration`
+    --- has already been sent from it -- `on_init` is the *second* chance a
+    --- server has to learn anything, not the first.
+    ---@param cfg table
+    ---@return table client
+    ---@return table[] notified
+    local function fake_client(cfg)
+      local notified = {}
+      local client = {
+        settings = vim.deepcopy(cfg.settings),
+        config = cfg,
+        notify = function(_self, method, params)
+          notified[#notified + 1] = { method = method, params = params }
+        end,
+      }
+      return client, notified
+    end
+
+    -- Failed before the fix: `on_init` wrote the Flutter SDK path into
+    -- `client.config.settings`, a *reassignment* -- but `client.settings`
+    -- (captured once at construction, before `on_init` ever runs) is what
+    -- both delivery mechanisms actually read: the initial
+    -- `workspace/didChangeConfiguration` push already fired from it by the
+    -- time `on_init` runs, and Neovim's own default `workspace/configuration`
+    -- pull handler looks up `client.settings`, never `client.config.settings`
+    -- (`handlers.lua`'s `RSC['workspace/configuration']`). So the sdkPath
+    -- reached neither path, on every machine with `flutter` on PATH.
+    it("puts the Flutter SDK path where a server can actually read it", function()
+      local cfg = register()
+      local client = fake_client(cfg)
+
+      cfg.on_init(client, {})
+
+      assert.are.equal("/opt/flutter/bin/cache/dart-sdk", client.settings.dart.sdkPath)
+      assert.are.equal("/opt/flutter", client.settings.dart.flutterSdkPath)
+    end)
+
+    it("pushes the update, since nothing re-sends it on its own", function()
+      local cfg = register()
+      local client, notified = fake_client(cfg)
+
+      cfg.on_init(client, {})
+
+      assert.are.equal(1, #notified)
+      assert.are.equal("workspace/didChangeConfiguration", notified[1].method)
+      assert.are.equal("/opt/flutter/bin/cache/dart-sdk", notified[1].params.settings.dart.sdkPath)
+    end)
+
+    it("still runs the shared on_init after its own work", function()
+      local cfg = register()
+      local client = fake_client(cfg)
+      local shared_ran = false
+      shared.on_init = function()
+        shared_ran = true
+        return true
+      end
+
+      assert.is_true(cfg.on_init(client, {}))
+      assert.is_true(shared_ran)
+    end)
+  end)
+
+  ------------------------------------------------------------------------------
   -- mobiledev/jdtls
   ------------------------------------------------------------------------------
 

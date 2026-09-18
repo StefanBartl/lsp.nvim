@@ -49,7 +49,22 @@ function M.setup(shared, opts)
     on_attach = shared.on_attach,
     on_init = function(client, init_result)
       if flutter_sdk then
-        client.config.settings = vim.tbl_deep_extend("force", client.config.settings or {}, {
+        -- `client.config.settings`, not `client.settings`: the mistake this
+        -- replaced. `Client:initialize()` copies `config.settings` into
+        -- `client.settings` once, at construction, *before* `on_init` ever
+        -- runs -- and both the ways a server actually receives settings read
+        -- `client.settings`, never `client.config.settings` again after that.
+        -- `workspace/didChangeConfiguration` is sent from `client.settings`
+        -- moments before `on_init` fires (`client.lua`: the notify happens,
+        -- then `_run_callbacks(self._on_init_cbs, ...)`), and the default
+        -- `workspace/configuration` pull handler looks up
+        -- `client.settings` too (`handlers.lua`'s `RSC['workspace/
+        -- configuration']`, `lookup_section(client.settings, ...)`). Measured
+        -- against that real logic: this used to leave the dart analysis
+        -- server with only the static `dart` settings below, no `sdkPath`,
+        -- for every Flutter project, on every machine that has `flutter` on
+        -- PATH -- the one case this whole branch exists for.
+        client.settings = vim.tbl_deep_extend("force", client.settings or {}, {
           dart = {
             sdkPath = flutter_sdk .. "/bin/cache/dart-sdk",
             flutterSdkPath = flutter_sdk,
@@ -58,6 +73,12 @@ function M.setup(shared, opts)
             },
           },
         })
+        -- Neither delivery mechanism re-sends on its own: the push already
+        -- happened before this ran, and a pull only helps if the server ever
+        -- asks. Notifying explicitly is what makes the update reach the
+        -- server at all, regardless of which of the two dart analysis
+        -- server actually relies on.
+        client:notify("workspace/didChangeConfiguration", { settings = client.settings })
       end
 
       if type(shared.on_init) == "function" then
