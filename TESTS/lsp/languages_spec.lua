@@ -219,6 +219,103 @@ describe("lsp.languages.app.java", function()
 end)
 
 -- ===========================================================================
+-- app/dart
+-- ===========================================================================
+
+describe("lsp.languages.app.dart", function()
+  before_each(function()
+    unload({ "lsp.languages.app.dart" })
+  end)
+
+  after_each(function()
+    pcall(vim.api.nvim_del_augroup_by_name, "LangDart")
+  end)
+
+  ---@param calls table[]
+  ---@return nil
+  local function stub_jobstart(calls)
+    ---@diagnostic disable-next-line: duplicate-set-field
+    vim.fn.jobstart = function(cmd, opts)
+      calls[#calls + 1] = { cmd = cmd, opts = opts }
+      return 1
+    end
+  end
+
+  it("still sets the 2-space Dart indent on FileType", function()
+    require("lsp.languages.app.dart").enable()
+
+    with_window_buffer({ "void main() {}" }, function(bufnr)
+      vim.bo[bufnr].filetype = "dart"
+      assert.are.equal(2, vim.bo[bufnr].shiftwidth)
+      assert.are.equal(2, vim.bo[bufnr].tabstop)
+      assert.is_true(vim.bo[bufnr].expandtab)
+    end)
+  end)
+
+  -- `<leader>fr` ran `vim.cmd("!flutter run --hot-reload")`. `--hot-reload` is
+  -- not a real `flutter run` flag -- measured against a real `flutter`
+  -- install: `flutter run --hot-reload` answers 'Could not find an option
+  -- named "--hot-reload".' and exits immediately, so the binding never once
+  -- did what its own `desc` claimed. `--hot` is on by default, so the fix
+  -- asks for nothing extra.
+  it("runs a real flutter command, with no invented flag", function()
+    local orig_jobstart = vim.fn.jobstart
+    local calls = {}
+    stub_jobstart(calls)
+
+    local dart = require("lsp.languages.app.dart")
+    dart.enable()
+    with_window_buffer({ "void main() {}" }, function(bufnr)
+      vim.bo[bufnr].filetype = "dart"
+      local lhs = lhs_by_desc(bufnr, "n", "Flutter: run (or focus)")
+      feed(lhs)
+      vim.wait(50)
+    end)
+
+    vim.fn.jobstart = orig_jobstart
+    assert.are.equal(1, #calls)
+    assert.are.equal("flutter run", calls[1].cmd)
+    assert.is_true(calls[1].opts.term, "not run in a terminal buffer")
+  end)
+
+  -- Even with the flag fixed, `:!` is synchronous and `flutter run` never
+  -- finishes on its own -- it is an interactive dev server, not a one-shot
+  -- command, so the corrected command would still have frozen Neovim for as
+  -- long as the app stayed up. Asserted directly against the internal
+  -- function so this cannot regress back to a `vim.cmd("!...")` call, which
+  -- would block this very test.
+  it("does not block: opens a terminal job rather than a synchronous shell-out", function()
+    local orig_jobstart = vim.fn.jobstart
+    local calls = {}
+    stub_jobstart(calls)
+
+    require("lsp.languages.app.dart")._run_or_focus()
+
+    vim.fn.jobstart = orig_jobstart
+    assert.are.equal(1, #calls, "flutter run was not launched as a job")
+  end)
+
+  it("focuses the running instance instead of launching a second one", function()
+    local orig_jobstart = vim.fn.jobstart
+    local calls = {}
+    stub_jobstart(calls)
+
+    local dart = require("lsp.languages.app.dart")
+    dart._run_or_focus()
+    local first_buf = vim.api.nvim_get_current_buf()
+    local wins_before = #vim.api.nvim_list_wins()
+
+    vim.cmd("wincmd p")
+    dart._run_or_focus()
+
+    vim.fn.jobstart = orig_jobstart
+    assert.are.equal(1, #calls, "a second press launched flutter run again")
+    assert.are.equal(first_buf, vim.api.nvim_get_current_buf())
+    assert.are.equal(wins_before, #vim.api.nvim_list_wins())
+  end)
+end)
+
+-- ===========================================================================
 -- webdev/astro
 -- ===========================================================================
 
