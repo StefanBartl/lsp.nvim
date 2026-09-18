@@ -4,18 +4,19 @@
 :checkhealth lsp
 ```
 
-Six sections, in the order you need them when something is wrong.
+Seven sections, in the order you need them when something is wrong.
 
 | Section | Answers |
 | ------- | ------- |
 | Environment | Neovim 0.11+, and lib.nvim — the one dependency the plugin cannot run without |
 | lsp.nvim | Whether `setup()` ran, which config layers built it, what it registered, and every warning it worked around |
+| Keymap collisions | Whether the keymap catalogue still owns its keys right now — or you, or another plugin, also claimed one |
 | Servers | Installed vs. configured vs. set up vs. attached — here and in total |
 | Ecosystem | Which third-party plugins the adapters can see |
 | Diagnostics | Whether `vim.diagnostic.config()` was applied, and who contributed which keys |
 | Per-buffer diagnosis | Points at `:LspDoctor`, which answers the buffer-level questions |
 
-All six run even when one of them cannot. A section whose module raises turns
+All seven run even when one of them cannot. A section whose module raises turns
 into a single error line — *"this section failed: …"*, with "the sections after
 it still ran" beside it — and the report continues. A health check that dies on
 the first broken module is useless in precisely the case it exists for.
@@ -30,6 +31,28 @@ know a project file was found at all, and which one.
 This is the answer to "why is `ts_ls` not attaching in this repository". A
 project override that nobody can see is a debugging trap, so it is reported
 whether or not anything went wrong.
+
+## Keymap collisions
+
+`keymaps_spec.lua` already proves that no two catalogue entries claim the same
+key at build time — a mistake that costs nothing there, since the suite never
+touches a live keymap. What it cannot see is the runtime question: does the
+catalogue collide with a key *you* set in your config, or one another plugin
+set?
+
+This section answers that by reading
+`lib.nvim.bindings.keymap.conflicts()` — a registry of every plugin bound
+through `lib.nvim`'s own keymap wrapper, filtered here to conflicts naming
+`"LSP"`, the name the catalogue registers under. One `lhs`/mode claimed twice
+means one binding wins silently and the other never fires — rebind the
+catalogue entry via `keymaps.map`, or change the other side.
+
+It only sees what went through `lib.nvim`: a plugin that calls
+`vim.keymap.set`/`vim.api.nvim_set_keymap` directly, without ever touching
+`lib.nvim`, leaves nothing here to find. That gap is inherent to reading a
+registry rather than re-scanning the live keymap table on every key the
+catalogue owns, and is worth knowing before reading a clean report as proof
+that nothing collides.
 
 ## Reading the Servers section
 
