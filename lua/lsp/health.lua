@@ -243,6 +243,72 @@ local function check_plugin()
   )
 end
 
+---@internal
+--- Whether the catalogue's keys still belong to it *right now* -- the
+--- question `keymaps_spec.lua`'s "no two entries claim the same lhs" case
+--- cannot ask, because that spec only ever sees the catalogue in isolation;
+--- nothing else is loaded when it runs. This is the runtime half: did you, or
+--- another plugin, bind the same key the catalogue did?
+---
+--- `lib.nvim.bindings.keymap.conflicts()` already exists for exactly this --
+--- its own docstring says so ("Meant for `:checkhealth`") -- and it walks
+--- every plugin registered through the same registry plus every direct
+--- `keymap.set()` call it recorded, so a collision shows up regardless of
+--- which side bound last. Filtered here to conflicts naming `"LSP"`, the
+--- plugin name `bindings/keymaps.lua` registers the catalogue under, so this
+--- reports on the catalogue specifically rather than on every plugin in the
+--- session.
+---
+--- What it cannot see: a plugin that calls `vim.keymap.set`/
+--- `vim.api.nvim_set_keymap` directly and never touches lib.nvim leaves no
+--- record for `conflicts()` to find. That gap is inherent to reading the
+--- registry rather than re-scanning the live keymap table, and is said here
+--- rather than left for the report to imply a completeness it does not have.
+---@return nil
+local function check_keymap_collisions()
+  local ok, keymap = pcall(require, "lib.nvim.bindings.keymap")
+  if not ok then
+    -- Already reported as missing under "Environment" -- nothing to add here.
+    return
+  end
+
+  ---@type Lib.Keymap.Conflict[]
+  local ours = {}
+  for _, c in ipairs(keymap.conflicts()) do
+    for _, claimant in ipairs(c.claimants) do
+      if claimant.plugin == "LSP" then
+        ours[#ours + 1] = c
+        break
+      end
+    end
+  end
+
+  if #ours == 0 then
+    health.ok("no keymap collisions -- every catalogue key is claimed once per mode")
+    return
+  end
+
+  for _, c in ipairs(ours) do
+    ---@type string[]
+    local who = {}
+    for _, claimant in ipairs(c.claimants) do
+      who[#who + 1] = claimant.direct and (claimant.src or claimant.plugin)
+        or (claimant.plugin .. "." .. claimant.name)
+    end
+    health.warn(
+      ("%s %q claimed by more than one registration: %s"):format(
+        c.mode,
+        c.lhs,
+        table.concat(who, ", ")
+      ),
+      {
+        "One binding wins silently and the other never fires.",
+        "Rebind the catalogue entry via keymaps.map, or change the other side.",
+      }
+    )
+  end
+end
+
 --- Servers whose cost scales steeply with the number of attached buffers.
 ---
 --- The list is deliberately short and named rather than derived: "heavy" is a
@@ -640,6 +706,7 @@ end
 function M.check()
   section("Environment", check_environment)
   section("lsp.nvim", check_plugin)
+  section("Keymap collisions", check_keymap_collisions)
   section("Servers", check_servers)
   section("Ecosystem", check_ecosystem)
   section("Diagnostics", check_diagnostics)

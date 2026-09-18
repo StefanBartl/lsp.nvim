@@ -293,4 +293,86 @@ describe("lsp.health", function()
       assert.is_true(#lines() > 0)
     end)
   end)
+
+  -- The build-time half of this question lives in `keymaps_spec.lua`: no two
+  -- catalogue entries claim the same key. That check never sees anything
+  -- outside the catalogue, so it cannot catch a key the user or another
+  -- plugin bound to the same `lhs` -- only `:checkhealth`, reading the live
+  -- registry, can. `lib.nvim.bindings.keymap` is the real module here (not
+  -- stubbed): it is the thing under test, and it is a shared, module-level
+  -- registry, so every case resets both plugin names it touches before and
+  -- after, rather than trusting that nothing else in this file registers
+  -- under "LSP".
+  describe("keymap collisions", function()
+    local keymap = require("lib.nvim.bindings.keymap")
+
+    ---@return nil
+    local function reset()
+      keymap.register("LSP", { actions = {} }, {})
+      keymap.register("collision_probe", { actions = {} }, {})
+    end
+
+    before_each(reset)
+    after_each(reset)
+
+    it("reports no collision when the catalogue's keys are unclaimed elsewhere", function()
+      keymap.register("LSP", {
+        actions = {
+          probe = { default = "<leader>Zqz", mode = "n", rhs = "<cmd>echo 1<cr>", desc = "probe" },
+        },
+      }, {})
+
+      setup({}).check()
+
+      local entry = find("no keymap collisions")
+      assert.is_not_nil(entry)
+      assert.are.equal("ok", entry.level)
+    end)
+
+    it("warns when another registration claims the same key as the catalogue", function()
+      keymap.register("LSP", {
+        actions = {
+          probe = { default = "<leader>Zqz", mode = "n", rhs = "<cmd>echo 1<cr>", desc = "probe" },
+        },
+      }, {})
+      keymap.register("collision_probe", {
+        actions = {
+          steal = { default = "<leader>Zqz", mode = "n", rhs = "<cmd>echo 2<cr>", desc = "steal" },
+        },
+      }, {})
+
+      setup({}).check()
+
+      local entry = find("claimed by more than one registration")
+      assert.is_not_nil(entry)
+      assert.are.equal("warn", entry.level)
+      assert.is_truthy(entry.msg:find("<leader>Zqz", 1, true))
+      assert.is_truthy(entry.msg:find("collision_probe", 1, true))
+    end)
+
+    it("ignores a collision between two other plugins, not naming the catalogue", function()
+      keymap.register("collision_probe", {
+        actions = {
+          steal = { default = "<leader>Zqz", mode = "n", rhs = "<cmd>echo 2<cr>", desc = "steal" },
+        },
+      }, {})
+      keymap.register("another_probe", {
+        actions = {
+          steal = {
+            default = "<leader>Zqz",
+            mode = "n",
+            rhs = "<cmd>echo 3<cr>",
+            desc = "steal too",
+          },
+        },
+      }, {})
+
+      setup({}).check()
+
+      assert.is_not_nil(find("no keymap collisions"))
+      assert.is_nil(find("claimed by more than one registration"))
+
+      keymap.register("another_probe", { actions = {} }, {})
+    end)
+  end)
 end)
