@@ -214,4 +214,63 @@ describe("lsp.config.pack", function()
       end
     end)
   end)
+
+  describe("lsp.pack.completion's opts fragment", function()
+    -- `opts = function(_, opts)` is how lazy.nvim MERGES this fragment into
+    -- whatever cmp spec a host config already has -- so `opts.enabled` coming
+    -- in is the host's own setting, not this plugin's, and has to be honoured
+    -- rather than silently replaced.
+    ---@param previous_enabled any
+    ---@return fun(): boolean
+    local function wrap(previous_enabled)
+      with(nil)
+      package.loaded["lsp.pack.completion"] = nil
+      local specs_list = require("lsp.pack.completion")
+      local opts = { enabled = previous_enabled }
+      specs_list[1].opts(nil, opts)
+      return opts.enabled
+    end
+
+    it("still adds the lazydev source", function()
+      with(nil)
+      package.loaded["lsp.pack.completion"] = nil
+      local opts = {}
+      require("lsp.pack.completion")[1].opts(nil, opts)
+      assert.are.equal(1, #opts.sources)
+      assert.are.equal("lazydev", opts.sources[1].name)
+    end)
+
+    -- `type(previous) ~= "function" or previous()` reads like a ternary and is
+    -- not one: it treats *every* non-function value, including a literal
+    -- `false`, as "nothing set, default to enabled" -- silently reversing a
+    -- host's own `enabled = false`, a normal, documented nvim-cmp opts shape.
+    it("keeps the host's own enabled = false, rather than overriding it", function()
+      assert.is_false(wrap(false)())
+    end)
+
+    it("keeps the host's own enabled = true", function()
+      assert.is_true(wrap(true)())
+    end)
+
+    it("defaults to enabled when the host set nothing at all", function()
+      assert.is_true(wrap(nil)())
+    end)
+
+    it("still calls through when the host's enabled is itself a function", function()
+      assert.is_false(wrap(function()
+        return false
+      end)())
+      assert.is_true(wrap(function()
+        return true
+      end)())
+    end)
+
+    it("still refuses a non-empty buftype regardless of the host's own answer", function()
+      local enabled = wrap(true)
+      local buf = vim.api.nvim_create_buf(false, true)
+      vim.bo[buf].buftype = "nofile"
+      vim.api.nvim_set_current_buf(buf)
+      assert.is_false(enabled())
+    end)
+  end)
 end)
