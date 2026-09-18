@@ -15,7 +15,7 @@ function M.attach()
     return
   end
 
-  -- Component-Navigation
+  -- Component navigation
   map("n", "gC", function()
     require("telescope.builtin").find_files({
       prompt_title = "Astro Components",
@@ -24,7 +24,7 @@ function M.attach()
     })
   end, { buffer = bufnr, desc = "Find Astro Components" })
 
-  -- Layout-Navigation
+  -- Layout navigation
   map("n", "gL", function()
     require("telescope.builtin").find_files({
       prompt_title = "Astro Layouts",
@@ -32,7 +32,7 @@ function M.attach()
     })
   end, { buffer = bufnr, desc = "Find Astro Layouts" })
 
-  -- Page-Navigation
+  -- Page navigation
   map("n", "gP", function()
     require("telescope.builtin").find_files({
       prompt_title = "Astro Pages",

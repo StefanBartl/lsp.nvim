@@ -147,15 +147,15 @@ function M.setup(shared, opts)
           -- Erweiterte Hover-Informationen
           hover = {
             enable = true,
-            viewString = true, -- Zeige String-Werte
-            viewStringMax = 1000, -- Maximale String-Länge
-            viewNumber = true, -- Zeige Zahlen-Werte
-            fieldInfer = 10000, -- Feld-Inferenz-Limit
-            previewFields = 50, -- Anzahl Preview-Felder
-            enumsLimit = 100, -- Enum-Limit
+            viewString = true, -- Show string values
+            viewStringMax = 1000, -- Max string length shown
+            viewNumber = true, -- Show numeric values
+            fieldInfer = 10000, -- Field inference limit
+            previewFields = 50, -- Number of preview fields
+            enumsLimit = 100, -- Enum limit
           },
 
-          -- Wichtig: Signatur-Hilfe aktivieren
+          -- Important: enable signature help
           signatureHelp = {
             enable = true,
           },
