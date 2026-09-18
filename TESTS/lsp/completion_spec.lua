@@ -73,6 +73,48 @@ describe("lsp.completion.usage", function()
     end)
   end)
 
+  -- Two Neovim instances sharing one profile is the ordinary case, not the
+  -- edge one -- anyone with more than one terminal tab open has this. Each
+  -- caches its own `counts` on first use and never refreshes it, so a bump
+  -- that only merged into that cached snapshot before writing the *whole
+  -- file* back would silently discard whatever a concurrently-open instance
+  -- had already persisted.
+  it("does not lose another session's picks that landed since this one last read", function()
+    with_temp_state(function(session_a)
+      -- Session B: a second, independent module instance sharing the same
+      -- on-disk file (the stubbed `json.read`/`json.write` are global for the
+      -- duration of this callback, exactly like a shared stdpath("state")).
+      package.loaded["lsp.completion.usage"] = nil
+      local session_b = require("lsp.completion.usage")
+
+      -- Both sessions touch the counter once each, priming their own caches
+      -- from the same (empty) starting state -- the ordinary case of two
+      -- editors opened around the same time.
+      session_a.count("ns", "shared")
+      session_b.count("ns", "shared")
+
+      -- Session A does three real picks, each persisted immediately, exactly
+      -- as `bump`'s own doc promises.
+      session_a.bump("ns", "shared")
+      session_a.bump("ns", "shared")
+      session_a.bump("ns", "shared")
+
+      -- Session B, still running, picks it once too -- with no idea A exists
+      -- or that the file has moved since B last looked.
+      session_b.bump("ns", "shared")
+
+      -- What a brand new, third session reads afterward is the only honest
+      -- measure of what actually persisted.
+      package.loaded["lsp.completion.usage"] = nil
+      local session_c = require("lsp.completion.usage")
+      assert.are.equal(
+        4,
+        session_c.count("ns", "shared"),
+        "session B's write silently discarded session A's picks"
+      )
+    end)
+  end)
+
   it("keeps namespaces apart", function()
     with_temp_state(function(u)
       -- The same spelling in two namespaces must not share a count, or writing
