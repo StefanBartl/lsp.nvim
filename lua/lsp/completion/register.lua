@@ -42,8 +42,49 @@ local M = {}
 ---@field keyword_pattern? string # nvim-cmp only; blink derives its own.
 ---@field on_pick? fun(label: string) # Extra work after a pick, besides the count bump.
 
+---@internal
+--- The specs table has to survive a module reload for the same reason the
+--- `cmp` registration guard below does -- and a fresh `local specs = {}` per
+--- load does not.
+---
+--- Both engines' *live* completion object is created once and then closes
+--- over `specs` by reference, forever: cmp's `Source:complete` closes over it
+--- directly; blink caches its provider object for the session
+--- (`sources.providers[provider_id]`, set once in blink's own
+--- `sources/lib/init.lua`) and reaches this table through `M.spec`, itself a
+--- closure over the same upvalue. `:Lazy reload lsp.nvim` clears every
+--- `lsp.*` module -- this one included -- and re-running `personal_names.setup()`
+--- or `markdown_words.setup()` afterwards calls `M.source()` on a *fresh*
+--- register.lua instance, which used to write into a brand new, empty
+--- `specs` that nothing already running would ever read again.
+---
+--- Measured against a spec double-check of nvim-cmp's own registration
+--- (`cmp.register_source` keys by a fresh id in `core.lua`, not by name, so
+--- it is additive) and blink's own provider cache (`provider/init.lua` calls
+--- `require(config.module).new(...)` exactly once per `provider_id`): after
+--- one simulated reload and re-registration with different `items`, the
+--- live source under either engine kept offering the *first* load's items,
+--- while the second load's own `M.spec(name)` correctly reported the new
+--- ones -- to a caller neither engine will ever ask again. `:CmpReloadWords`
+--- after that reports "Reloaded" and changes nothing a user can see, same
+--- shape as the bug this table's sibling guard already fixed once.
+---
+--- Anchored on `_G` rather than on `cmp`, because blink has no analogous host
+--- this module could reach into -- `_G` is the one thing neither engine's
+--- reload story touches.
+---@return table<string, LspNvim.CompletionSource>
+local function specs_table()
+  local key = "__lsp_nvim_completion_specs"
+  local t = rawget(_G, key)
+  if type(t) ~= "table" then
+    t = {}
+    rawset(_G, key, t)
+  end
+  return t
+end
+
 ---@type table<string, LspNvim.CompletionSource>
-local specs = {}
+local specs = specs_table()
 
 --- Look up a registered spec. Used by the blink source modules, which are
 --- resolved by blink from a `module` path and get no arguments.

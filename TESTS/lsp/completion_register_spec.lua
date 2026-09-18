@@ -8,6 +8,8 @@
 describe("lsp.completion.register (nvim-cmp)", function()
   local saved
 
+  local saved_specs_table
+
   before_each(function()
     saved = {
       cmp = package.loaded["cmp"],
@@ -15,6 +17,12 @@ describe("lsp.completion.register (nvim-cmp)", function()
       usage = package.loaded["lsp.completion.usage"],
       register = package.loaded["lsp.completion.register"],
     }
+    -- The specs registry now lives on `_G` (see `register.lua`), on purpose --
+    -- that survival is what the reload cases below exist to exercise. Which
+    -- means it also survives *between test cases* unless something resets it,
+    -- and every case here registers under names other tests reuse.
+    saved_specs_table = rawget(_G, "__lsp_nvim_completion_specs")
+    rawset(_G, "__lsp_nvim_completion_specs", nil)
   end)
 
   after_each(function()
@@ -22,16 +30,27 @@ describe("lsp.completion.register (nvim-cmp)", function()
     package.loaded["lsp.config.pack"] = saved.pack
     package.loaded["lsp.completion.usage"] = saved.usage
     package.loaded["lsp.completion.register"] = saved.register
+    rawset(_G, "__lsp_nvim_completion_specs", saved_specs_table)
   end)
 
   --- A cmp stand-in that records what is hooked onto its event bus, plus the
   --- surrounding modules the registrar reaches for.
+  ---
+  --- `register_source` records every call rather than the most recent one,
+  --- because real cmp keys its registry by a fresh id per call
+  --- (`hrsh7th/nvim-cmp`'s `core.lua`: `self.sources[s.id] = s`) -- so calling
+  --- it twice for one name does not replace the first Source object, it adds
+  --- a second one alongside it. A stub that only remembers the last call would
+  --- make it impossible to tell "replaced" from "never called again" apart,
+  --- which is exactly the distinction the staleness case below turns on.
   ---@return table env
   local function stub_engine()
-    local env = { listeners = {}, bumps = 0 }
+    local env = { listeners = {}, bumps = 0, sources = {} }
 
     package.loaded["cmp"] = {
-      register_source = function() end,
+      register_source = function(name, source_obj)
+        env.sources[#env.sources + 1] = { name = name, obj = source_obj }
+      end,
       event = {
         on = function(_self, _name, fn)
           env.listeners[#env.listeners + 1] = fn
@@ -131,5 +150,70 @@ describe("lsp.completion.register (nvim-cmp)", function()
 
     accept_one(env)
     assert.are.equal(1, env.bumps)
+  end)
+
+  -- A second, independent defect the same reload can trigger, found while
+  -- re-checking the fix above: cmp's `Source:complete` closes over the
+  -- `specs` table by reference, once, when it is first registered. A fresh
+  -- `local specs = {}` per module load means that after a reload, cmp's
+  -- *already-registered* Source object -- which nothing ever replaces, since
+  -- the guard above now correctly stops a second `cmp.register_source` call
+  -- for the same name -- keeps reading the *first* load's table forever. The
+  -- second load's own `register.spec(name)` reports the fresh data
+  -- correctly; nothing cmp will ever ask is listening to it.
+  --
+  -- blink has the same shape for its own reason: it resolves a provider's
+  -- `module` and calls `.new()` on it exactly once per session
+  -- (`Saghen/blink.cmp`'s `provider/init.lua`), and caches the result
+  -- forever, so its Source object is exactly as pinned to whichever
+  -- register.lua load was current when it was first created.
+  it("keeps the already-registered source pointed at fresh data after a reload", function()
+    local env = stub_engine()
+    package.loaded["lsp.completion.register"] = nil
+    require("lsp.completion.register").source({
+      name = "spec_source",
+      namespace = "spec_source",
+      items = function()
+        return { { label = "first_load" } }
+      end,
+    })
+
+    assert.are.equal(1, #env.sources, "the source was not registered once")
+    local live_source = env.sources[1].obj
+
+    for key in pairs(package.loaded) do
+      if type(key) == "string" and key:match("^lsp%.") then
+        package.loaded[key] = nil
+      end
+    end
+    package.loaded["lsp.config.pack"] = {
+      completion = function()
+        return "cmp"
+      end,
+    }
+    package.loaded["lsp.completion.usage"] = { bump = function() end }
+    require("lsp.completion.register").source({
+      name = "spec_source",
+      namespace = "spec_source",
+      items = function()
+        return { { label = "second_load_after_reload" } }
+      end,
+    })
+
+    assert.are.equal(
+      1,
+      #env.sources,
+      "a second reload re-registered a Source cmp will now show two of"
+    )
+
+    local response
+    live_source:complete(nil, function(r)
+      response = r
+    end)
+    assert.are.equal(
+      "second_load_after_reload",
+      response.items[1] and response.items[1].label,
+      "the live source is still reading the pre-reload data"
+    )
   end)
 end)
