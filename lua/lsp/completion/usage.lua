@@ -75,6 +75,17 @@ end
 ---
 --- Picking a completion is a human-paced event, so a write per pick is free --
 --- and it means a crash never costs the history.
+---
+--- Re-reads the file fresh rather than merging into the cached `counts`,
+--- because two Neovim instances sharing one profile is the ordinary case, not
+--- the edge one -- anyone with more than one terminal tab open has this. Each
+--- instance caches its own `counts` once, in `load()`, and this module never
+--- refreshes it afterward; merging a new pick into that stale snapshot and
+--- writing the *whole file* back would silently discard every pick the other,
+--- already-open instance had persisted since. Measured: three real picks in
+--- one session landed on disk one at a time exactly as promised above, and
+--- were reduced to one the moment a second, already-open session bumped
+--- anything at all -- a fresh read right before the merge is what closes that.
 ---@param ns string # Namespace, e.g. "personal_names".
 ---@param label string
 ---@return nil
@@ -82,10 +93,15 @@ function M.bump(ns, label)
   if type(ns) ~= "string" or type(label) ~= "string" or label == "" then
     return
   end
-  local c = load()
-  c[ns] = c[ns] or {}
-  c[ns][label] = (c[ns][label] or 0) + 1
-  json.write(STATE_FILE, c)
+  local cached = load() -- ensures the one-time legacy migration has run
+
+  local decoded = json.read(STATE_FILE)
+  ---@type table<string, table<string, integer>>
+  local current = (type(decoded) == "table" and decoded) or cached
+  current[ns] = current[ns] or {}
+  current[ns][label] = (current[ns][label] or 0) + 1
+  counts = current
+  json.write(STATE_FILE, current)
 end
 
 --- How often `label` has been picked in `ns`.
