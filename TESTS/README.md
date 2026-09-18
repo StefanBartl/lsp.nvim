@@ -61,6 +61,12 @@ instead of this plugin.
 | `start_spec.lua` | That the expected-server list is derived from the registered `vim.lsp.config` entries rather than a hardcoded filetype table -- which server declares which filetype, and that a registered-but-not-enabled config is not expected. |
 | `symbol_picker_spec.lua` | That `:TypeDefPick` sends its argument as fzf-lua's `lsp_query` (the server-side `workspace/symbol` query) and not as `query` (fzf's local filter over a full workspace dump), plus the `<cword>` fallback and the missing-fzf-lua path. |
 | `recovery_spec.lua` | That servers are started through `supervisor.start` rather than `vim.lsp.enable`, and the two counter guards -- a name with no config spends no attempt, and `:Lsp recover` clears a counter the supervisor left exhausted. |
+| `attach_spec.lua` | `core/attach.lua`'s `on_init`/`on_attach` pair: the buffer-validity and capabilities guards, that `workspace_diagnostics.enabled()` is read fresh on every attach rather than captured once, and that one throwing adapter hook costs only itself. |
+| `filter_spec.lua` | The two pure diagnostic-list helpers under `core/handlers`: `filter`'s Lua-pattern matching and `dedup`'s position key, including the LSP `range.start` vs. `vim.diagnostic` `lnum`/`col` shapes it has to read interchangeably. |
+| `mason_node_spec.lua` | `core/mason_node`'s npm `.bin/<name>.cmd` shim parser end to end against a real (redirected) `stdpath("data")`: the Windows-only gate, every way the parse can fail closed to `nil`, and the backslash-to-forward-slash normalization the resolved entry path depends on. |
+| `rootresolvers_spec.lua` | `servers/lua_ls/rootresolver`'s `strict_root_from` algorithm against real temp directories: the `<leader>lsp` cwd/git/path scope switch, VCS-before-marker search order, and that the Neovim config directory wins regardless of scope; plus `servers/marksman/rootresolver`'s own marker list and `tools/eslint_prettier/core/find_root`'s unnamed-buffer guard. |
+| `autocmds_wiring_spec.lua` | `bindings/autocmds.lua`'s `LspAttach` handler: the `keymaps.enable` gate, that re-running `setup()` does not stack a second handler on the group, and that both catalogue entries known to collide with Neovim's `gr*` defaults get a rebind attempt with the firing event's own buffer. |
+| `usercmds_wiring_spec.lua` | Three previously-uncovered `:Lsp*` command modules: `usercmds/formatter` (dispatch onto whichever formatter module is handed in, including the `LspFormatWhich` soft-dependency path), `usercmds/workspace_diagnostics` (the toggle commands over `core/workspace_diagnostics`), and `usercmds/mobile_diagnostics` (the environment probe's executable/env-var/platform branches). |
 | `probe_live_spec.lua` | The diagnostics chain against a **real** server: start it, hand `:LspDoctor probe` a file with a syntax error, require an answer. The only case in the suite that is not stubbed -- see below. |
 | `smoke.lua` | End-to-end: every module loads, `setup()` runs the whole bootstrap, servers and commands are registered. |
 
@@ -112,3 +118,47 @@ They are where the bugs actually were. Writing the suite found four more:
   reading it (see the roadmap's B12/B16).
 
 All four look correct on the page.
+
+## What a pass over ~176 source files still leaves out
+
+The suite above is large but not exhaustive, and it does not need to be: a
+good share of `lua/lsp/**` is already exercised *generically* rather than by
+a dedicated spec of its own -- `lsp.languages.enable_all()` calls every
+app/documentation/scripting/systems/webdev language module's `enable()` in a
+loop that `languages_spec.lua` drives end to end, and
+`lsp.integrations.setup()`/`.report()` do the same over every adapter in
+`ADAPTERS`, which is what `integrations_spec.lua` and
+`integrations_adapters_spec.lua` actually exercise. A file with no `_spec.lua`
+of its own is not necessarily an untested file for that reason.
+
+What is left for a later pass, by the same risk ordering the rest of this
+suite follows, with why:
+
+- Most of `lua/lsp/servers/**`'s individual server modules (`clangd.lua`,
+  `csharp.lua`, `gopls.lua`, `zig.lua`, the `webdev/*` and `mobiledev/*`
+  entries) -- each is a `vim.lsp.config()` call plus a capabilities/root_dir
+  wiring shaped like `bashls.lua`/`marksman/init.lua`, which already have
+  dedicated coverage. A generic per-server contract spec (matching
+  `dap.nvim`'s language-table approach) would close this at less cost than
+  one file per server, and is the natural next step here.
+- `lua/lsp/core/root_scope_picker.lua` and `core/workspace_picker.lua` --
+  real branching logic (`switchable()`, `announce()`, the "nothing to add"
+  early returns) sits directly on top of `ui.kit.select`, which is stubbable
+  the way `languages_spec.lua` already stubs it for a different picker. Not
+  reached this round; the logic underneath (`core/workspace_folders.lua`,
+  `core/root_scope.lua`) already is.
+- `lua/lsp/integrations/{cmp,conform,inc_rename,lazydev,lensline,noice,
+  trouble,picker,mason,nvchad}.lua`'s *own* internals beyond the adapter
+  contract (`setup`/`capabilities`/`on_attach`/`on_init`/`available`) that
+  `integrations_spec.lua` already drives generically for all of them.
+- `lua/lsp/tools/deprecated_help/**` and `tools/lsp_signature/{format_hover,
+  format_signature_help,highlights/parameters}.lua` -- pure formatting/glue
+  under a subsystem (`lsp_signature`) that already has a dedicated spec
+  covering its cache and request path; these are presentation details under
+  that boundary.
+- `@types` / `@types/*.lua` throughout the tree -- `---@meta` annotations,
+  no runtime code.
+
+None of the above showed a defect while being read for this pass; they are
+deferred on cost/risk grounds, not because they were checked and found
+clean.
