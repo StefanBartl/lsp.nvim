@@ -259,11 +259,27 @@ function M.find_in_node_modules(symbol)
     return
   end
   if fn.executable("rg") == 1 then
-    local cmd = { "rg", "--no-ignore", "-n", "--hidden", "-S", symbol, node_dir }
+    -- `-F`: match `symbol` literally. Without it a symbol containing regex
+    -- metacharacters (e.g. "Foo.Bar") is reinterpreted as a pattern rather
+    -- than matched verbatim.
+    local cmd = { "rg", "--no-ignore", "-n", "--hidden", "-S", "-F", symbol, node_dir }
     -- Run ripgrep and collect lines
     local result = fn.systemlist(cmd)
-    if vim.v.shell_error ~= 0 or vim.tbl_isempty(result) then
+    local exit = vim.v.shell_error
+    -- rg exits 1 for "no matches" and 2 for an actual failure (malformed
+    -- args, unreadable path); collapsing both onto "No results" hides a real
+    -- failure behind a message that reads like a successful, empty search.
+    if exit == 1 or (exit == 0 and vim.tbl_isempty(result)) then
       notify.info("No results for '" .. symbol .. "' in node_modules")
+      return
+    elseif exit ~= 0 then
+      notify.error(
+        ("ripgrep failed (exit %d) searching for '%s' in node_modules: %s"):format(
+          exit,
+          symbol,
+          table.concat(result, " ")
+        )
+      )
       return
     end
     local first = result[1]
