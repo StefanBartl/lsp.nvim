@@ -12,12 +12,22 @@ describe("lsp.tools.ts_type_lookup.cmds", function()
     saved = {
       get_clients = vim.lsp.get_clients,
       cmd = vim.cmd,
+      executable = vim.fn.executable,
+      isdirectory = vim.fn.isdirectory,
+      systemlist = vim.fn.systemlist,
+      notify = vim.notify,
+      v = vim.v,
     }
   end)
 
   after_each(function()
     vim.lsp.get_clients = saved.get_clients
     vim.cmd = saved.cmd
+    vim.fn.executable = saved.executable
+    vim.fn.isdirectory = saved.isdirectory
+    vim.fn.systemlist = saved.systemlist
+    vim.notify = saved.notify
+    vim.v = saved.v
     package.loaded["lsp.tools.ts_type_lookup.cmds"] = nil
   end)
 
@@ -108,6 +118,91 @@ describe("lsp.tools.ts_type_lookup.cmds", function()
     cmds.peek_type_definition_for("Foo")
 
     assert.are.equal(1, told, "the command returned in silence")
+  end)
+
+  --- Common setup for `find_in_node_modules`: an attached-client-free buffer
+  --- (so `get_root` falls back to `getcwd`), an existing node_modules, and rg
+  --- available -- only `systemlist`'s result and exit code vary per case.
+  ---
+  --- `vim.v.shell_error` is read-only from Lua (only the C side sets it,
+  --- after a real `system()` call), so it cannot be poked directly. `vim.v`
+  --- itself is just a plain global reference, though -- swapping it for a
+  --- proxy that reports the exit code this case wants, falling through to
+  --- the real `vim.v` for everything else, gets the same effect.
+  local function stub_rg(result, shell_error)
+    vim.lsp.get_clients = function()
+      return {}
+    end
+    vim.fn.executable = function(name)
+      return name == "rg" and 1 or 0
+    end
+    vim.fn.isdirectory = function()
+      return 1
+    end
+    vim.fn.systemlist = function(cmd)
+      vim.v = setmetatable({ shell_error = shell_error }, { __index = saved.v })
+      return result, cmd
+    end
+  end
+
+  ---@return string[] messages
+  local function capture_notify()
+    local messages = {}
+    ---@diagnostic disable-next-line: duplicate-set-field
+    vim.notify = function(msg)
+      messages[#messages + 1] = msg
+    end
+    return messages
+  end
+
+  -- rg exits 1 for "no matches" -- an ordinary, successful empty search.
+  it("reports no results for an rg exit of 1 (ERR-11)", function()
+    stub_rg({}, 1)
+    local messages = capture_notify()
+
+    local cmds = require("lsp.tools.ts_type_lookup.cmds")
+    cmds.find_in_node_modules("Foo")
+
+    assert.are.equal(1, #messages)
+    assert.truthy(messages[1]:match("No results"))
+  end)
+
+  -- rg exits 2 for an actual failure (malformed pattern, bad args, unreadable
+  -- path); collapsing this onto "No results" told the user the symbol was not
+  -- vendored when the search never ran to completion.
+  it("reports a failure separately from an empty result (ERR-11)", function()
+    stub_rg({ "rg: unmatched bracket" }, 2)
+    local messages = capture_notify()
+
+    local cmds = require("lsp.tools.ts_type_lookup.cmds")
+    cmds.find_in_node_modules("Foo(")
+
+    assert.are.equal(1, #messages)
+    assert.falsy(messages[1]:match("No results"))
+    assert.truthy(messages[1]:match("failed"))
+  end)
+
+  -- The pattern reaches rg as a literal string (`-F`), not a regex -- a
+  -- symbol with regex metacharacters must not be reinterpreted (SEC-30).
+  it("passes the symbol to rg as a fixed string", function()
+    stub_rg({}, 1)
+    local seen_cmd
+    local fake_systemlist = vim.fn.systemlist
+    vim.fn.systemlist = function(cmd)
+      seen_cmd = cmd
+      return fake_systemlist(cmd)
+    end
+    capture_notify()
+
+    local cmds = require("lsp.tools.ts_type_lookup.cmds")
+    cmds.find_in_node_modules("Foo.Bar")
+
+    assert.truthy(seen_cmd)
+    assert.is_true(vim.tbl_contains(seen_cmd, "-F"), "rg was not told to match literally")
+    assert.is_true(
+      vim.tbl_contains(seen_cmd, "Foo.Bar"),
+      "the raw symbol must still be passed through"
+    )
   end)
 end)
 
