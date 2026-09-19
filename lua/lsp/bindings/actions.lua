@@ -34,23 +34,35 @@ end
 --- The formatter API `setup()` published, building one on demand if setup has
 --- not run (which is the case when a user binds these actions by hand without
 --- calling `require("lsp").setup()`).
+---
+--- Reached through `lsp.formatter`'s own getter/setter rather than a
+--- `vim.g` global (PRIN-10) -- one `require` covers both the "already
+--- published" and "build on demand" cases, so a module that genuinely cannot
+--- be loaded (missing, syntax error) falls straight into the `nil` return
+--- below instead of a global masking that.
 ---@return table|nil
 local function formatter()
-  if type(vim.g._formatter_api) == "table" then
-    return vim.g._formatter_api
+  local ok, mod = pcall(require, "lsp.formatter")
+  if not ok then
+    return nil
   end
 
-  local ok, mod = pcall(require, "lsp.formatter")
-  if not (ok and type(mod.build) == "function") then
+  local published = mod.get()
+  if type(published) == "table" then
+    return published
+  end
+
+  if type(mod.build) ~= "function" then
     return nil
   end
 
   local c = cfg()
-  vim.g._formatter_api = mod.build({
+  local built = mod.build({
     format_on_save = c.formatter.on_save,
     timeout_ms = c.formatter.timeout_ms,
   })
-  return vim.g._formatter_api
+  mod.set(built)
+  return built
 end
 
 --- Toggle format-on-save.

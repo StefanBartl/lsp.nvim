@@ -156,6 +156,13 @@ describe("lsp.init / lsp.health defects", function()
           end,
         }
       end,
+      -- `bootstrap` publishes the built instance through these (PRIN-10,
+      -- replacing `vim.g._formatter_api`); a stub with only `build` raised
+      -- "attempt to call field 'set' (a nil value)" the moment it did.
+      get = function()
+        return nil
+      end,
+      set = function() end,
     })
     -- Not inert: the Diagnostics section iterates `sources()`, so a stub that
     -- answers nil would make that section fail for a reason no case is about.

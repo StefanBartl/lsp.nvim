@@ -132,9 +132,7 @@ describe("lsp.bindings.actions", function()
     ---@param fn fun(said: string[])
     local function without(mod, fn)
       local loaded, preload = package.loaded[mod], package.preload[mod]
-      local api = vim.g._formatter_api
       package.loaded[mod] = nil
-      vim.g._formatter_api = nil
       package.preload[mod] = function()
         error(mod .. " is not installed")
       end
@@ -145,7 +143,6 @@ describe("lsp.bindings.actions", function()
       restore()
       package.preload[mod] = preload
       package.loaded[mod] = loaded
-      vim.g._formatter_api = api
       assert.is_true(ok, tostring(err))
     end
 

@@ -215,8 +215,9 @@ Two commands are **not** aliases and stay registered either way:
   verb, which is also why `:TypeDef*`, `:EslintFix`, `:AstroDevStart`,
   `:MdFormat` and `:LuaLsReloadLibrary` are untouched: they are filetype-bound.
 
-`vim.g._formatter_api` is published by `setup()` so the formatter actions can
-find the instance the bootstrap built.
+`lsp.formatter.set()` publishes the instance the bootstrap built, so the
+formatter actions can find it again through `lsp.formatter.get()` without
+building a second one.
 
 Report output goes to a scratch split rather than a notification: it is
 multi-line and meant to be read and copied from.
