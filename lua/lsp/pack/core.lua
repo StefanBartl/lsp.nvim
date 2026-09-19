@@ -26,6 +26,15 @@ return {
   {
     "stevearc/conform.nvim",
     enabled = pack.enabled("conform.nvim", "core"),
+    -- Explicit rather than absent: `lsp.setup()`'s bootstrap always calls
+    -- `require("conform")` (`lsp.formatter.conform.setup()`,
+    -- `lsp.formatter.build()`), so this loads on every startup no matter what
+    -- trigger a spec declares -- a `require` from another module is an
+    -- accident, not a trigger (LUA-93; the `lsp.integrations.blink` case this
+    -- rule names). Declaring `ft`/`cmd`/`event` here would make the spec read
+    -- lazy while staying eager underneath, which is worse than no trigger at
+    -- all. `lazy = false` says what actually happens.
+    lazy = false,
   },
 
   {
