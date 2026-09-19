@@ -509,6 +509,16 @@ describe("lsp.tools.lsp_signature.format_signature_help", function()
     assert.are.same({ "foo(a, b)" }, lines)
   end)
 
+  it("does not raise when the `value` envelope itself is vim.NIL (LUA-16)", function()
+    -- `result.value` is the wrapped-result envelope some servers use; it is
+    -- itself legal to send as JSON `null`. `result.value and
+    -- result.value.signatures` does not guard that -- `vim.NIL` is truthy in
+    -- Lua -- so this used to index the userdata directly and raise.
+    assert.has_no.errors(function()
+      assert.is_nil(format_signature_help({ value = vim.NIL }))
+    end)
+  end)
+
   it("does not raise on a vim.NIL parameters with a numeric activeParameter (LUA-16)", function()
     local lines, hl
     assert.has_no.errors(function()

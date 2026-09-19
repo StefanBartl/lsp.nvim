@@ -43,17 +43,28 @@ return function(result)
   if not result then
     return nil
   end
+
+  -- The `result.value` envelope some servers wrap the real payload in is
+  -- itself legal to send as JSON `null`, which decodes to `vim.NIL` --
+  -- truthy in Lua. `result.value and result.value.foo` does not guard that:
+  -- it indexes the userdata directly and raises. Normalized once, here, so
+  -- every read below can treat `value` as a plain table-or-nil.
+  local value = result.value
+  if is_nil(value) then
+    value = nil
+  end
+
   local sigs = result.signatures
   if is_nil(sigs) then
-    sigs = result.value and result.value.signatures
+    sigs = value and value.signatures
   end
   if is_nil(sigs) or type(sigs) ~= "table" or #sigs == 0 then
     return nil
   end
 
   local active = result.activeSignature
-  if result.value and type(result.value.activeSignature) == "number" then
-    active = result.value.activeSignature
+  if value and type(value.activeSignature) == "number" then
+    active = value.activeSignature
   end
   local idx = (type(active) == "number") and (active + 1) or 1
   local sig = sigs[idx] or sigs[1]
@@ -78,7 +89,7 @@ return function(result)
   -- -- this returned `hl = nil`, so nothing was emphasised, and
   -- `request_and_show`, deriving the index the same way, defaulted to 1 and
   -- painted `LspSignatureActiveParam` over the *first* parameter instead.
-  local envelope = result.value or result
+  local envelope = value or result
   ---@type integer|nil
   local active_param = nil
   if type(sig.activeParameter) == "number" then
