@@ -50,6 +50,12 @@ local function scaffold(path, template)
   uv.fs_close(fd)
 
   if not pcall(vim.fn.writefile, template, path) then
+    -- `path` was already claimed above by the O_CREAT|O_EXCL open: left on
+    -- disk, that empty file makes every future call see EEXIST and treat
+    -- this name as "already exists", so a transient write failure (read-only
+    -- directory, full disk) would block every retry forever, even once the
+    -- underlying problem is fixed. Release the claim so a retry can succeed.
+    uv.fs_unlink(path)
     notify.warn("Could not write " .. path)
     return
   end
