@@ -64,6 +64,101 @@ local function with_tempdir(fn)
   assert(ok, err)
 end
 
+--- Create a directory symlink, reporting *why* it could not be created rather
+--- than only that it was not.
+---
+--- A junction (`mklink /J`) is not a substitute: it is a different object with
+--- different resolution semantics, and these cases are specifically about what
+--- `uv.fs_realpath` sees through.
+---@param target string
+---@param link string
+---@return boolean ok
+---@return string|nil err
+local function try_symlink(target, link)
+  local ok, err = (vim.uv or vim.loop).fs_symlink(target, link, { dir = true, junction = false })
+  return ok == true, err
+end
+
+--- Skip the current case because this machine cannot create a symlink -- and
+--- say so loudly enough that the skip cannot be mistaken for a pass.
+---
+--- Same rules as `probe_live_spec.lua`, for the same reason: plenary's
+--- `pending` prints `Pending` and the run still tallies the case under
+--- `Success`, so a gate that quietly skips itself reports confidence it never
+--- earned. So this names the reason, writes it to stderr as well as into the
+--- `PENDING` line, and **fails instead of skipping under `CI` on any platform
+--- that is not Windows**.
+---
+--- Windows is the one legitimate skip. Creating a symlink there needs
+--- `SeCreateSymbolicLinkPrivilege` -- Developer Mode or an elevated shell --
+--- and the GitHub Windows runner has neither by default. A developer machine
+--- with Developer Mode on *does* run these cases, which is how they were
+--- verified while being written. Linux and macOS have no such excuse: a
+--- symlink failing there is a broken environment, and these are exactly the
+--- platforms where the bug bites, because Unix Neovim canonicalizes a path on
+--- the way into a buffer name and Windows -- measured -- does not.
+---@param why string
+local function skip_no_symlink(why)
+  local message = "needs a real directory symlink, which this machine refused: " .. why
+  io.stderr:write("\n[rootresolvers] SKIPPED: " .. message .. "\n")
+  local ci = vim.env.CI
+  local windows = vim.fn.has("win32") == 1
+  if ci ~= nil and ci ~= "" and ci ~= "false" and not windows then
+    assert.is_true(false, "outside Windows a symlink must be creatable under CI, so: " .. message)
+  end
+  pending(message)
+end
+
+--- The dotfiles layout these cases are about:
+---
+---   <base>/dotfiles/.git          -- so the VCS search has something to find
+---   <base>/dotfiles/nvim/lua/     -- the real config tree
+---   <base>/config_link  ->  <base>/dotfiles/nvim
+---
+--- `fn` receives the link spelling, the resolved spelling of that same
+--- directory, and the repo root the VCS search would otherwise settle on.
+--- Skips (loudly) and returns false when the symlink could not be created.
+---@param fn fun(link: string, resolved: string, repo: string): nil
+---@return boolean ran
+local function with_symlinked_config(fn)
+  local base = norm(vim.fn.tempname())
+  vim.fn.mkdir(base .. "/dotfiles/nvim/lua/plugins", "p")
+  vim.fn.mkdir(base .. "/dotfiles/.git", "p")
+  base = real(base)
+
+  local repo = base .. "/dotfiles"
+  local link = base .. "/config_link"
+  local ok, err = try_symlink(repo .. "/nvim", link)
+  if not ok then
+    pcall(vim.fn.delete, base, "rf")
+    skip_no_symlink(tostring(err))
+    return false
+  end
+
+  local ran, ferr = pcall(fn, norm(link), real(link), repo)
+  pcall(vim.fn.delete, base, "rf")
+  assert(ran, ferr)
+  return true
+end
+
+--- Run `fn` with `stdpath("config")` answering `link`, restoring the real one
+--- afterwards whatever happens -- a leaked stub would silently redirect every
+--- later case in the run.
+---@param link string
+---@param fn fun(): nil
+local function with_stdpath_config(link, fn)
+  local orig = vim.fn.stdpath
+  vim.fn.stdpath = function(what)
+    if what == "config" then
+      return link
+    end
+    return orig(what)
+  end
+  local ok, err = pcall(fn)
+  vim.fn.stdpath = orig
+  assert(ok, err)
+end
+
 describe("lsp.servers.lua_ls.rootresolver", function()
   local resolve = require("lsp.servers.lua_ls.rootresolver")
 
@@ -146,6 +241,68 @@ describe("lsp.servers.lua_ls.rootresolver", function()
 
       vim.fn.stdpath = orig
       assert(ok, err)
+    end)
+  end)
+
+  -- The dotfiles case, and the reason the check above is not enough.
+  --
+  -- `~/.config/nvim` is a symlink into a dotfiles repo on a very large share
+  -- of real setups. `stdpath("config")` reports that symlink verbatim; the
+  -- directory this resolver is handed comes from a buffer name, and Unix
+  -- Neovim canonicalizes a path on the way in -- the same canonicalization
+  -- that made fifteen cases fail on the macOS runner over `/var` against
+  -- `/private/var` (d6b5b62). So the two arrive spelled differently, a plain
+  -- string compare answers false, and "the config directory is a root of its
+  -- own" silently stops being true for precisely the people whose config is
+  -- version-controlled -- lua_ls gets the whole dotfiles repo instead.
+  --
+  -- The resolved spelling is passed as a filename rather than opened as a
+  -- buffer on purpose. On Unix a buffer produces exactly this; on Windows --
+  -- measured, not assumed -- `nvim_buf_get_name` keeps the link spelling and
+  -- there would be nothing to test. Handing the resolver the spelling a Unix
+  -- buffer yields pins the contract itself, identically wherever a symlink can
+  -- be made at all.
+  it("roots at the config directory when stdpath('config') is a symlink", function()
+    with_symlinked_config(function(link, resolved, repo)
+      with_stdpath_config(link, function()
+        for _, scope in ipairs({ "git", "cwd", "path" }) do
+          root_scope.set(scope)
+          local root = norm(resolve(resolved .. "/lua/plugins/init.lua"))
+
+          assert.are_not.equal(norm(repo), root, "rooted at the dotfiles repo, scope=" .. scope)
+          assert.are.equal(norm(resolved), root, "scope=" .. scope)
+        end
+      end)
+    end)
+  end)
+
+  -- A root has to be a prefix of the file it is a root *for*. Returning the raw
+  -- `stdpath("config")` would satisfy "did the config-directory rule fire"
+  -- while handing lua_ls a workspace the buffer is not inside -- which is worse
+  -- than the miss it replaces. Measured against a real lua-language-server: it
+  -- indexes the tree through the symlink and answers textDocument/definition
+  -- with the *other* spelling, so jumping to a definition opens a second
+  -- buffer on a file that is already open.
+  it("returns a config spelling that is a prefix of the file's own path", function()
+    with_symlinked_config(function(link, resolved)
+      with_stdpath_config(link, function()
+        local file = norm(resolved .. "/lua/plugins/init.lua")
+        local root = norm(resolve(file))
+
+        assert.are.equal(root, file:sub(1, #root), "root is not a prefix of " .. file)
+      end)
+    end)
+  end)
+
+  -- The other direction, and the regression guard on the fix: a directory
+  -- already spelled the way `stdpath("config")` spells it must still resolve to
+  -- exactly that value. Canonicalizing unconditionally would quietly rewrite
+  -- the root for every setup that never had this problem.
+  it("still returns stdpath('config') verbatim for a path spelled that way", function()
+    with_symlinked_config(function(link)
+      with_stdpath_config(link, function()
+        assert.are.equal(link, resolve(link .. "/lua/plugins/init.lua"))
+      end)
     end)
   end)
 end)
