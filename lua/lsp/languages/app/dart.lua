@@ -78,7 +78,7 @@ local function run_or_focus()
   vim.cmd("enew")
   local this_bufnr = api.nvim_get_current_buf()
   run_bufnr = this_bufnr
-  vim.fn.jobstart("flutter run", {
+  vim.fn.jobstart({ "flutter", "run" }, {
     term = true,
     cwd = root,
     on_exit = function()

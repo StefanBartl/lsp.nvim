@@ -315,7 +315,7 @@ describe("lsp.languages.app.dart", function()
 
     vim.fn.jobstart = orig_jobstart
     assert.are.equal(1, #calls)
-    assert.are.equal("flutter run", calls[1].cmd)
+    assert.are.same({ "flutter", "run" }, calls[1].cmd)
     assert.is_true(calls[1].opts.term, "not run in a terminal buffer")
   end)
 
