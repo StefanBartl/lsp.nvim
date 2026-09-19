@@ -106,4 +106,56 @@ describe("lsp.languages.documentation.markdown_words", function()
 
     pcall(vim.fn.delete, dir, "rf")
   end)
+
+  -- `set_root` used to pass its argument straight through `vim.fn.expand()`,
+  -- Vim's *filename* expansion -- a backtick span in the argument is a
+  -- command substitution over `&shell`. `:MdSetRoot` argument is exactly
+  -- that argument.
+  it("does not run a shell command embedded via backticks in the root (SEC-34)", function()
+    local dir = vim.fn.tempname()
+    vim.fn.mkdir(dir, "p")
+    local marker = dir .. "/sec34_marker"
+    pcall(vim.fn.delete, marker)
+
+    local mw = require("lsp.languages.documentation.markdown_words")
+    mw.set_root("`touch " .. marker .. "`")
+    vim.wait(2000, function()
+      return mw.stats().cached
+    end, 20)
+
+    assert.are.equal(0, vim.fn.filereadable(marker), "the backtick span ran as a shell command")
+
+    pcall(vim.fn.delete, dir, "rf")
+  end)
+
+  it(
+    "still expands ~ in the root, which is all the replacement is meant to keep (SEC-34)",
+    function()
+      -- A stubbed home directory, not the real one: `~` on this machine is a
+      -- large real tree, and the point here is the substitution, not a scan of
+      -- it.
+      local dir = vim.fn.tempname()
+      vim.fn.mkdir(dir, "p")
+
+      local uv = vim.uv or vim.loop
+      local real_homedir = uv.os_homedir
+      ---@diagnostic disable-next-line: duplicate-set-field
+      uv.os_homedir = function()
+        return dir
+      end
+
+      local mw = require("lsp.languages.documentation.markdown_words")
+      mw.set_root("~")
+      local built = vim.wait(2000, function()
+        return mw.stats().cached
+      end, 10)
+
+      uv.os_homedir = real_homedir
+
+      assert.is_true(built, "the rebuild never finished")
+      assert.are.equal(dir, mw.stats().root)
+
+      pcall(vim.fn.delete, dir, "rf")
+    end
+  )
 end)

@@ -24,6 +24,7 @@ local usercmd = require("lib.nvim.bindings.usercmd")
 local debounce = require("lib.nvim.debounce")
 local register = require("lsp.completion.register")
 local usage = require("lsp.completion.usage")
+local expand_path = require("lib.nvim.cross.fs.expand_path")
 
 ---@type string
 local SOURCE_NAME = "md_words"
@@ -344,7 +345,11 @@ function M.set_root(path)
   if not root or root == "" then
     root = (uv.cwd and uv.cwd()) or vim.fn.getcwd()
   end
-  root = vim.fn.expand(root)
+  -- Not `vim.fn.expand()`: that is Vim's filename expansion, which reads a
+  -- backtick span as a command substitution over `&shell` and treats `%`,
+  -- `#`, `<cfile>`/`<cword>` as Vim specials -- all live on `:MdSetRoot`'s
+  -- argument. Only `~` and environment variables are wanted here.
+  root = expand_path(root)
   root = root:gsub("[/\\]+$", "")
 
   if root == state.root and state.items then
