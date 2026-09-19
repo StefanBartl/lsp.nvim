@@ -165,6 +165,19 @@ describe("lsp.config.pack", function()
       end
     end)
 
+    -- `lsp.setup()`'s bootstrap always `require`s conform
+    -- (`lsp.formatter.conform.setup()`, `lsp.formatter.build()`), so no
+    -- `ft`/`cmd`/`event` trigger in this spec could ever make it actually
+    -- lazy -- declaring one would only make the spec read lazy while staying
+    -- eager underneath, worse than declaring nothing. `lazy = false` says
+    -- what actually happens (LUA-93).
+    it("conform.nvim declares its eagerness explicitly, not via an absent trigger", function()
+      with(nil)
+      local spec = specs("core")[1]
+      assert.are.equal("stevearc/conform.nvim", spec[1])
+      assert.are.equal(false, spec.lazy)
+    end)
+
     it("the two completion engines exclude each other", function()
       with({ completion = "cmp" })
       assert.is_true(specs("completion")[1].enabled)
