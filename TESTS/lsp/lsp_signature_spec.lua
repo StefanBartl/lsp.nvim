@@ -107,6 +107,33 @@ describe("lsp.tools.lsp_signature", function()
     assert.are.equal("%=/src/pkg/mod.lua%=", api.nvim_get_option_value("statusline", { win = win }))
   end)
 
+  -- `nvim_create_buf` signals failure by returning 0, and 0 is not an invalid
+  -- handle -- it aliases the *current* buffer. An unchecked failure here
+  -- would retarget every following `nvim_buf_*`/`nvim_open_win` call in this
+  -- function at whatever buffer the user is editing (LUA-11).
+  it("returns nil instead of retargeting the current buffer when nvim_create_buf fails", function()
+    local ofp = require("lsp.tools.lsp_signature.open_floating_preview")
+    local scratch = source_buffer("do not touch me")
+    local before = api.nvim_buf_get_lines(scratch, 0, -1, false)
+
+    local real_create_buf = api.nvim_create_buf
+    ---@diagnostic disable-next-line: duplicate-set-field
+    api.nvim_create_buf = function()
+      return 0
+    end
+
+    local buf, win
+    assert.has_no.errors(function()
+      buf, win = ofp({ "foo(a, b)" })
+    end)
+
+    api.nvim_create_buf = real_create_buf
+
+    assert.is_nil(buf)
+    assert.is_nil(win)
+    assert.are.same(before, api.nvim_buf_get_lines(scratch, 0, -1, false))
+  end)
+
   -- `format_signature_help` accepts a result whose payload sits under
   -- `result.value`; the caller then read `result.signatures` directly, which
   -- is nil for exactly that shape. Measured: "attempt to index field
@@ -455,5 +482,43 @@ describe("lsp.tools.lsp_signature.format_hover", function()
 
     require("lsp.tools.lsp_signature.state").close()
     pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
+  end)
+end)
+
+describe("lsp.tools.lsp_signature.format_signature_help", function()
+  -- `signatures`, `parameters` and every other optional field in the
+  -- `signatureHelp` protocol are all legal to send as JSON `null`, which
+  -- decodes to `vim.NIL` -- userdata, not Lua `nil`. Both sites this module
+  -- reads such a field with a plain truthiness check used to index or
+  -- length-check the userdata directly and raise.
+  local format_signature_help = require("lsp.tools.lsp_signature.format_signature_help")
+
+  it("returns nil rather than raising on a vim.NIL signatures (LUA-16)", function()
+    assert.has_no.errors(function()
+      assert.is_nil(format_signature_help({ signatures = vim.NIL }))
+    end)
+  end)
+
+  it("still finds signatures under result.value when result.signatures is vim.NIL", function()
+    local lines = format_signature_help({
+      signatures = vim.NIL,
+      value = {
+        signatures = { { label = "foo(a, b)" } },
+      },
+    })
+    assert.are.same({ "foo(a, b)" }, lines)
+  end)
+
+  it("does not raise on a vim.NIL parameters with a numeric activeParameter (LUA-16)", function()
+    local lines, hl
+    assert.has_no.errors(function()
+      lines, hl = format_signature_help({
+        signatures = { { label = "foo(a, b)", parameters = vim.NIL } },
+        activeSignature = 0,
+        activeParameter = 0,
+      })
+    end)
+    assert.are.same({ "foo(a, b)" }, lines)
+    assert.is_nil(hl, "no highlight to compute without real parameters")
   end)
 end)

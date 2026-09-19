@@ -4,6 +4,14 @@
 --- stripper (`//`, `/* */`, `#`, `--`, `%`) for parameter doc lines.
 local split_lines = require("lsp.tools.lsp_signature.split_lines")
 
+-- JSON/LSP `null` decodes to `vim.NIL` -- userdata, not Lua `nil` -- so a
+-- plain truthiness check does not treat it as absent.
+---@param v any
+---@return boolean
+local function is_nil(v)
+  return v == nil or v == vim.NIL
+end
+
 -- Strip common comment prefixes for many languages from a single line.
 -- This is heuristic: handles //, /* */, #, --, % and leading whitespace.
 ---@param line string
@@ -35,8 +43,11 @@ return function(result)
   if not result then
     return nil
   end
-  local sigs = result.signatures or (result.value and result.value.signatures)
-  if not sigs or #sigs == 0 then
+  local sigs = result.signatures
+  if is_nil(sigs) then
+    sigs = result.value and result.value.signatures
+  end
+  if is_nil(sigs) or type(sigs) ~= "table" or #sigs == 0 then
     return nil
   end
 
@@ -78,7 +89,7 @@ return function(result)
 
   -- compute active parameter hl info if available
   local hl = nil
-  if sig.parameters and active_param then
+  if not is_nil(sig.parameters) and type(sig.parameters) == "table" and active_param then
     local param = sig.parameters[active_param + 1]
     if param and param.label then
       if type(param.label) == "table" and #param.label == 2 then
