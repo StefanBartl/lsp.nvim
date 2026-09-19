@@ -608,6 +608,101 @@ describe("lsp.languages.webdev.astro", function()
     )
   end)
 
+  -- The O_CREAT|O_EXCL claim happens before `writefile`, so a `writefile`
+  -- failure (disk full, briefly read-only directory, ...) used to leave a
+  -- zero-byte file behind that the claim itself created. Every later attempt
+  -- then saw EEXIST and treated the name as "already exists", so the write
+  -- could never be retried -- not even once the underlying problem was
+  -- fixed -- short of deleting the stray file by hand.
+  it("lets a retry succeed after writefile fails once", function()
+    local dir = scratch_project()
+    require("lsp.languages.webdev.astro").enable()
+
+    local real_writefile = vim.fn.writefile
+    ---@diagnostic disable-next-line: duplicate-set-field
+    vim.fn.writefile = function()
+      vim.fn.writefile = real_writefile
+      error("simulated write failure")
+    end
+
+    vim.cmd("AstroNewComponent Broken")
+    vim.fn.writefile = real_writefile -- in case the stub was never reached
+
+    local path = dir .. "/src/components/Broken.astro"
+    assert.are.equal(0, vim.fn.filereadable(path), "a failed write should not leave a file behind")
+
+    notes = {}
+    vim.cmd("AstroNewComponent Broken")
+
+    assert.are.equal(
+      1,
+      vim.fn.filereadable(path),
+      "the retry should succeed once the write works again"
+    )
+    assert.are.same({
+      "---",
+      "interface Props {}",
+      "",
+      "const {} = Astro.props;",
+      "---",
+      "",
+      "<div>",
+      "  <!-- Component content -->",
+      "</div>",
+    }, vim.fn.readfile(path))
+    assert.is_falsy(
+      table.concat(notes, "\n"):match("already exists"),
+      "the retry was blocked by the leftover empty file: " .. vim.inspect(notes)
+    )
+  end)
+
+  -- Same dead end, reached through the visual-mode extraction path instead
+  -- of `:AstroNewComponent`.
+  it("lets an extraction retry succeed after writefile fails once", function()
+    local dir = scratch_project()
+    vim.fn.mkdir(dir .. "/src/components", "p")
+    submitted = "Broken"
+    require("lsp.languages.webdev.astro").enable()
+
+    local real_writefile = vim.fn.writefile
+    ---@diagnostic disable-next-line: duplicate-set-field
+    vim.fn.writefile = function()
+      vim.fn.writefile = real_writefile
+      error("simulated write failure")
+    end
+
+    with_window_buffer({ "---", "---", "", "<p>one</p>", "<p>two</p>" }, function(bufnr)
+      make_astro(bufnr, { "---", "---", "", "<p>one</p>", "<p>two</p>" })
+      local lhs = lhs_by_desc(bufnr, "v", "Extract to component")
+
+      vim.api.nvim_win_set_cursor(0, { 4, 0 })
+      feed("Vj" .. lhs)
+    end)
+    vim.fn.writefile = real_writefile -- in case the stub was never reached
+
+    local path = dir .. "/src/components/Broken.astro"
+    assert.are.equal(0, vim.fn.filereadable(path), "a failed write should not leave a file behind")
+
+    notes = {}
+    with_window_buffer({ "---", "---", "", "<p>one</p>", "<p>two</p>" }, function(bufnr)
+      make_astro(bufnr, { "---", "---", "", "<p>one</p>", "<p>two</p>" })
+      local lhs = lhs_by_desc(bufnr, "v", "Extract to component")
+
+      vim.api.nvim_win_set_cursor(0, { 4, 0 })
+      feed("Vj" .. lhs)
+    end)
+
+    assert.are.equal(
+      1,
+      vim.fn.filereadable(path),
+      "the retry should succeed once the write works again"
+    )
+    assert.is_falsy(
+      table.concat(notes, "\n"):match("already exists"),
+      "the retry was blocked by the leftover empty file: " .. vim.inspect(notes)
+    )
+  end)
+
   -- `<leader>an` seeded its "nearest boundary" with the line count and then
   -- required `next_line < total`, so a boundary sitting ON the last line lost
   -- to the seed and the cursor wrapped to line 1 instead of moving to it.

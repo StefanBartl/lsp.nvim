@@ -178,6 +178,11 @@ function M.attach()
         vim.list_extend(content, lines)
 
         if not pcall(vim.fn.writefile, content, component_path) then
+          -- Same dead end as the scaffolding path in usercmds.lua: the
+          -- O_CREAT|O_EXCL open above already claimed `component_path`, so
+          -- leaving the empty file behind here would make every retry see
+          -- EEXIST and treat it as "already exists" forever.
+          uv.fs_unlink(component_path)
           notify.warn("Could not write " .. component_path)
           return
         end
