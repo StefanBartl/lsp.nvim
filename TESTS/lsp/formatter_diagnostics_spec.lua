@@ -69,6 +69,41 @@ describe("lsp.formatter.conform.format_preserve_view", function()
   end)
 end)
 
+--- The shared formatter instance `lsp.init`'s bootstrap and
+--- `lsp.bindings.actions` publish/read, reached through a getter/setter
+--- instead of the unprefixed `vim.g._formatter_api` global this used to be
+--- (PRIN-10).
+describe("lsp.formatter: get/set", function()
+  before_each(function()
+    package.loaded["lsp.formatter"] = nil
+  end)
+
+  after_each(function()
+    require("lsp.formatter").set(nil)
+  end)
+
+  it("has nothing published until set() is called", function()
+    assert.is_nil(require("lsp.formatter").get())
+  end)
+
+  it("hands back exactly the instance set() was given", function()
+    local mod = require("lsp.formatter")
+    local instance = { format = function() end }
+
+    mod.set(instance)
+
+    assert.are.equal(instance, mod.get())
+  end)
+
+  it("clears with set(nil)", function()
+    local mod = require("lsp.formatter")
+    mod.set({ format = function() end })
+    mod.set(nil)
+
+    assert.is_nil(mod.get())
+  end)
+end)
+
 describe("lsp.formatter LSP fallback", function()
   local clients, buf, tmp
 

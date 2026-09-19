@@ -167,7 +167,7 @@ end
 
 ---@internal
 --- The formatter API, or an inert stand-in with the same shape so callers
---- (commands, keymaps, `vim.g._formatter_api`) never have to nil-check.
+--- (commands, keymaps, `lsp.formatter.get()`) never have to nil-check.
 ---@param cfg LspNvim.Config
 ---@return table
 local function build_formatter(cfg)
@@ -325,10 +325,11 @@ local function bootstrap(cfg)
     require("lsp.formatter.conform").setup()
   end)
 
-  -- Read by the format keymaps and commands. A global because the keymaps are
-  -- registered by the host today; it goes away with roadmap phase 3, when the
-  -- keymap catalogue can close over the formatter directly.
-  vim.g._formatter_api = formatter
+  -- Read by the format keymaps and commands, through `lsp.formatter`'s own
+  -- getter/setter rather than a global (PRIN-10) -- both this bootstrap and
+  -- `lsp.bindings.actions` already live in this module tree, so there is no
+  -- cross-plugin boundary here that needed `vim.g` as a transport.
+  require("lsp.formatter").set(formatter)
 
   -- The flat command family. `:Lsp` reaches the same functions through its own
   -- routes, so these are aliases; `usrcmds.legacy_aliases = false` drops them.

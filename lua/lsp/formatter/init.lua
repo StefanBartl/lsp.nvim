@@ -17,6 +17,28 @@ require("lsp.formatter.@types")
 
 local M = {}
 
+--- The instance `lsp.init`'s bootstrap published, or the one
+--- `lsp.bindings.actions` built on demand -- whichever ran first. Module-
+--- internal state reached through `M.get`/`M.set` rather than an unprefixed
+--- `vim.g` global (PRIN-10): both callers already live in this module tree,
+--- so there is no cross-plugin boundary here that would need `vim.g` as a
+--- transport.
+---@type FormatterApi|nil
+local current = nil
+
+--- The published formatter API instance, if one has been built yet.
+---@return FormatterApi|nil
+function M.get()
+  return current
+end
+
+--- Publish `instance` as the shared formatter API. `nil` clears it.
+---@param instance FormatterApi|nil
+---@return nil
+function M.set(instance)
+  current = instance
+end
+
 --- Build a formatter API instance (stateless config + internal state).
 ---@param opts? FormatterOptions
 ---@return FormatterApi

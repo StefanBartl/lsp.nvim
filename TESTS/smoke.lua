@@ -117,7 +117,7 @@ ok(vim.fn.exists(":Lsp") == 2, "`:Lsp` exists as a command")
 ok(#status.servers > 0, "status: servers were set up (" .. #status.servers .. ")")
 ok(vim.fn.exists(":LspDoctor") == 2, "`:LspDoctor` exists")
 ok(vim.fn.exists(":LspStatus") == 2, "`:LspStatus` (legacy) exists")
-ok(type(vim.g._formatter_api) == "table", "formatter API published for the keymaps")
+ok(type(require("lsp.formatter").get()) == "table", "formatter API published for the keymaps")
 
 -- The keymap catalogue is real now (migration phase 3), so check that the
 -- mechanism around it actually does what the config options promise.
