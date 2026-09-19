@@ -42,6 +42,12 @@ end
 ---two genuinely different diagnostics with the same text -- "unused variable"
 ---twice in one file -- collapsed into one and the second was never rendered.
 ---That is the path `lsp.core.handlers` uses.
+---
+---`severity`, `source` and `message` are optional in the LSP spec, so a
+---server may send any of them as JSON `null`, which decodes to `vim.NIL` --
+---userdata, not Lua `nil` -- and the plain `or` fallback below never fires
+---for it. Each is checked against `vim.NIL` explicitly rather than relied on
+---to be falsy.
 ---@param diags table[]
 function M.dedup(diags)
   if type(diags) ~= "table" or #diags == 0 then
@@ -52,9 +58,10 @@ function M.dedup(diags)
     local range_start = (type(d.range) == "table") and d.range.start or nil
     local lnum = d.lnum or (range_start and range_start.line) or 0
     local col = d.col or (range_start and range_start.character) or 0
-    local sev = (d.severity or 0)
-    local src = (d.source or "")
-    local msg = (d.message or ""):gsub("%s+$", "")
+    local sev = (d.severity ~= vim.NIL and type(d.severity) == "number") and d.severity or 0
+    local src = (d.source ~= vim.NIL and type(d.source) == "string") and d.source or ""
+    local raw_msg = (d.message ~= vim.NIL and type(d.message) == "string") and d.message or ""
+    local msg = raw_msg:gsub("%s+$", "")
     local key = table.concat({ lnum, col, sev, src, msg }, "␟")
     if not seen[key] then
       seen[key] = true

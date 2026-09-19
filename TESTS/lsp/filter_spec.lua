@@ -168,5 +168,29 @@ describe("lsp.core.filter", function()
       ---@diagnostic disable-next-line: param-type-mismatch
       assert.is_nil(filter.dedup(nil))
     end)
+
+    -- `severity`, `source` and `message` are all optional in the LSP spec, so
+    -- a server may legally send any of them as JSON `null`, which decodes to
+    -- `vim.NIL` -- userdata, not Lua `nil`. The `or` idiom this function
+    -- otherwise relies on does not treat userdata as falsy, so an unguarded
+    -- `d.message:gsub(...)` on it would raise and drop the whole push.
+    it("does not raise on a vim.NIL severity/source/message (LUA-16)", function()
+      local a = lsp_diag(1, "unused", { severity = vim.NIL, source = vim.NIL, message = vim.NIL })
+      local out
+      assert.has_no.errors(function()
+        out = filter.dedup({ a })
+      end)
+      assert.are.equal(1, #out)
+    end)
+
+    it("treats a vim.NIL field the same as a genuinely absent one", function()
+      local nil_message = lsp_diag(1, "", { message = vim.NIL })
+      local empty_message = lsp_diag(1, "")
+      local out = filter.dedup({ nil_message, empty_message })
+
+      -- Same effective key (severity/source/message all coerce to the same
+      -- values), so the second is a duplicate of the first.
+      assert.are.equal(1, #out)
+    end)
   end)
 end)
