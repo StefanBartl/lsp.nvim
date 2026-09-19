@@ -6,6 +6,11 @@
 local M = {}
 
 ---Filters diagnostics by message substring patterns (pure).
+---
+---`message` is optional in the LSP spec, so a server may send it as JSON
+---`null`, which decodes to `vim.NIL` -- userdata, not Lua `nil` -- and the
+---plain `or` fallback never fires for it. Checked against `vim.NIL`
+---explicitly rather than relied on to be falsy, same as `M.dedup` above.
 ---@param diags table[]
 ---@param opts { patterns: string[] }|nil
 function M.filter(diags, opts)
@@ -17,7 +22,7 @@ function M.filter(diags, opts)
   end
   local out = {}
   for _, d in ipairs(diags) do
-    local msg = d and d.message or ""
+    local msg = (d and d.message ~= vim.NIL and type(d.message) == "string") and d.message or ""
     local keep = true
     for _, pat in ipairs(opts.patterns) do
       if type(pat) == "string" and pat ~= "" and msg:find(pat) then
