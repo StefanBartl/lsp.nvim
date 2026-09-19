@@ -63,8 +63,14 @@ return function(lines, opts)
     width = max_width
   end
 
-  -- Create scratch buffer
+  -- Create scratch buffer. `nvim_create_buf` signals failure by returning 0
+  -- -- and 0 is not an invalid handle, it is the alias for the *current*
+  -- buffer, so an unchecked failure here would silently retarget every call
+  -- below at whatever buffer the user is editing.
   local bufnr = api.nvim_create_buf(false, true)
+  if bufnr == 0 then
+    return nil
+  end
   -- If orig_fname was provided, set buffer name so filetype detection can trigger
   if opts.orig_fname and opts.orig_fname ~= "" then
     pcall(api.nvim_buf_set_name, bufnr, opts.orig_fname)
