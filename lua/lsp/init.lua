@@ -247,8 +247,31 @@ local function setup_servers(cfg, shared)
     )
   end
 
+  -- `vim.lsp.enable` is called per name rather than once with the whole
+  -- list so one bad name can't take the rest down with it -- but a failure
+  -- here must not vanish the way it used to: this is the one step that
+  -- actually turns a configured server on, and every other failure path in
+  -- this function already lands in `_warnings`/`:checkhealth lsp`.
+  local enable_failures = {}
   for _, name in ipairs(names) do
-    pcall(vim.lsp.enable, name)
+    local enable_ok, enable_err = pcall(vim.lsp.enable, name)
+    if not enable_ok then
+      enable_failures[#enable_failures + 1] = name
+      _warnings[#_warnings + 1] = ("enable: vim.lsp.enable(%q) failed: %s"):format(
+        name,
+        tostring(enable_err)
+      )
+    end
+  end
+  if #enable_failures > 0 then
+    notify.warn(
+      string.format(
+        "%d/%d LSP server(s) failed to enable (%s) -- see :checkhealth lsp for details",
+        #enable_failures,
+        #names,
+        table.concat(enable_failures, ", ")
+      )
+    )
   end
   return names
 end
