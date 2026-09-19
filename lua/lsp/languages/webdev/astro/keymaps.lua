@@ -5,6 +5,8 @@
 local notify = require("lib.nvim.notify").create("[lsp.languages.webdev.astro.keymaps]")
 local map = require("lib.nvim.bindings.keymap")
 
+local uv = vim.uv or vim.loop
+
 local M = {}
 
 ---@return nil
@@ -154,6 +156,23 @@ function M.attach()
         -- project that has no `src/components` yet -- which is every project
         -- before its first component, and every nested `ui/Button` name.
         vim.fn.mkdir(vim.fn.fnamemodify(component_path, ":h"), "p")
+
+        -- Claimed with `O_CREAT|O_EXCL` rather than checked-then-written
+        -- (ERR-31): a name that already exists must not be silently
+        -- overwritten with the extracted snippet, and a plain existence
+        -- check would leave a race window between checking and writing. On
+        -- `EEXIST` the selection is left alone -- nothing was extracted, so
+        -- neither the file nor the buffer should look like it was.
+        local fd, open_err = uv.fs_open(component_path, "wx", 420) -- mode 0644
+        if not fd then
+          if type(open_err) == "string" and open_err:match("^EEXIST") then
+            notify.warn(component_path .. " already exists -- nothing extracted")
+          else
+            notify.warn("Could not create " .. component_path .. ": " .. tostring(open_err))
+          end
+          return
+        end
+        uv.fs_close(fd)
 
         local content = { "---", "---", "" }
         vim.list_extend(content, lines)

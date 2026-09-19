@@ -6,6 +6,8 @@
 local notify = require("lib.nvim.notify").create("[lsp.languages.webdev.astro.commands]")
 local usercmd = require("lib.nvim.bindings.usercmd")
 
+local uv = vim.uv or vim.loop
+
 local M = {}
 
 ---@internal
@@ -22,11 +24,30 @@ local M = {}
 ---
 --- The `:edit` path is escaped, too: unescaped, a name with a space made
 --- Neovim open two files.
+---
+--- `path` is claimed with `O_CREAT|O_EXCL` before anything is written to it:
+--- a plain existence check leaves a race window between checking and writing,
+--- and a "New ..." command must never silently clobber whatever its target
+--- name already refers to. `EEXIST` means someone else got there first (or
+--- the component/page already existed) -- the existing file is opened,
+--- untouched, rather than overwritten.
 ---@param path string
 ---@param template string[]
 ---@return nil
 local function scaffold(path, template)
   vim.fn.mkdir(vim.fn.fnamemodify(path, ":h"), "p")
+
+  local fd, open_err = uv.fs_open(path, "wx", 420) -- O_CREAT|O_EXCL, mode 0644
+  if not fd then
+    if type(open_err) == "string" and open_err:match("^EEXIST") then
+      notify.warn(path .. " already exists -- opening it instead of overwriting it")
+      vim.cmd("edit " .. vim.fn.fnameescape(path))
+    else
+      notify.warn("Could not create " .. path .. ": " .. tostring(open_err))
+    end
+    return
+  end
+  uv.fs_close(fd)
 
   if not pcall(vim.fn.writefile, template, path) then
     notify.warn("Could not write " .. path)
