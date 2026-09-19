@@ -28,6 +28,7 @@
 ---@see lsp.languages.documentation.markdown_words
 
 local json = require("lib.nvim.fs.json")
+local fs_mutate = require("lib.nvim.cross.fs.mutate")
 
 local M = {}
 
@@ -44,6 +45,20 @@ local LEGACY_FILE = vim.fs.joinpath(vim.fn.stdpath("state"), "personal_names_usa
 local counts = nil
 
 ---@internal
+--- Back up `STATE_FILE` once, before it is next overwritten, if it exists but
+--- failed to *decode* -- as opposed to not existing at all, which is the
+--- ordinary first run and needs no backup. `json.read` prefixes a missing or
+--- unreadable file's error with "read failed"; anything else means the file
+--- is there but is not valid JSON, and the load-modify-save cycle below would
+--- otherwise silently discard its content the moment the next pick lands.
+---@param err string|nil
+local function backup_if_corrupt(err)
+  if err and not err:match("^read failed") then
+    fs_mutate.copy_file(STATE_FILE, STATE_FILE .. ".corrupt")
+  end
+end
+
+---@internal
 --- Load the counters once and hand them back. Returning them rather than
 --- only filling the upvalue is what lets callers work with a plain table:
 --- `counts` is `|nil` until this has run, and no caller can see that it has.
@@ -53,7 +68,10 @@ local function load()
     return counts
   end
 
-  local decoded = json.read(STATE_FILE)
+  local decoded, read_err = json.read(STATE_FILE)
+  if type(decoded) ~= "table" then
+    backup_if_corrupt(read_err)
+  end
   local fresh = type(decoded) == "table" and decoded or {}
 
   -- One-time migration. Guarded on the namespace being absent rather than on
@@ -88,20 +106,24 @@ end
 --- anything at all -- a fresh read right before the merge is what closes that.
 ---@param ns string # Namespace, e.g. "personal_names".
 ---@param label string
----@return nil
+---@return boolean ok
+---@return string? err
 function M.bump(ns, label)
   if type(ns) ~= "string" or type(label) ~= "string" or label == "" then
-    return
+    return false, "ns and label must be non-empty strings"
   end
   local cached = load() -- ensures the one-time legacy migration has run
 
-  local decoded = json.read(STATE_FILE)
+  local decoded, read_err = json.read(STATE_FILE)
+  if type(decoded) ~= "table" then
+    backup_if_corrupt(read_err)
+  end
   ---@type table<string, table<string, integer>>
   local current = (type(decoded) == "table" and decoded) or cached
   current[ns] = current[ns] or {}
   current[ns][label] = (current[ns][label] or 0) + 1
   counts = current
-  json.write(STATE_FILE, current)
+  return json.write(STATE_FILE, current)
 end
 
 --- How often `label` has been picked in `ns`.

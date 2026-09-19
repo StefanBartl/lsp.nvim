@@ -29,6 +29,7 @@ local function with_temp_state(fn)
   ---@diagnostic disable-next-line: duplicate-set-field
   json.write = function(path, tbl)
     store[path] = vim.deepcopy(tbl)
+    return true
   end
 
   package.loaded["lsp.completion.usage"] = nil
@@ -179,6 +180,83 @@ describe("lsp.completion.usage", function()
       package.loaded["lsp.completion.usage"] = nil
       local fresh = require("lsp.completion.usage")
       assert.are.equal(7, fresh.count("personal_names", "cascade.nvim"))
+    end)
+  end)
+
+  it("reports whether the write actually landed, instead of failing silently (ERR-03)", function()
+    with_temp_state(function(u)
+      local ok, err = u.bump("ns", "alpha")
+      assert.is_true(ok)
+      assert.is_nil(err)
+
+      local json = require("lib.nvim.fs.json")
+      local real_write = json.write
+      json.write = function()
+        return false, "write failed: disk full"
+      end
+      local ok2, err2 = u.bump("ns", "alpha")
+      json.write = real_write
+
+      assert.is_false(ok2)
+      assert.are.equal("write failed: disk full", err2)
+    end)
+  end)
+
+  it(
+    "backs up a file that exists but fails to decode, instead of silently discarding it (ERR-11)",
+    function()
+      with_temp_state(function(_, store)
+        local json = require("lib.nvim.fs.json")
+        local real_read = json.read
+        local path = vim.fs.joinpath(vim.fn.stdpath("state"), "lsp_completion_usage.json")
+
+        -- "the file is missing" (json.read's own "read failed" prefix) must NOT
+        -- trigger a backup -- only "the file is there but did not decode" should.
+        json.read = function(p)
+          if p == path then
+            return nil, "invalid JSON: unexpected token near '{'"
+          end
+          return store[p]
+        end
+
+        local fs_mutate = require("lib.nvim.cross.fs.mutate")
+        local real_copy = fs_mutate.copy_file
+        local backups = {}
+        fs_mutate.copy_file = function(src, dst)
+          backups[#backups + 1] = { src = src, dst = dst }
+          return true
+        end
+
+        package.loaded["lsp.completion.usage"] = nil
+        local fresh = require("lsp.completion.usage")
+        fresh.count("ns", "anything") -- triggers load()
+
+        fs_mutate.copy_file = real_copy
+        json.read = real_read
+
+        assert.are.equal(1, #backups)
+        assert.are.equal(path, backups[1].src)
+        assert.are.equal(path .. ".corrupt", backups[1].dst)
+      end)
+    end
+  )
+
+  it("does not back up a merely-missing file (ERR-11)", function()
+    with_temp_state(function()
+      local fs_mutate = require("lib.nvim.cross.fs.mutate")
+      local real_copy = fs_mutate.copy_file
+      local calls = 0
+      fs_mutate.copy_file = function()
+        calls = calls + 1
+        return true
+      end
+
+      package.loaded["lsp.completion.usage"] = nil
+      local fresh = require("lsp.completion.usage")
+      fresh.count("ns", "anything") -- store[path] is nil: an ordinary first run
+
+      fs_mutate.copy_file = real_copy
+      assert.are.equal(0, calls)
     end)
   end)
 end)
