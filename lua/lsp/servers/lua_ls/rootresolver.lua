@@ -17,8 +17,11 @@
 ---@see lsp.core.root_scope
 
 local rootresolver = require("lib.nvim.fs.polymorphic_rootresolver")
--- Import filesystem helper to check if a path is contained within another
-local is_subpath = require("lib.nvim.fs.is_subpath")
+-- "Is this inside the Neovim config directory, and if so what is the root?" --
+-- including the symlinked-dotfiles spelling a plain compare against
+-- `stdpath("config")` misses. See that module for why the realpath lives there
+-- and not here.
+local stdpath_config_root = require("lib.nvim.fs.stdpath_config_root")
 -- Global cwd/git/path switch (see lsp.core.root_scope_picker, <leader>lsp)
 local root_scope = require("lsp.core.root_scope")
 
@@ -37,10 +40,16 @@ local root_scope = require("lsp.core.root_scope")
 --- @return string|nil root directory, or nil to fall back to `dir`
 local function strict_root_from(dir)
   -- Special case: If we're inside Neovim's config directory, treat that as the root
-  -- This is common when editing init.lua or plugin configurations
-  local stdconfig = vim.fn.stdpath("config")
-  if is_subpath(dir, stdconfig) then
-    return stdconfig
+  -- This is common when editing init.lua or plugin configurations.
+  --
+  -- The returned spelling is a prefix of `dir`, which matters here rather than
+  -- being a detail: lua_ls indexes its workspace from this root, and a root
+  -- that is not a prefix of the buffer's own path makes it answer
+  -- `textDocument/definition` with a second spelling of a file that is already
+  -- open -- measured, not assumed.
+  local config_root = stdpath_config_root(dir)
+  if config_root then
+    return config_root
   end
 
   -- Guard against invalid directory
