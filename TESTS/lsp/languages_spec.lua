@@ -524,6 +524,44 @@ describe("lsp.languages.webdev.astro", function()
     end)
   end)
 
+  -- Extracting under a name that already has a component used to truncate
+  -- that file with the extracted snippet and still replace the selection
+  -- with `<Name />`, so the buffer ended up referencing a component whose
+  -- body was now the wrong code (ERR-31). The claim is exclusive, so both
+  -- the existing file and the source selection must be left alone.
+  it("does not clobber an existing component when extracting", function()
+    local dir = scratch_project()
+    vim.fn.mkdir(dir .. "/src/components", "p")
+    vim.fn.writefile(
+      { "-- pre-existing, not to be touched" },
+      dir .. "/src/components/Extracted.astro"
+    )
+    submitted = "Extracted"
+    require("lsp.languages.webdev.astro").enable()
+
+    with_window_buffer({ "---", "---", "", "<p>one</p>", "<p>two</p>" }, function(bufnr)
+      make_astro(bufnr, { "---", "---", "", "<p>one</p>", "<p>two</p>" })
+      local lhs = lhs_by_desc(bufnr, "v", "Extract to component")
+
+      vim.api.nvim_win_set_cursor(0, { 4, 0 })
+      feed("Vj" .. lhs)
+
+      assert.are.same(
+        { "-- pre-existing, not to be touched" },
+        vim.fn.readfile(dir .. "/src/components/Extracted.astro")
+      )
+      assert.are.same(
+        { "---", "---", "", "<p>one</p>", "<p>two</p>" },
+        vim.api.nvim_buf_get_lines(bufnr, 0, -1, false),
+        "the selection was replaced although nothing was extracted"
+      )
+      assert.is_truthy(
+        table.concat(notes, "\n"):match("already exists"),
+        "no warning about the pre-existing file: " .. vim.inspect(notes)
+      )
+    end)
+  end)
+
   -- `vim.fn.writefile` creates no directories, and the notification the
   -- usercmd wrapper turns the failure into is the only trace. Measured in a
   -- project with no `src/` tree: "E482: Can't open file
@@ -546,6 +584,28 @@ describe("lsp.languages.webdev.astro", function()
     for _, note in ipairs(notes) do
       assert.is_nil(note:match("E482"), "scaffolding still failed: " .. note)
     end
+  end)
+
+  -- Running `:AstroNewComponent` a second time for the same name used to
+  -- truncate the existing file with the template stub, with no prompt, no
+  -- backup and no warning (ERR-31). The claim is exclusive (`O_CREAT|O_EXCL`),
+  -- so the existing content must survive a repeat invocation untouched.
+  it("does not clobber a component that already exists", function()
+    local dir = scratch_project()
+    require("lsp.languages.webdev.astro").enable()
+
+    vim.cmd("AstroNewComponent Button")
+    local path = dir .. "/src/components/Button.astro"
+    vim.fn.writefile({ "-- hand-edited, not the stub" }, path)
+
+    notes = {}
+    vim.cmd("AstroNewComponent Button")
+
+    assert.are.same({ "-- hand-edited, not the stub" }, vim.fn.readfile(path))
+    assert.is_truthy(
+      table.concat(notes, "\n"):match("already exists"),
+      "no warning about the pre-existing file: " .. vim.inspect(notes)
+    )
   end)
 
   -- `<leader>an` seeded its "nearest boundary" with the line count and then
