@@ -5,6 +5,7 @@
 local notify = require("lib.nvim.notify").create("[lsp.servers.lua_ls.reload]")
 local usercmd = require("lib.nvim.bindings.usercmd")
 local Autocmd = require("lib.nvim.bindings.autocmd")
+local library_profiles = require("lsp.servers.lua_ls.library_profiles")
 
 local M = {}
 
@@ -155,15 +156,21 @@ function M.setup()
   })
 
   usercmd.create("LuaLsSetProfile", function(opts)
-    local profile = opts.args
-    if profile == "" then
+    local requested = opts.args ~= "" and opts.args or "normal"
+    local profile = requested
+
+    -- `library_profiles.get_config` returns the profile's bounds, or nil for
+    -- a name it does not recognize -- an unrecognized name must not be
+    -- reported back as if it took effect (LLS-31).
+    if not library_profiles.get_config(profile) then
+      notify.warn(("Unknown profile '%s'; using 'normal'"):format(requested))
       profile = "normal"
     end
 
     vim.env.LUA_LS_PROFILE = profile
-    M.reload_library()
-
-    notify.info(string.format("Switched to profile: %s - Reloading...", profile))
+    if M.reload_library() then
+      notify.info(string.format("Switched to profile: %s", profile))
+    end
   end, {
     nargs = "?",
     complete = function()

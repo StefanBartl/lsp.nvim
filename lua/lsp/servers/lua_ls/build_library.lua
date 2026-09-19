@@ -1,7 +1,14 @@
 ---@module 'lsp.servers.lua_ls.build_library'
 --- Build workspace library paths for lua_ls with comprehensive type discovery
 
+local library_profiles = require("lsp.servers.lua_ls.library_profiles")
+
 --- Build library table including directories AND standalone type files.
+---
+--- Bounded by the active profile (`LUA_LS_PROFILE`, see `library_profiles`):
+--- this is the manual/debug path (`:LuaLsReloadLibrary`, `:LuaLsSetProfile`,
+--- `:LuaLsInspectLibrary`), not `before_init`'s fast startup scan, so a
+--- profile switch has somewhere real to take effect.
 --- @param root string Project root directory
 --- @return table<string, boolean> Map of library paths
 return function(root)
@@ -9,6 +16,7 @@ return function(root)
     return {}
   end
 
+  local config = library_profiles.get_config()
   local library = {}
 
   -- ===================================================================
@@ -32,9 +40,9 @@ return function(root)
 
   if ok and type(find_type_dirs) == "function" then
     local success, result = pcall(find_type_dirs, root, {
-      max_results = 200,
-      max_depth = 15,
-      include_files = true,
+      max_results = config.max_results,
+      max_depth = config.max_depth,
+      include_files = config.include_files,
     })
 
     if success and type(result) == "table" then
@@ -42,8 +50,8 @@ return function(root)
     else
       -- Fallback: Try without include_files option (old API)
       success, result = pcall(find_type_dirs, root, {
-        max_results = 200,
-        max_depth = 15,
+        max_results = config.max_results,
+        max_depth = config.max_depth,
       })
       if success and type(result) == "table" then
         type_paths = result
@@ -106,37 +114,41 @@ return function(root)
   end
 
   -- ===================================================================
-  -- LUAROCKS
+  -- LUAROCKS (profile-gated: "minimal" and "normal" skip this)
   -- ===================================================================
-  local home = vim.fn.expand("~")
-  local luarocks_paths = {
-    home .. "/.luarocks/share/lua/5.1",
-    home .. "/.luarocks/share/lua/5.4",
-    "/usr/local/share/lua/5.1",
-    "/usr/local/share/lua/5.4",
-  }
+  if config.include_luarocks then
+    local home = vim.fn.expand("~")
+    local luarocks_paths = {
+      home .. "/.luarocks/share/lua/5.1",
+      home .. "/.luarocks/share/lua/5.4",
+      "/usr/local/share/lua/5.1",
+      "/usr/local/share/lua/5.4",
+    }
 
-  for _, path in ipairs(luarocks_paths) do
-    local stat = (vim.uv or vim.loop).fs_stat(path)
-    if stat and stat.type == "directory" then
-      library[path] = true
+    for _, path in ipairs(luarocks_paths) do
+      local stat = (vim.uv or vim.loop).fs_stat(path)
+      if stat and stat.type == "directory" then
+        library[path] = true
+      end
     end
   end
 
   -- ===================================================================
-  -- LOCAL DEPENDENCIES
+  -- LOCAL DEPENDENCIES (profile-gated: "minimal" skips this)
   -- ===================================================================
-  local local_dep_dirs = {
-    root .. "/lua_modules/share/lua/5.1",
-    root .. "/lua_modules/share/lua/5.4",
-    root .. "/deps",
-    root .. "/vendor",
-  }
+  if config.include_local_deps then
+    local local_dep_dirs = {
+      root .. "/lua_modules/share/lua/5.1",
+      root .. "/lua_modules/share/lua/5.4",
+      root .. "/deps",
+      root .. "/vendor",
+    }
 
-  for _, path in ipairs(local_dep_dirs) do
-    local stat = (vim.uv or vim.loop).fs_stat(path)
-    if stat and stat.type == "directory" then
-      library[path] = true
+    for _, path in ipairs(local_dep_dirs) do
+      local stat = (vim.uv or vim.loop).fs_stat(path)
+      if stat and stat.type == "directory" then
+        library[path] = true
+      end
     end
   end
 

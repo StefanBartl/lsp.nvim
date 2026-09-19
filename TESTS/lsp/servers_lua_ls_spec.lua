@@ -306,4 +306,70 @@ describe("lsp.servers.lua_ls", function()
       assert.is_truthy(uv.fs_stat(plain[1]))
     end)
   end)
+
+  describe("build_library: profile-gated (LLS-31)", function()
+    -- `build_library.lua` used to hardcode `max_results = 200, max_depth =
+    -- 15, include_files = true` -- the "full" profile's own numbers --
+    -- regardless of `LUA_LS_PROFILE`, so `:LuaLsSetProfile`/`reload_library`
+    -- ran the identical unbounded scan under every profile name.
+    local saved_env
+
+    ---@return fun(root: string): table<string, boolean>
+    local function build_library()
+      package.loaded["lsp.servers.lua_ls.library_profiles"] = nil
+      package.loaded["lsp.servers.lua_ls.build_library"] = nil
+      return require("lsp.servers.lua_ls.build_library")
+    end
+
+    before_each(function()
+      saved_env = vim.env.LUA_LS_PROFILE
+    end)
+
+    after_each(function()
+      vim.env.LUA_LS_PROFILE = saved_env
+    end)
+
+    it("caps find_type_dirs results at the active profile's max_results", function()
+      local dirs, files = {}, {}
+      for i = 1, 80 do
+        dirs[i] = string.format("plugin%03dtypes", i)
+        files[i] = string.format("plugin%03dtypes/a.lua", i)
+      end
+      local root = tree(dirs, files)
+
+      vim.env.LUA_LS_PROFILE = "minimal"
+      local minimal_count = 0
+      for path in pairs(build_library()(root)) do
+        if path:match("plugin%d%d%dtypes$") then
+          minimal_count = minimal_count + 1
+        end
+      end
+
+      vim.env.LUA_LS_PROFILE = "full"
+      local full_count = 0
+      for path in pairs(build_library()(root)) do
+        if path:match("plugin%d%d%dtypes$") then
+          full_count = full_count + 1
+        end
+      end
+
+      -- "minimal" caps at 50 results (which this fixture's 80 matches
+      -- exceed); "full" caps at 200, well above the fixture's size.
+      assert.are.equal(50, minimal_count)
+      assert.are.equal(80, full_count)
+    end)
+
+    it("only includes local deps/vendor dirs under a profile that wants them", function()
+      local root = tree({ "vendor" }, {})
+
+      vim.env.LUA_LS_PROFILE = "minimal"
+      assert.is_nil(build_library()(root)[root .. "/vendor"], "minimal must not scan local deps")
+
+      vim.env.LUA_LS_PROFILE = "normal"
+      assert.is_true(
+        build_library()(root)[root .. "/vendor"] == true,
+        "normal must include local deps"
+      )
+    end)
+  end)
 end)
