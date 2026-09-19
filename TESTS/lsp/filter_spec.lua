@@ -88,6 +88,26 @@ describe("lsp.core.filter", function()
       ---@diagnostic disable-next-line: param-type-mismatch
       assert.is_nil(filter.filter(nil, { patterns = { "x" } }))
     end)
+
+    -- `message` is optional in the LSP spec, so a server may legally send it
+    -- as JSON `null`, which decodes to `vim.NIL` -- userdata, not Lua `nil`.
+    -- The `or` idiom otherwise relies on does not treat userdata as falsy, so
+    -- an unguarded `msg:find(pat)` on it would raise (LUA-16).
+    it("does not raise on a vim.NIL message (LUA-16)", function()
+      local a = lsp_diag(1, "unused", { message = vim.NIL })
+      local out
+      assert.has_no.errors(function()
+        out = filter.filter({ a }, { patterns = { "unused" } })
+      end)
+      assert.are.equal(1, #out)
+    end)
+
+    it("treats a vim.NIL message the same as a genuinely absent one", function()
+      local diags = { lsp_diag(1, "unused", { message = vim.NIL }) }
+      local out = filter.filter(diags, { patterns = { "unused" } })
+
+      assert.are.equal(1, #out)
+    end)
   end)
 
   describe("dedup", function()
