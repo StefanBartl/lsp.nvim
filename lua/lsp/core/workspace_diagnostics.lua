@@ -70,6 +70,7 @@
 --- User-facing commands live in lsp.usercmds.workspace_diagnostics.
 
 local notify = require("lib.nvim.notify").create("[lsp.workspace_diagnostics]")
+local memory = require("lib.nvim.cache.memory")
 
 local M = {}
 
@@ -81,7 +82,7 @@ local M = {}
 --- Markdown file in the repo against lua_ls's `max_files` budget. The type
 --- used to declare one anyway, which described a knob nothing set and nothing
 --- read.
----@type { max_files: integer, delay_ms: integer, chunk_size: integer, chunk_delay_ms: integer }
+---@type { max_files: integer, delay_ms: integer, chunk_size: integer, chunk_delay_ms: integer, cache_ttl_s: number }
 local opts = {
   max_files = 800,
   delay_ms = 1500,
@@ -92,7 +93,31 @@ local opts = {
   -- of the machine, not of the plugin.
   chunk_size = 25,
   chunk_delay_ms = 10,
+  -- How long a walked file list (`files_cache` below) stays valid before the
+  -- next attach re-walks the workspace. Bounds how long a file created or
+  -- deleted after the walk stays invisible, without wiring per-event
+  -- invalidation for a walk that only ever runs once per attach anyway.
+  cache_ttl_s = 5 * 60,
 }
+
+--- Per-workspace, per-client-shape file lists. Keyed by the walk's root AND
+--- the sorted extension set, so two clients covering the same filetypes in
+--- the same repo share one walk and two clients in DIFFERENT repos do not. A
+--- `false` value means "computed, and rejected by the size gate" -- distinct
+--- from `nil` ("not computed yet"), so the gate is not re-evaluated on every
+--- attach.
+---
+--- The root used to be absent from the key, which is what made this cache a
+--- cross-workspace leak rather than a cache -- see `workspace_root` below.
+---
+--- Backed by `lib.nvim.cache.memory` rather than a plain table: a plain table
+--- never invalidated or bounded, so a file created or deleted after the first
+--- walk of a given (root, ext_set) stayed invisible to diagnostics population
+--- for the rest of the session (PERF-42). A TTL bounds how stale a walk can
+--- get. Reassigned by `M.configure` when `cache_ttl_s` changes, since a
+--- namespace's TTL is bound at the call that creates it.
+---@type Lib.Cache.Memory.Namespace
+local files_cache = memory.namespace("lsp.workspace_diagnostics.files", { ttl = opts.cache_ttl_s })
 
 --- filetype -> file extensions, for the few cases where they differ. Any
 --- filetype not listed here is assumed to equal its extension (lua, go,
@@ -138,7 +163,7 @@ local function client_extensions(client)
   return set
 end
 
----@param o { max_files?: integer, delay_ms?: integer, chunk_size?: integer, chunk_delay_ms?: integer }
+---@param o { max_files?: integer, delay_ms?: integer, chunk_size?: integer, chunk_delay_ms?: integer, cache_ttl_s?: number }
 ---@return nil
 function M.configure(o)
   o = o or {}
@@ -153,6 +178,10 @@ function M.configure(o)
   end
   if type(o.chunk_delay_ms) == "number" and o.chunk_delay_ms >= 0 then
     opts.chunk_delay_ms = o.chunk_delay_ms
+  end
+  if type(o.cache_ttl_s) == "number" and o.cache_ttl_s > 0 then
+    opts.cache_ttl_s = o.cache_ttl_s
+    files_cache = memory.namespace("lsp.workspace_diagnostics.files", { ttl = opts.cache_ttl_s })
   end
 end
 
@@ -192,17 +221,9 @@ function M.toggle()
   return M.set(not state)
 end
 
---- Per-workspace, per-client-shape file lists. Keyed by the walk's root AND
---- the sorted extension set, so two clients covering the same filetypes in
---- the same repo share one walk and two clients in DIFFERENT repos do not. A
---- `false` value means "computed, and rejected by the size gate" -- distinct
---- from `nil` ("not computed yet"), so the gate is not re-evaluated on every
---- attach.
----
---- The root used to be absent from the key, which is what made this cache a
---- cross-workspace leak rather than a cache -- see `workspace_root` below.
----@type table<string, string[]|false>
-local files_cache = {}
+--- Populate-in-flight callbacks per cache key, so concurrent calls for the
+--- same (root, ext_set) queue onto the running walk instead of duplicating
+--- it. See `files_cache` above for the cache this backs.
 ---@type table<string, fun(files: string[])[]>
 local waiters = {}
 
@@ -265,7 +286,7 @@ end
 local function collect_files_async(root, ext_set, cb)
   local key = cache_key(root, ext_set)
 
-  local cached = files_cache[key]
+  local cached = files_cache.get(key)
   if cached ~= nil then
     cb(cached or {})
     return
@@ -296,10 +317,10 @@ local function collect_files_async(root, ext_set, cb)
           opts.max_files
         )
       )
-      files_cache[key] = false
+      files_cache.set(key, false)
       files = {}
     else
-      files_cache[key] = files
+      files_cache.set(key, files)
     end
 
     flush_waiters(key, files)
