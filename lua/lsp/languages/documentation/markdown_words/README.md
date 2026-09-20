@@ -85,7 +85,7 @@ The module automatically registers three useful commands in Neovim:
 | `:MdRebuildWords` | Invalidates the current cache and rescans the current directory immediately. |
 | `:MdWordStats` | Shows statistics in the status line (current path, number of loaded words, cache state). |
 
-> 💡 **Note on the behaviour:** once you set the root path explicitly with `:MdSetRoot /path`, the automatic rebuild on a directory change (`DirChanged`) is blocked, so that your work is not overwritten.
+> **Note on the behaviour:** once you set the root path explicitly with `:MdSetRoot /path`, the automatic rebuild on a directory change (`DirChanged`) is blocked, so that your work is not overwritten.
 
 ---
 
