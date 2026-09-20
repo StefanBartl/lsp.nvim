@@ -272,6 +272,45 @@ describe("lsp.init / lsp.health defects", function()
       assert.is_true(said)
     end)
 
+    -- LLS-31: `setup_servers()`'s per-name `vim.lsp.enable` loop used to be a
+    -- bare, unchecked `pcall` -- a name that raised there never attached and
+    -- left no trace anywhere. Measured against the version before a068a24:
+    -- `status().warnings` stayed empty and `:checkhealth lsp` reported "no
+    -- warnings during setup" even though a configured server never came up.
+    it("records a per-server vim.lsp.enable failure instead of dropping it", function()
+      stub_bootstrap({
+        ["lsp.core.registry"] = {
+          setup_all = function()
+            return { "spec_enable_boom" }, {}
+          end,
+        },
+      })
+
+      local saved_enable = vim.lsp.enable
+      ---@diagnostic disable-next-line: duplicate-set-field
+      vim.lsp.enable = function(name)
+        if name == "spec_enable_boom" then
+          error("enable: boom", 0)
+        end
+        return saved_enable(name)
+      end
+
+      local lsp = require("lsp")
+      local ok = pcall(lsp.setup, {})
+      vim.lsp.enable = saved_enable
+
+      assert.is_true(ok)
+      assert.is_true(lsp.status().initialized)
+
+      local said = false
+      for _, w in ipairs(lsp.status().warnings) do
+        if w:find('vim.lsp.enable("spec_enable_boom") failed: enable: boom', 1, true) then
+          said = true
+        end
+      end
+      assert.is_true(said, "the enable failure never reached status().warnings")
+    end)
+
     -- The half of the defect that only shows up in the report: a setup that
     -- aborts leaves `_initialized` false, so `:checkhealth lsp` tells you to
     -- run the setup that already ran and half-took effect.

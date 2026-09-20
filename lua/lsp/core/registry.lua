@@ -55,7 +55,19 @@ function M.setup_all(shared, servers)
     for _, mod_path in ipairs(paths) do
       local ok, srv = pcall(require, mod_path)
       if ok and type(srv) == "table" and type(srv.setup) == "function" then
-        local ok_setup, err = pcall(srv.setup, shared)
+        -- `enable = false`: every `lsp.servers.*` module can self-enable via
+        -- its own `if opts.enable ~= false then pcall(vim.lsp.enable, name)
+        -- end`, for standalone callers that `require()` one directly. Through
+        -- the registry, `name` is enabled exactly once, by `lsp.init`'s
+        -- `setup_servers()` loop -- the one call site whose failures are
+        -- collected into `_warnings`/`:checkhealth lsp` (LLS-31). Leaving
+        -- self-enable on here would not just double the `vim.lsp.enable`
+        -- call for every server on every startup; that per-module `pcall`
+        -- has no warning path of its own, so a name that failed here would
+        -- go silent again -- the exact bug LLS-31 fixed, reopened one layer
+        -- up, and only papered over as long as the later, redundant call
+        -- happens to fail the same way.
+        local ok_setup, err = pcall(srv.setup, shared, { enable = false })
         if ok_setup then
           enabled[#enabled + 1] = name
           loaded = true
