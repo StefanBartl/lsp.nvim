@@ -22,7 +22,7 @@ Side by side:
 | **Flexibility** | Generic, for any Markdown project. | Project-specific, for working out a Lua workspace. |
 | **Structure and separation** | Split, not one file: `init.lua` (LSP setup), `rootresolver.lua`, `config.lua`, `diagnostics_handler.lua`, `code_action_handler.lua`, `hints.lua`. There is no `marksman.lua`. | A pure utility module (`rootresolver.lua`), with the LSP setup kept separate in `init.lua`. |
 
-**Conclusion:**
+## Conclusion
 
 * **Marksman**: simpler, generic, primarily for the Markdown LSP. Root
   detection is limited to a few markers, but they are cleanly configurable via

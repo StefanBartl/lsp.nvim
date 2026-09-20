@@ -50,20 +50,20 @@ behind when it gets extracted — this one takes the ecosystem with it.
 Start with the [documentation index](docs/README.md) — it lists every page and
 says what each one answers.
 
-**The Basics**
+### The Basics
 
 - [Requirements](docs/requirements.md) — Neovim version, `lib.nvim`, and what each optional integration buys you.
 - [Installation](docs/installation.md) — the pack, the two configuration channels, and the two things that will bite you.
 - [Quickstart](docs/quickstart.md) — the first thing to run after installing.
 
-**Configuration**
+### Configuration
 
 - [What you get with the defaults](docs/what-you-get.md) — the full `:Lsp` route surface at a glance.
 - [Configuration](docs/configuration.md) — why the options are shaped this way; the field list is `:h lsp.nvim-config`.
 - [Command reference](docs/commands.md) — the shape of `:Lsp`, and where to start when something is wrong.
 - [Bindings cheatsheet](docs/BINDINGS.md) — every keymap, route, legacy alias and autocommand, generated from the catalogue.
 
-**The Rest**
+### The Rest
 
 - [Features](docs/FEATURES/README.md) — what the plugin does, one page per area, with the reasoning, including the [context-menu and breadcrumb integrations](docs/FEATURES/INTEGRATIONS.md).
 - [Workflow](docs/WORKFLOW.md) — how the pieces combine day to day, and which route answers which question.

@@ -2,7 +2,7 @@
 
 These Lua modules configure the Lua Language Server (lua_ls) for Neovim with intelligent root detection, precise workspace library management and optimised performance.
 
-## 📋 Overview
+## Overview
 
 The setup consists of several interconnected modules that provide a robust and performant lua_ls integration:
 
@@ -20,7 +20,7 @@ lsp/servers/lua_ls/
 └── docs/TROUBLESHOOTING.md
 ```
 
-## 🎯 Main features
+## Main features
 
 ### 1. **Intelligent root detection**
 The system detects the project boundaries automatically from several criteria:
@@ -67,7 +67,7 @@ The system is optimised for performance:
 - Respects `.gitignore` files (`useGitIgnore = true`)
 - Skips git directories automatically
 
-## 📦 The modules in detail
+## The modules in detail
 
 ### `init.lua` - main module
 
@@ -83,7 +83,7 @@ require("lsp.servers.lua_ls").setup({
 })
 ```
 
-**Important features:**
+#### Important features
 - Uses the native `vim.lsp.config()` API (Neovim 0.11+; `setup` is a no-op
   where `type(vim.lsp.config) ~= "table"`)
 - Library configuration via the `before_init` hook -- **not** `on_new_config`,
@@ -106,7 +106,7 @@ fallback, the optional callback the `vim.lsp` `root_dir` contract allows —
 comes from `lib.nvim.fs.polymorphic_rootresolver`. Only the algorithm below is
 local, supplied through that module's `resolve` hook.
 
-**Algorithm:**
+#### Algorithm
 1. Check whether we are inside `stdpath("config")` → use the config dir.
    **First**, before everything else, not as a correction afterwards
 2. Consult the root-scope switch (`<leader>lsp`, `lsp.core.root_scope`):
@@ -129,7 +129,7 @@ local library = require("lsp.servers.lua_ls.build_library")(root)
 -- Returns: { [path] = true, [path2] = true, ... }
 ```
 
-**Library sources:**
+#### Library sources
 - `${3rd}/luv/library` - luv types
 - `${3rd}/busted/library` - Busted types
 - `${3rd}/luassert/library` - luassert types
@@ -157,7 +157,7 @@ local type_dirs = scanner(root, {
 })
 ```
 
-**Features:**
+#### Features
 - Breadth-first search (BFS) algorithm, so a tight `max_results` is spent on
   the shallowest matches
 - Finds `types/` and `@types/` directories, plus any directory whose name ends
@@ -186,7 +186,7 @@ local set = ignore.as_set()               -- {node_modules=true, ...}
 local patterns = ignore.as_luals_patterns() -- ["**/node_modules", ...]
 ```
 
-**Ignored directories (examples):**
+#### Ignored directories (examples)
 - `node_modules`, `bower_components`
 - `.git`, `.svn`, `.hg`
 - `build`, `dist`, `target`, `out`
@@ -240,7 +240,7 @@ The third bucket is the point: an entry `fs_stat` cannot see used to be dropped
 with no trace, and printing "17 directories, 2 files" for a 22-entry library is
 how a missing `${3rd}` entry stays invisible.
 
-## 🔧 Installation & setup
+## Installation & setup
 
 ### 1. Place the files
 
@@ -289,7 +289,7 @@ require("lsp.servers.lua_ls").setup({
 })
 ```
 
-## 🐛 Debugging
+## Debugging
 
 ### Problem: the server does not recognise the vim.* APIs
 
@@ -321,7 +321,7 @@ workspace = {
 }
 ```
 
-## 🎨 Customisation
+## Customisation
 
 ### Adding further ${3rd} libraries
 
@@ -358,7 +358,7 @@ local lua_markers = vim.fs.find(
 )
 ```
 
-## 📊 Architecture diagram
+## Architecture diagram
 
 Two paths, and the split between them is the thing to see: **the startup path
 does not scan**.
@@ -430,14 +430,14 @@ does not scan**.
 `ignore()` reaches the server by a third route as well: `as_luals_patterns()`
 is what `settings.Lua.workspace.ignoreDir` is built from, in `init.lua`.
 
-## 🔍 Important concepts
+## Important concepts
 
 ### Per-root library configuration
 
 Every project root gets its own library configuration. This prevents:
-- ❌ cross-contamination between projects
-- ❌ wrong type inference from other projects
-- ❌ performance degradation from overly large workspaces
+- cross-contamination between projects
+- wrong type inference from other projects
+- performance degradation from overly large workspaces
 
 ### The ${3rd} placeholder system
 
@@ -465,20 +465,20 @@ Note that `LUA_LS_PROFILE` therefore has no effect on a running server;
 the profiles in `library_profiles` bound the scan, and the scan is only reached
 through `debug` / `build_library`.
 
-## 📚 Further resources
+## Further resources
 
 - [lua_ls documentation](https://luals.github.io/)
 - [Neovim LSP guide](https://neovim.io/doc/user/lsp.html)
 - [lua_ls settings](https://luals.github.io/wiki/settings/)
 
-## 🤝 Contributing
+## Contributing
 
 For problems or improvement suggestions:
 1. Collect debugging info: `:lua require("lsp.servers.lua_ls.debug").print_debug_info()`
 2. Create an issue with the debug output
 3. Describe the relevant project structure
 
-## 📝 Licence
+## Licence
 
 This setup is part of your Neovim configuration and can be adapted freely.
 
