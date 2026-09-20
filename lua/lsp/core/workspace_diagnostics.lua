@@ -179,7 +179,7 @@ function M.configure(o)
   if type(o.chunk_delay_ms) == "number" and o.chunk_delay_ms >= 0 then
     opts.chunk_delay_ms = o.chunk_delay_ms
   end
-  if type(o.cache_ttl_s) == "number" and o.cache_ttl_s > 0 then
+  if type(o.cache_ttl_s) == "number" and o.cache_ttl_s >= 0 then
     opts.cache_ttl_s = o.cache_ttl_s
     files_cache = memory.namespace("lsp.workspace_diagnostics.files", { ttl = opts.cache_ttl_s })
   end
@@ -282,14 +282,17 @@ end
 ---@param root string
 ---@param ext_set table<string, boolean>
 ---@param cb fun(files: string[])
+---@param force boolean|nil  # skip a fresh cache entry too (`populate_now`)
 ---@return nil
-local function collect_files_async(root, ext_set, cb)
+local function collect_files_async(root, ext_set, cb, force)
   local key = cache_key(root, ext_set)
 
-  local cached = files_cache.get(key)
-  if cached ~= nil then
-    cb(cached or {})
-    return
+  if not force then
+    local cached = files_cache.get(key)
+    if cached ~= nil then
+      cb(cached or {})
+      return
+    end
   end
 
   if waiters[key] then
@@ -354,10 +357,10 @@ end
 --- diagnose, in chunks, so the server sees the whole workspace.
 ---
 --- `readfile` is `pcall`-guarded on purpose rather than defensively: the file
---- list is collected once and cached for the session, so a file deleted or
---- renamed since the walk is an expected state, not an exceptional one. That
---- unguarded read is exactly what made the plugin's version throw E484 -- see
---- the module header.
+--- list is collected once and cached for `cache_ttl_s` (see `files_cache`
+--- above), so a file deleted or renamed since the walk is an expected state,
+--- not an exceptional one. That unguarded read is exactly what made the
+--- plugin's version throw E484 -- see the module header.
 ---@param client vim.lsp.Client
 ---@param bufnr integer
 ---@param files string[]
@@ -471,12 +474,16 @@ end
 
 --- Force-populate workspace diagnostics for `bufnr`'s attached clients right
 --- now, regardless of the toggle state. Useful after switching it ON without
---- wanting to restart/reattach the LSP client just to see it take effect.
+--- wanting to restart/reattach the LSP client just to see it take effect --
+--- or after creating/deleting files and wanting that reflected immediately
+--- rather than waiting out `cache_ttl_s` (see `files_cache` above).
 ---
 --- Schedules rather than completes: the file walk is async and the sending is
 --- chunked, so the count below is how many clients were *started*, not how
 --- many finished. Bypasses the once-per-client guard, so calling it twice
---- really does re-send.
+--- really does re-send -- and bypasses a fresh `files_cache` entry too, so
+--- "now" really does re-walk the filesystem rather than repeat whatever the
+--- last attach happened to see.
 ---@param bufnr? integer  # 0 or nil for the current buffer
 ---@return boolean ok
 ---@return integer|string count_or_err  # number of clients scheduled, or an error string
@@ -501,7 +508,7 @@ function M.populate_now(bufnr)
           if #files > 0 then
             send_did_open(client, bufnr, files, true)
           end
-        end)
+        end, true)
       end
     end
   end
