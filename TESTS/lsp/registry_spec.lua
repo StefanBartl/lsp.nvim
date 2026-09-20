@@ -69,6 +69,30 @@ describe("lsp.core.registry", function()
       assert.are.equal("function", type(got.on_attach))
     end)
 
+    -- Every `lsp.servers.*` module can self-enable via its own
+    -- `if opts.enable ~= false then pcall(vim.lsp.enable, name) end`, for a
+    -- caller that `require()`s it directly. Through the registry, `name`
+    -- must be enabled exactly once -- by `lsp.init`'s `setup_servers()` loop,
+    -- the one call site LLS-31 wired into `_warnings`/`:checkhealth lsp`.
+    -- `setup_all` passing nothing here used to leave that per-module
+    -- self-enable on, which duplicated the `vim.lsp.enable` call and, worse,
+    -- routed around the one guarded call site with a `pcall` of its own that
+    -- had no warning path -- silently reopening exactly what LLS-31 fixed.
+    it("tells the module not to self-enable, so enabling stays with setup_servers()", function()
+      local got_opts
+      local restore = stub_server("faketest", {
+        setup = function(_, opts)
+          got_opts = opts
+        end,
+      })
+
+      registry.setup_all(shared(), { "faketest" })
+      restore()
+
+      assert.is_not_nil(got_opts, "the module received an opts table")
+      assert.is_false(got_opts.enable)
+    end)
+
     it("falls back to the webdev.* path for a dotless name", function()
       local restore = stub_server("webdev.faketest", {
         setup = function() end,
