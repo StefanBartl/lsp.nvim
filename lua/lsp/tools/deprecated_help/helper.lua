@@ -3,6 +3,7 @@
 --- Provides safe buffer/diagnostic helpers and small caches.
 
 local map = require("lib.nvim.bindings.keymap")
+local autocmd = require("lib.nvim.bindings.autocmd")
 
 local M = {}
 
@@ -20,6 +21,23 @@ function M.ensure_buf_cache(bufnr)
   end
   return M.buf_symbol_cache[bufnr]
 end
+
+-- Drop a buffer's cached symbols. Exposed for tests as well as the
+-- BufDelete/BufWipeout autocmd below.
+---@param bufnr number
+---@return nil
+function M.clear_buf_cache(bufnr)
+  M.buf_symbol_cache[bufnr] = nil
+end
+
+-- Without this, `buf_symbol_cache` grows by one entry per buffer ever
+-- visited and is never reclaimed for the rest of the session (PERF-53).
+autocmd.create({ "BufDelete", "BufWipeout" }, function(args)
+  M.clear_buf_cache(args.buf)
+end, {
+  group = autocmd.group("lsp_deprecated_help_buf_cache", true),
+  desc = "lsp.nvim: drop a deleted buffer's cached deprecated-symbol mappings",
+})
 
 -- Safely get a line from buffer (returns empty string if invalid)
 ---@param bufnr number

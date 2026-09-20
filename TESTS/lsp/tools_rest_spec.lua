@@ -411,6 +411,22 @@ describe("lsp.tools.deprecated_help", function()
     end
     pcall(vim.api.nvim_buf_delete, buf, { force = true })
   end)
+
+  -- `buf_symbol_cache` was a plain per-bufnr table cleared by no event: a
+  -- buffer's entry (and whatever `set_buf_keymap_once` had already keyed to
+  -- it) stayed alive for the rest of the session even after the buffer was
+  -- deleted, growing by one entry per buffer ever visited (PERF-53).
+  it("drops a buffer's cached symbols once the buffer is deleted", function()
+    local helper = require("lsp.tools.deprecated_help.helper")
+    local b = vim.api.nvim_create_buf(false, true)
+
+    helper.ensure_buf_cache(b)
+    assert.is_not_nil(helper.buf_symbol_cache[b])
+
+    vim.api.nvim_buf_delete(b, { force = true })
+
+    assert.is_nil(helper.buf_symbol_cache[b])
+  end)
 end)
 
 describe("lsp.tools -- the commands, run", function()
