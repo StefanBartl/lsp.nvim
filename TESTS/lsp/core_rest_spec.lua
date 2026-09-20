@@ -433,6 +433,52 @@ describe("lsp.core.workspace_diagnostics", function()
       "srv_a2 never saw the file created after the first, now-expired walk"
     )
   end)
+
+  -- `populate_now` (`:LspWorkspaceDiagnosticsNow`) is the user's explicit
+  -- "do it now" escape hatch -- its own docstring already bypasses the
+  -- toggle and the once-per-client send guard. Adding a TTL to `files_cache`
+  -- without also bypassing it there would have quietly reintroduced PERF-42
+  -- for exactly the command a user reaches for right after creating a file
+  -- and wanting it seen immediately, for as long as `cache_ttl_s` (5 minutes
+  -- by default) had not yet lapsed.
+  it("populate_now re-walks the filesystem even with a still-fresh cache entry", function()
+    -- The real default is 5 minutes; kept here so the test proves the bypass
+    -- rather than a TTL that happened to expire on its own.
+    local wd = reload()
+
+    local buf_a = open_buf(repo_a .. "/a_main.lua")
+    start_stub({
+      name = "srv_a",
+      filetypes = { "lua" },
+      root = repo_a,
+      bufnr = buf_a,
+      sink = sink,
+    })
+    assert.is_true(vim.wait(2000, function()
+      return #vim.lsp.get_clients({ bufnr = buf_a }) > 0
+    end))
+
+    local ok1, count1 = wd.populate_now(buf_a)
+    assert.is_true(ok1, tostring(count1))
+    assert.is_true(
+      vim.wait(3000, function()
+        return opened_by(sink, "srv_a")[repo_a .. "/a_other.lua"] == true
+      end, 20),
+      "the first populate_now never ran, so the cache under test was never filled"
+    )
+
+    -- Created after the first walk, while the cache entry is still fresh.
+    write_file(repo_a .. "/a_new.lua", "-- a new\n")
+
+    local ok2, count2 = wd.populate_now(buf_a)
+    assert.is_true(ok2, tostring(count2))
+    assert.is_true(
+      vim.wait(3000, function()
+        return opened_by(sink, "srv_a")[repo_a .. "/a_new.lua"] == true
+      end, 20),
+      "populate_now served the stale cached list instead of re-walking"
+    )
+  end)
 end)
 
 describe("lsp.core.diagnostics", function()
