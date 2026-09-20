@@ -226,14 +226,15 @@ describe("lsp.core.workspace_diagnostics", function()
   ---@type table[]
   local sink
 
+  ---@param overrides table|nil  # merged over the defaults below, e.g. cache_ttl_s
   ---@return table
-  local function reload()
+  local function reload(overrides)
     package.loaded["lsp.core.workspace_diagnostics"] = nil
     local wd = require("lsp.core.workspace_diagnostics")
     wd.seed(true)
     -- The real delay is 1.5s and exists to stay off the attach path; here it
     -- only has to be longer than nothing, so the timer is observable.
-    wd.configure({ delay_ms = 20, chunk_delay_ms = 1 })
+    wd.configure(vim.tbl_extend("force", { delay_ms = 20, chunk_delay_ms = 1 }, overrides or {}))
     return wd
   end
 
@@ -365,6 +366,72 @@ describe("lsp.core.workspace_diagnostics", function()
         "srv_b was sent a file from the other repository: " .. path
       )
     end
+  end)
+
+  -- `files_cache` used to be a plain table, never invalidated or bounded: a
+  -- file created after the first walk of a given (root, ext_set) stayed
+  -- invisible to every later attach for the rest of the session (PERF-42).
+  -- `cache_ttl_s` is configured tiny here to make that same TTL, 5 minutes by
+  -- default, observable within the test's own timeout.
+  it("re-walks the workspace once the cached file list's TTL has lapsed", function()
+    local wd = reload({ cache_ttl_s = 0.05 })
+
+    local buf_a = open_buf(repo_a .. "/a_main.lua")
+    start_stub({
+      name = "srv_a1",
+      filetypes = { "lua" },
+      root = repo_a,
+      bufnr = buf_a,
+      sink = sink,
+    })
+    assert.is_true(vim.wait(2000, function()
+      return #vim.lsp.get_clients({ bufnr = buf_a }) > 0
+    end))
+    wd.schedule_populate(vim.lsp.get_clients({ bufnr = buf_a })[1], buf_a)
+    assert.is_true(
+      vim.wait(3000, function()
+        return opened_by(sink, "srv_a1")[repo_a .. "/a_other.lua"] == true
+      end, 20),
+      "the first walk never populated, so the cache under test was never filled"
+    )
+
+    -- Created after the first walk cached repo_a's file list.
+    write_file(repo_a .. "/a_new.lua", "-- a new\n")
+
+    -- Outlive the 50ms TTL before the second client's populate runs.
+    vim.wait(200, function()
+      return false
+    end)
+
+    start_stub({
+      name = "srv_a2",
+      filetypes = { "lua" },
+      root = repo_a,
+      bufnr = buf_a,
+      sink = sink,
+    })
+    assert.is_true(vim.wait(2000, function()
+      for _, c in ipairs(vim.lsp.get_clients({ bufnr = buf_a })) do
+        if c.name == "srv_a2" then
+          return true
+        end
+      end
+      return false
+    end))
+    local client_a2
+    for _, c in ipairs(vim.lsp.get_clients({ bufnr = buf_a })) do
+      if c.name == "srv_a2" then
+        client_a2 = c
+      end
+    end
+    wd.schedule_populate(client_a2, buf_a)
+
+    assert.is_true(
+      vim.wait(3000, function()
+        return opened_by(sink, "srv_a2")[repo_a .. "/a_new.lua"] == true
+      end, 20),
+      "srv_a2 never saw the file created after the first, now-expired walk"
+    )
   end)
 end)
 
