@@ -14,10 +14,8 @@
 --- because `enable_all()` builds a `require` path out of every entry: a typo
 --- here is a module that silently never loads, which is exactly the failure a
 --- closed set catches.
----@alias Lsp.Languages.ConfiguredLangs.Literal.App "csharp"|"java"|"dart"
+---@alias Lsp.Languages.ConfiguredLangs.Literal.App "java"|"dart"
 ---@alias Lsp.Languages.ConfiguredLangs.Literal.Doc "markdown"
----@alias Lsp.Languages.ConfiguredLangs.Literal.Scripting "lua"
----@alias Lsp.Languages.ConfiguredLangs.Literal.Systems "c"|"go"|"zig"
 ---@alias Lsp.Languages.ConfiguredLangs.Literal.Web "astro"|"typescript"|"html"
 
 --- Every language module has the same surface, and `enable_all()` relies on
@@ -28,15 +26,10 @@
 ---@field enable fun(): nil
 
 --- The per-language names the modules annotate themselves with. Aliases of the
---- one shape above rather than ten copies of it -- if a module ever grows a
+--- one shape above rather than five copies of it -- if a module ever grows a
 --- second export, its alias becomes a class of its own and the others stay put.
----@alias Lsp.Languages.ConfiguredLangs.CSharp.Module Lsp.Languages.ConfiguredLangs.Module
 ---@alias Lsp.Languages.ConfiguredLangs.Dart.Module Lsp.Languages.ConfiguredLangs.Module
 ---@alias Lsp.Languages.ConfiguredLangs.Java.Module Lsp.Languages.ConfiguredLangs.Module
----@alias Lsp.Languages.ConfiguredLangs.Lua.Module Lsp.Languages.ConfiguredLangs.Module
----@alias Lsp.Languages.ConfiguredLangs.C.Module Lsp.Languages.ConfiguredLangs.Module
----@alias Lsp.Languages.ConfiguredLangs.Go.Module Lsp.Languages.ConfiguredLangs.Module
----@alias Lsp.Languages.ConfiguredLangs.Zig.Module Lsp.Languages.ConfiguredLangs.Module
 ---@alias Lsp.Languages.ConfiguredLangs.Webdev.Astro.Module Lsp.Languages.ConfiguredLangs.Module
 ---@alias Lsp.Languages.ConfiguredLangs.Webdev.HTML.Module Lsp.Languages.ConfiguredLangs.Module
 ---@alias Lsp.Languages.ConfiguredLangs.Webdev.Typescript.Module Lsp.Languages.ConfiguredLangs.Module
