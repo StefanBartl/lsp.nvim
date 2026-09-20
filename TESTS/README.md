@@ -152,7 +152,7 @@ All four look correct on the page.
 The suite above is large but not exhaustive, and it does not need to be: a
 good share of `lua/lsp/**` is already exercised *generically* rather than by
 a dedicated spec of its own -- `lsp.languages.enable_all()` calls every
-app/documentation/scripting/systems/webdev language module's `enable()` in a
+app/documentation/webdev language module's `enable()` in a
 loop that `languages_spec.lua` drives end to end, and
 `lsp.integrations.setup()`/`.report()` do the same over every adapter in
 `ADAPTERS`, which is what `integrations_spec.lua` and

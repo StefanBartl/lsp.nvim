@@ -71,11 +71,6 @@ what that costs.
 
 | Augroup (`clear=true`) | Event | Pattern | Action |
 | --- | --- | --- | --- |
-| `LangCs` | `FileType` | `cs` | No-op stub |
-| `LangLua` | `FileType` | `lua` | No-op stub |
-| `LangC` | `FileType` | `c`, `cpp` | No-op stub |
-| `LangGo` | `FileType` | `go` | No-op stub |
-| `LangZig` | `FileType` | `zig` | No-op stub |
 | `LangDart` | `FileType` | `dart` | Buffer-local "Flutter: Hot Reload" keymap |
 | `LangJava` | `FileType` | `java` | Sets buffer options; registers a buffer-local `BufWritePre` **nested inside** the callback, in the same group and guarded so one buffer never collects two |
 | `LangHtml` | `FileType` | `html`, `htmldjango`, `djangohtml` | HTML buffer options |
@@ -83,14 +78,19 @@ what that costs.
 | `LangMarkdownQoL` | `FileType` | `markdown`, `mdx` | UTF-8, soft defaults, buffer-local format keymap |
 | `LangMarkdownQoL` | `ColorScheme` | `*` | Re-applies the three `LspReference*` highlight groups. Added 2026-09-17; it used to run inside the `FileType` callback, where opening a markdown buffer restyled references in every other buffer too |
 
-The five no-op stubs are deliberate, not an oversight — `go.lua` says so
-itself: "registers the `go` FileType group but the callback is a no-op, the
-same stub shape as c.lua/zig.lua next to it." Placeholders for future QoL
-additions. They are not, as this page used to say, the only autocommands in
-the plugin without a `desc`: `nvim_get_autocmds` reports an empty `desc` for
-every registration in `LangC`, `LangCs`, `LangDart`, `LangGo`, `LangHtml`,
-`LangJava`, `LangLua`, `LangTs`, `LangZig`, `MasonEslintPrettier` and
-`ToolsNoiceIntegration` — 24 of the plugin's live autocommands, not five.
+The five no-op stubs this table used to list (`LangCs`, `LangLua`, `LangC`,
+`LangGo`, `LangZig`) were removed on 2026-09-21. They registered a `FileType`
+autocommand whose callback did nothing, as "placeholders for future QoL
+additions", and none ever got any: `enable_all()` walked five modules to install
+six autocommands that never changed a buffer. A language gets a module here when
+it has QoL to install, and not before. The servers for those languages are
+unaffected -- they come from `lsp.servers.*`.
+
+Not every autocommand here carries a `desc`: `nvim_get_autocmds` reports an empty
+`desc` for every registration in `LangDart`, `LangHtml`, `LangJava`, `LangTs`,
+`MasonEslintPrettier` and `ToolsNoiceIntegration`. That is 18 of the plugin's
+live autocommands -- the earlier figure of 24 included the six stub
+registrations.
 
 `LangJava` is the one case of an autocommand registered *inside* another
 autocommand's callback (`FileType` registers a `BufWritePre` when it fires).
