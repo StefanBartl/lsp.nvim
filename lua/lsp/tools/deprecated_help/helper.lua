@@ -35,7 +35,7 @@ end
 autocmd.create({ "BufDelete", "BufWipeout" }, function(args)
   M.clear_buf_cache(args.buf)
 end, {
-  group = autocmd.group("lsp_deprecated_help_buf_cache", true),
+  group = autocmd.group("DeprecatedHelpBufCache", true),
   desc = "lsp.nvim: drop a deleted buffer's cached deprecated-symbol mappings",
 })
 
