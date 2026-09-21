@@ -23,12 +23,22 @@
 --- **What it costs.** One more client in `vim.lsp.get_clients()` and in
 --- `:Lsp servers`, attached to buffers gitsigns is attached to. That is why it
 --- is `code_actions.gitsigns = false` by default. It advertises nothing but
---- `codeActionProvider`, so no other feature sends it anything.
+--- `codeActionProvider`, so no other feature sends it anything -- but every
+--- feature that asks "is a client attached" sees it, which is what
+--- `lsp.core.util.server_clients` is for: it is named `lsp.nvim-*`, and the
+--- winbar guard and `:Lsp stop` / `:Lsp restart` look past clients so named.
+---
+--- **Its exit is its own to report.** A client with no process is never told by
+--- a dying process that it has gone; Neovim drops it from `get_clients()` only
+--- on `on_exit`. `terminate()` (`Client:stop(true)`, and the fallback after a
+--- failed shutdown) therefore reports the exit itself, exactly as the graceful
+--- `exit` notification does.
 ---
 ---@see lsp.bindings.actions
 ---@see lsp.core.lightbulb
 
 local autocmd = require("lib.nvim.bindings.autocmd")
+local util = require("lsp.core.util")
 
 local api = vim.api
 
@@ -36,7 +46,7 @@ local M = {}
 
 --- The client name, as `:Lsp servers` shows it.
 ---@type string
-M.NAME = "lsp.nvim-gitsigns"
+M.NAME = util.INTERNAL_PREFIX .. "gitsigns"
 
 ---@type string
 M.GROUP = "lsp_nvim_gitsigns_actions"
@@ -172,8 +182,21 @@ end
 ---@return table
 function M.server(dispatchers)
   local closing = false
+  local exited = false
   local request_id = 0
   local server = {}
+
+  --- Tell Neovim the client is gone, once. The code is 0 with no signal: a clean
+  --- exit, which the supervisor does not read as a crash to bring back.
+  ---@return nil
+  local function exit()
+    closing = true
+    if exited then
+      return
+    end
+    exited = true
+    dispatchers.on_exit(0, 0)
+  end
 
   ---@param method string
   ---@param params table
@@ -211,7 +234,7 @@ function M.server(dispatchers)
   ---@return boolean
   function server.notify(method)
     if method == "exit" then
-      dispatchers.on_exit(0, 0)
+      exit()
     end
     return true
   end
@@ -222,7 +245,7 @@ function M.server(dispatchers)
   end
 
   function server.terminate()
-    closing = true
+    exit()
   end
 
   return server
@@ -239,8 +262,12 @@ local function attach(bufnr)
   if vim.bo[bufnr].buftype ~= "" or vim.b[bufnr].gitsigns_status_dict == nil then
     return
   end
-  if #vim.lsp.get_clients({ bufnr = bufnr, name = M.NAME }) > 0 then
-    return
+  -- A client that has been asked to stop is not "attached": it is on its way
+  -- out, and `vim.lsp.start` will not reuse it either.
+  for _, client in ipairs(vim.lsp.get_clients({ bufnr = bufnr, name = M.NAME })) do
+    if not client:is_stopped() then
+      return
+    end
   end
   vim.lsp.start({
     name = M.NAME,

@@ -5,12 +5,55 @@
 ---
 --- `organize_imports_sync(bufnr, kind)`: run an organize-imports-shaped
 --- `source.*` code action synchronously, for use on `BufWritePre`.
+---
+--- `is_internal(client)` / `server_clients(bufnr)`: which of Neovim's clients are
+--- lsp.nvim's own in-process ones (no process, no language) and which are
+--- language servers.
 ---@class LspUtil
 
 local lsp = vim.lsp
 local api = vim.api
 
 local M = {}
+
+--- Every client lsp.nvim runs itself is named with this prefix (today only
+--- `lsp.nvim-gitsigns`, see `lsp.core.gitsigns_actions`).
+---
+--- To Neovim they are clients like any other, so they show up in every
+--- `vim.lsp.get_clients()` -- attached to each buffer gitsigns tracks, whatever
+--- its language. A consumer that means "is a language server there" (the winbar's
+--- guard, `:Lsp stop`, `:Lsp restart`) asks `server_clients` instead.
+---@type string
+M.INTERNAL_PREFIX = "lsp.nvim-"
+
+--- Is this the name of one of lsp.nvim's own in-process clients?
+---@param name any
+---@return boolean
+function M.is_internal_name(name)
+  return type(name) == "string" and vim.startswith(name, M.INTERNAL_PREFIX)
+end
+
+--- Is this one of lsp.nvim's own in-process clients?
+---@param client vim.lsp.Client|table|nil
+---@return boolean
+function M.is_internal(client)
+  return client ~= nil and M.is_internal_name(client.name)
+end
+
+--- The language servers attached to a buffer: `vim.lsp.get_clients` without
+--- lsp.nvim's own in-process clients.
+---@param bufnr? integer # default: the current buffer
+---@return vim.lsp.Client[]
+function M.server_clients(bufnr)
+  ---@type vim.lsp.Client[]
+  local out = {}
+  for _, client in ipairs(lsp.get_clients({ bufnr = bufnr or 0 })) do
+    if not M.is_internal(client) then
+      out[#out + 1] = client
+    end
+  end
+  return out
+end
 
 ---@param bufnr integer
 ---@return boolean

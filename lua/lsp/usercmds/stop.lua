@@ -5,13 +5,16 @@ local M = {}
 
 local notify = require("lib.nvim.notify").create("[LSP.Stop] ")
 local supervisor = require("lsp.core.supervisor")
+local util = require("lsp.core.util")
 local lsp = vim.lsp
 
---- Get clients attached to buffer
+--- Language servers attached to buffer. lsp.nvim's own in-process clients are
+--- not among them: "stop everything" counted a client the user never asked
+--- about, and it re-attaches by itself on the next gitsigns update anyway.
 ---@param bufnr integer|nil
 ---@return vim.lsp.Client[]
 local function get_buffer_clients(bufnr)
-  return lsp.get_clients({ bufnr = bufnr or 0 })
+  return util.server_clients(bufnr or 0)
 end
 
 --- Gracefully stop a client, then force-stop it if it does not go down.
@@ -139,6 +142,16 @@ end
 ---@return nil
 function M.execute(args)
   local bufnr = 0
+
+  if util.is_internal_name(args.args) then
+    notify.info(
+      string.format(
+        "'%s' is lsp.nvim's own in-process client, not a language server; turn it off with code_actions.gitsigns = false",
+        args.args
+      )
+    )
+    return
+  end
 
   if args.args and args.args ~= "" then
     -- Stop specific server -- every client carrying that name, not the first

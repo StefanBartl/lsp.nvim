@@ -19,9 +19,9 @@
 
 local M = {}
 
-local lsp = vim.lsp
 local start = require("lsp.usercmds.start")
 local supervisor = require("lsp.core.supervisor")
+local util = require("lsp.core.util")
 
 --- Every server this plugin has a configuration for, sorted.
 ---@return string[]
@@ -31,11 +31,13 @@ local function get_configured_servers()
   return names
 end
 
---- Get clients attached to buffer
+--- Language servers attached to buffer: what `:Lsp stop` and `:Lsp restart` act
+--- on, and so all they should offer. lsp.nvim's own in-process clients are left
+--- out (see `lsp.core.util.server_clients`).
 ---@param bufnr integer|nil
 ---@return vim.lsp.Client[]
 local function get_buffer_clients(bufnr)
-  return lsp.get_clients({ bufnr = bufnr or 0 })
+  return util.server_clients(bufnr or 0)
 end
 
 --- Check if server is running for buffer

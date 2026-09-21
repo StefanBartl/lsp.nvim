@@ -110,9 +110,11 @@ group; the derived chip groups are redefined under the same names, because the
 strings already in a window's `'winbar'` keep naming them.
 
 **Who owns `'winbar'`.** It is window-local, and this module writes it only on
-windows showing a normal, LSP-attached buffer (`buftype == ""`, not a float — a
-peek window is a float and has its own title). It writes over whatever was
-there, which is the contract lspsaga had. What it clears is only its own: a
+windows showing a normal buffer with a language server attached (`buftype` is
+empty, not a float — a peek window is a float and has its own title; the
+in-process client of `code_actions.gitsigns` does not count as a server). It
+writes over whatever was there, which is the contract lspsaga had. What it
+clears is only its own: a
 string is recognised as ours by the `LspNvimWinbar` group names every string
 carries, so a winbar another plugin put on a help or terminal window is never
 touched, and a released window goes back to the *global* `'winbar'` rather than

@@ -114,6 +114,16 @@ which the [code-action indicator](INDICATORS.md#code-action-indicator)'s default
 allowlist does not light on — a hunk action is neither a fix nor a source
 action, and the bulb would otherwise burn on every changed line.
 
+The client is named `lsp.nvim-gitsigns`, and to Neovim it is a client like any
+other — attached to every buffer gitsigns tracks, whatever its language. So the
+plugin's own consumers look past clients named `lsp.nvim-*`
+(`lsp.core.util.server_clients`): the [winbar](INDICATORS.md) draws only where a
+language server is attached (not on a `.txt` file that merely sits in a git
+repository), and `:Lsp stop` / `:Lsp restart` and their completion leave it
+alone. It re-attaches by itself on the next gitsigns update; `:Lsp restart` and
+`:Lsp stop` on its name say so instead of trying. Anything *else* that lists
+`vim.lsp.get_clients()` — a statusline's LSP indicator, say — will show it.
+
 A hunk that only *removed* lines counts as the one line it sits on, as it does
 for gitsigns' own sign — with the two edges gitsigns bends the rule for: a
 deletion above the first line belongs to line 1, one after the last line to the

@@ -283,6 +283,25 @@ describe("lsp.core.winbar", function()
       assert.are.equal("", bar())
     end)
 
+    -- `code_actions.gitsigns = true` attaches an in-process client to every
+    -- buffer gitsigns tracks. It provides no symbols, so a buffer that has only
+    -- that client is a buffer with no language server: no path-only bar.
+    it("draws nothing for a buffer that only lsp.nvim's in-process client is on", function()
+      vim.lsp.get_clients = function()
+        return {
+          {
+            id = 7,
+            name = "lsp.nvim-gitsigns",
+            server_capabilities = { codeActionProvider = true },
+          },
+        }
+      end
+      winbar.setup({})
+      vim.api.nvim_exec_autocmds("LspAttach", { buffer = bufnr, data = { client_id = 7 } })
+      vim.wait(100)
+      assert.are.equal("", bar())
+    end)
+
     it("takes its breadcrumb back off when switched off, and only its own", function()
       local client = stub_client()
       vim.lsp.get_clients = function()

@@ -211,6 +211,41 @@ describe("lsp.usercmds", function()
       assert.is_true(any_matches(said, "not running"))
       assert.are.equal(1, #attached(bufnr))
     end)
+
+    -- `lsp.nvim-gitsigns` is lsp.nvim's own in-process client, not a language
+    -- server: it has no process to stop and no configuration to bring it back
+    -- from, and it re-attaches by itself on the next gitsigns update. Counting
+    -- it made "stop everything" report a client the user never asked about.
+    it("leaves lsp.nvim's own in-process client alone when stopping everything", function()
+      local bufnr = current_buffer()
+      attach("real_server", bufnr)
+      attach("lsp.nvim-gitsigns", bufnr)
+
+      local said = messages_of(function()
+        require("lsp.usercmds.stop").execute({ args = "" })
+      end)
+      settle(1000)
+
+      assert.is_true(any_matches(said, "Stopped 1 LSP client"), table.concat(said, " | "))
+      local left = attached(bufnr)
+      assert.are.equal(1, #left, table.concat(left, ", "))
+      assert.is_truthy(left[1]:match("^lsp%.nvim%-gitsigns#"))
+    end)
+
+    it("says an in-process client is not stopped by hand, when asked for by name", function()
+      local bufnr = current_buffer()
+      local id = attach("lsp.nvim-gitsigns", bufnr)
+
+      local said = messages_of(function()
+        require("lsp.usercmds.stop").execute({ args = "lsp.nvim-gitsigns" })
+      end)
+      settle(400)
+
+      assert.is_true(any_matches(said, "in%-process"), table.concat(said, " | "))
+      assert.is_false(any_matches(said, "not running"), table.concat(said, " | "))
+      local client = assert(vim.lsp.get_client_by_id(id))
+      assert.is_false(client:is_stopped())
+    end)
   end)
 
   describe("restart", function()
@@ -248,6 +283,45 @@ describe("lsp.usercmds", function()
       -- for the first call. The old loop collected a name per client and
       -- reported "2/2" for what is one restart.
       assert.is_true(any_matches(said, "Restarted %d+/1 LSP server"), table.concat(said, " | "))
+    end)
+
+    -- Measured against the real config: with the in-process client on the
+    -- buffer, "restart everything" stopped it, could not start it again (no
+    -- registered configuration) and reported "Restarted 1/2" for a restart in
+    -- which every language server had come back.
+    it("does not count, stop or restart lsp.nvim's own in-process client", function()
+      local bufnr = current_buffer("css")
+      attach("spec_css_a", bufnr)
+      local id = attach("lsp.nvim-gitsigns", bufnr)
+
+      local said = {}
+      local original = vim.notify
+      vim.notify = function(msg)
+        said[#said + 1] = tostring(msg)
+      end
+      require("lsp.usercmds.restart").execute({ args = "" })
+      settle(400)
+      vim.notify = original
+
+      assert.is_true(any_matches(said, "Restarted %d+/1 LSP server"), table.concat(said, " | "))
+      local client = vim.lsp.get_client_by_id(id)
+      assert.is_not_nil(client, "still attached")
+      assert.is_false(client:is_stopped())
+    end)
+
+    it("says an in-process client is not restarted by hand, when asked for by name", function()
+      local bufnr = current_buffer()
+      local id = attach("lsp.nvim-gitsigns", bufnr)
+
+      local said = messages_of(function()
+        require("lsp.usercmds.restart").execute({ args = "lsp.nvim-gitsigns" })
+      end)
+      settle(400)
+
+      assert.is_true(any_matches(said, "in%-process"), table.concat(said, " | "))
+      assert.is_false(any_matches(said, "Failed to restart"), table.concat(said, " | "))
+      local client = assert(vim.lsp.get_client_by_id(id))
+      assert.is_false(client:is_stopped())
     end)
   end)
 
@@ -346,6 +420,17 @@ describe("lsp.usercmds", function()
       attach("dup", bufnr)
 
       assert.are.same({ "dup" }, require("lsp.usercmds.completion").complete_stop("", "", 0))
+    end)
+
+    it("does not offer lsp.nvim's own in-process client to stop", function()
+      local bufnr = current_buffer()
+      attach("real_server", bufnr)
+      attach("lsp.nvim-gitsigns", bufnr)
+
+      assert.are.same(
+        { "real_server" },
+        require("lsp.usercmds.completion").complete_stop("", "", 0)
+      )
     end)
   end)
 
