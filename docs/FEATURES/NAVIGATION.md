@@ -165,9 +165,9 @@ so before sending anything it asks whether an attached client advertises
 `textDocument/prepareTypeHierarchy` and, if none does, says which servers
 usually do, instead of a wait and then "No results". Measured against clangd,
 gopls, jdtls, lua_ls, marksman, pylsp, ts_ls, vtsls and zls: only the first
-three advertise `typeHierarchyProvider`, so in Lua, Markdown, Python and
-TypeScript the key answers with that sentence and nothing else. rust-analyzer
-is not installed here, so it stays unmeasured.
+three advertise `typeHierarchyProvider`, so in Lua, Markdown, Python,
+TypeScript and Zig the key answers with that sentence and nothing else.
+rust-analyzer is not installed here, so it stays unmeasured.
 
 ## Outline
 
