@@ -749,8 +749,9 @@ end
 ---@internal
 --- Type hierarchy in one direction, after checking a client can answer it.
 ---
---- Few servers do -- clangd, jdtls and dartls -- so on most buffers the honest
---- reply to the key is a sentence, not "No results" after a wait.
+--- Few servers do -- clangd, gopls and jdtls, measured; dartls unconfirmed --
+--- so on most buffers the honest reply to the key is a sentence, not
+--- "No results" after a wait.
 ---@param direction "super"|"sub"
 ---@return nil
 local function type_hierarchy(direction)
@@ -759,7 +760,7 @@ local function type_hierarchy(direction)
     method = "textDocument/prepareTypeHierarchy",
   })
   if #clients == 0 then
-    notify().info("no attached server offers a type hierarchy (usually clangd, jdtls, dartls)")
+    notify().info("no attached server offers a type hierarchy (usually clangd, gopls, jdtls)")
     return
   end
   local fzf = fzf_lua()
