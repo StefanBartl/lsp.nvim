@@ -425,6 +425,198 @@ local function normalize_filetype_map(cfg, key)
 end
 
 ---@internal
+--- Force a boolean sub-option back to its default when it is not one, and warn
+--- when the value was supplied rather than absent.
+---@param cfg LspNvim.Config
+---@param key string # Top-level key, e.g. `"winbar"`.
+---@param field string # Sub-field, e.g. `"chips"`.
+---@return nil
+local function normalize_boolean(cfg, key, field)
+  local opts = cfg[key]
+  if type(opts) ~= "table" or type(opts[field]) == "boolean" then
+    return -- `normalize_table` already put a default here and warned.
+  end
+  local defaults = DEFAULTS[key]
+  ---@cast defaults table
+  if opts[field] ~= nil then
+    warn(
+      ("%s.%s: expected a boolean, using %s"):format(key, field, tostring(defaults[field])),
+      key,
+      field
+    )
+  end
+  opts[field] = defaults[field]
+end
+
+---@internal
+--- Force a string sub-option back to its default when it is not a string.
+---@param cfg LspNvim.Config
+---@param key string
+---@param field string
+---@return nil
+local function normalize_string(cfg, key, field)
+  local opts = cfg[key]
+  if type(opts) ~= "table" or type(opts[field]) == "string" then
+    return
+  end
+  local defaults = DEFAULTS[key]
+  ---@cast defaults table
+  if opts[field] ~= nil then
+    warn(
+      ("%s.%s: expected a string, using %q"):format(key, field, tostring(defaults[field])),
+      key,
+      field
+    )
+  end
+  opts[field] = defaults[field]
+end
+
+---@internal
+--- Force a positive-number sub-option back to its default. Unlike
+--- `normalize_number` it does not floor: `peek.width = 0.7` is a fraction.
+---@param cfg LspNvim.Config
+---@param key string
+---@param field string
+---@return nil
+local function normalize_positive(cfg, key, field)
+  local opts = cfg[key]
+  if type(opts) ~= "table" then
+    return
+  end
+  local value = opts[field]
+  if type(value) == "number" and value > 0 then
+    return
+  end
+  local defaults = DEFAULTS[key]
+  ---@cast defaults table
+  if value ~= nil then
+    warn(
+      ("%s.%s: expected a positive number, using %s"):format(key, field, tostring(defaults[field])),
+      key,
+      field
+    )
+  end
+  opts[field] = defaults[field]
+end
+
+---@internal
+--- Drop the entries of a `name -> value` map that `valid` refuses, warning
+--- for each. A map is used instead of a list for every such option because
+--- `vim.tbl_deep_extend` merges lists index by index.
+---@param cfg LspNvim.Config
+---@param key string
+---@param field string
+---@param want string # What a valid value is, for the message.
+---@param valid fun(name: any, value: any): boolean
+---@return nil
+local function normalize_map(cfg, key, field, want, valid)
+  local opts = cfg[key]
+  if type(opts) ~= "table" then
+    return
+  end
+  local map = opts[field]
+  if type(map) ~= "table" then
+    if map ~= nil then
+      warn(("%s.%s: expected a %s map, ignoring"):format(key, field, want), key, field)
+    end
+    opts[field] = {}
+    return
+  end
+  for name, value in pairs(map) do
+    if not valid(name, value) then
+      warn(
+        ("%s.%s: ignoring entry %s = %s (want %s)"):format(
+          key,
+          field,
+          vim.inspect(name),
+          vim.inspect(value),
+          want
+        ),
+        key,
+        field
+      )
+      map[name] = nil
+    end
+  end
+end
+
+---@internal
+--- The `winbar`, `peek`, `implement`, `code_actions` and `finder` options.
+--- Split out of `M.setup` only because it is a long, flat list of independent
+--- checks that share nothing with the rest of it.
+---@param cfg LspNvim.Config
+---@return nil
+local function normalize_ui_features(cfg)
+  -- winbar
+  normalize_filetype_map(cfg, "winbar")
+  for _, field in ipairs({ "enable", "show_file", "chips" }) do
+    normalize_boolean(cfg, "winbar", field)
+  end
+  normalize_string(cfg, "winbar", "separator")
+  normalize_number(cfg, "winbar", "folder_level", true)
+  normalize_number(cfg, "winbar", "debounce_ms", true)
+  normalize_number(cfg, "winbar", "refresh_ms", true)
+  normalize_map(cfg, "winbar", "max_symbols", "filetype -> count", function(name, value)
+    return type(name) == "string" and (value == false or (type(value) == "number" and value >= 0))
+  end)
+
+  -- peek
+  normalize_positive(cfg, "peek", "width")
+  normalize_positive(cfg, "peek", "height")
+  normalize_boolean(cfg, "peek", "beacon")
+  if type(cfg.peek.border) ~= "string" and type(cfg.peek.border) ~= "table" then
+    if cfg.peek.border ~= nil then
+      warn(
+        ("peek.border: expected a border name or a list, using %q"):format(DEFAULTS.peek.border),
+        "peek",
+        "border"
+      )
+    end
+    cfg.peek.border = DEFAULTS.peek.border
+  end
+  local peek_actions = { close = true, edit = true, vsplit = true, split = true, tabedit = true }
+  normalize_map(cfg, "peek", "keys", "action -> key", function(name, value)
+    return peek_actions[name] == true
+      and (value == false or (type(value) == "string" and value ~= ""))
+  end)
+
+  -- implement
+  normalize_filetype_map(cfg, "implement")
+  normalize_boolean(cfg, "implement", "enable")
+  normalize_string(cfg, "implement", "text")
+  normalize_number(cfg, "implement", "debounce_ms", true)
+  normalize_number(cfg, "implement", "max_requests", false)
+  normalize_map(cfg, "implement", "kinds", "kind name -> boolean", function(name, value)
+    return type(name) == "string" and type(value) == "boolean"
+  end)
+
+  -- code_actions
+  normalize_boolean(cfg, "code_actions", "gitsigns")
+  local picker = cfg.code_actions.picker
+  if picker ~= "auto" and picker ~= "fzf-lua" and picker ~= "native" then
+    if picker ~= nil then
+      warn(
+        ('code_actions.picker: unknown value %q, using "auto"'):format(tostring(picker)),
+        "code_actions",
+        "picker"
+      )
+    end
+    cfg.code_actions.picker = DEFAULTS.code_actions.picker
+  end
+
+  -- finder
+  for _, field in ipairs({
+    "references",
+    "implementations",
+    "definitions",
+    "declarations",
+    "typedefs",
+  }) do
+    normalize_boolean(cfg, "finder", field)
+  end
+end
+
+---@internal
 --- Resolve the profile name and record it. Unknown names degrade to
 --- `"default"` rather than to no options at all -- a typo in a profile name
 --- must not silently strip the plugin down.
@@ -512,6 +704,11 @@ function M.setup(user_opts)
     "formatter",
     "inlay_hints",
     "lightbulb",
+    "winbar",
+    "peek",
+    "implement",
+    "code_actions",
+    "finder",
     "auto_restart",
     "attach",
     "mason",
@@ -693,6 +890,8 @@ function M.setup(user_opts)
     end
     cfg.diagnostics.ui = "auto"
   end
+
+  normalize_ui_features(cfg)
 
   _active = cfg
   return cfg

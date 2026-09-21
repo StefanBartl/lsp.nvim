@@ -12,6 +12,9 @@
 | `:Lsp root show` / `pick` / `add` / `remove` / `list` | Resolution strategy, and LSP's own workspace folders |
 | `:Lsp hints [toggle\|on\|off\|status\|clear] [filetype]` | Inlay hints, globally or per filetype |
 | `:Lsp lightbulb …` | The code-action indicator, same argument pair |
+| `:Lsp winbar …` | The LSP breadcrumb in the winbar, same argument pair |
+| `:Lsp implement …` | Implementation markers on interfaces (off by default), same argument pair |
+| `:Lsp peek [kind]` | The definition (or type, implementation, declaration) in a floating, editable window |
 | `:Lsp autorestart` | Whether a crashed server comes back, and why the last attempt failed |
 | `:Lsp log` | The LSP log |
 

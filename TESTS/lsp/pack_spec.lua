@@ -68,13 +68,13 @@ describe("lsp.config.pack", function()
 
   describe("disable", function()
     it("drops a single plugin, group untouched", function()
-      local pack = with({ disable = { "lspsaga.nvim" } })
-      assert.is_false(pack.enabled("lspsaga.nvim", "ui"))
+      local pack = with({ disable = { "lensline.nvim" } })
+      assert.is_false(pack.enabled("lensline.nvim", "ui"))
       assert.is_true(pack.enabled("trouble.nvim", "ui"))
     end)
 
     it("ignores a malformed disable value", function()
-      assert.is_true(with({ disable = "lspsaga.nvim" }).enabled("lspsaga.nvim", "ui"))
+      assert.is_true(with({ disable = "lensline.nvim" }).enabled("lensline.nvim", "ui"))
     end)
   end)
 

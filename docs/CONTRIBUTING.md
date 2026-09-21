@@ -59,8 +59,8 @@ checkout completely. Nothing looks broken; it is simply not the code running.
 
 | Path | Contains |
 | --- | --- |
-| `lua/lsp/core/` | The own code on `vim.lsp.*`: registry, attach, capabilities, handlers, diagnostics, inlay hints, lightbulb, supervisor, root scope and workspace folders |
-| `lua/lsp/integrations/` | One adapter per third-party plugin — conform, trouble, lazydev, mason, lspsaga, lensline, inc-rename, noice, nvchad, picker, cmp/blink — plus `menu.lua` |
+| `lua/lsp/core/` | The own code on `vim.lsp.*`: registry, attach, capabilities, handlers, diagnostics, inlay hints, lightbulb, the winbar breadcrumb and the symbol cache under it, peek, implementation markers, gitsigns code actions, supervisor, root scope and workspace folders |
+| `lua/lsp/integrations/` | One adapter per third-party plugin — conform, trouble, lazydev, mason, lensline, inc-rename, noice, nvchad, picker, cmp/blink — plus `menu.lua` |
 | `lua/lsp/pack/` | LazySpecs only, no logic: what gets installed when `import = "lsp.pack"` is used |
 | `lua/lsp/servers/` | Per-server modules; the larger ones (`lua_ls/`, `marksman/`) carry their own `README.md` |
 | `lua/lsp/languages/` | Per-language grouping over the server modules |

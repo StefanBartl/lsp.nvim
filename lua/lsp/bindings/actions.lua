@@ -625,4 +625,209 @@ function M.root_workspace_list()
   )
 end
 
+-- ------------------------------------------------ code actions, finder, hierarchy
+
+---@internal
+--- fzf-lua, or nil. Required lazily and through `pcall`, like every other
+--- third-party plugin in this module: probing at bind time would load a plugin
+--- the user configured to load on demand.
+---@return table|nil
+local function fzf_lua()
+  local ok, mod = pcall(require, "fzf-lua")
+  return ok and mod or nil
+end
+
+---@internal
+---@return table
+local function notify()
+  return require("lib.nvim.notify").create("[lsp.nvim]")
+end
+
+--- Code actions, with a preview of the edit as a diff where the picker can.
+---
+--- `lsa` used to be a bare `vim.lsp.buf.code_action`: a list of titles, and no
+--- way to see what a refactor would do before applying it. fzf-lua's
+--- `lsp_code_actions` is the same request with a previewer that renders the
+--- `WorkspaceEdit` as a diff, so `code_actions.picker = "auto"` uses it when
+--- fzf-lua is installed and the native list otherwise.
+---
+--- `silent = true` keeps fzf-lua from warning that it is not registered as the
+--- global `vim.ui.select` backend: this registers it for this one call only,
+--- which is all a code action needs. Visual mode needs nothing extra --
+--- `vim.lsp.buf.code_action` reads the selection itself, and fzf-lua calls it.
+---@param call_opts? { context?: table, filter?: fun(action: table): boolean }
+---@return nil
+function M.code_action(call_opts)
+  local picker = cfg().code_actions.picker
+  local fzf = picker ~= "native" and fzf_lua() or nil
+  if fzf then
+    fzf.lsp_code_actions(vim.tbl_extend("force", { silent = true }, call_opts or {}))
+    return
+  end
+  if picker == "fzf-lua" then
+    notify().warn(
+      'code_actions.picker is "fzf-lua" but fzf-lua is not installed; using the native list'
+    )
+  end
+  vim.lsp.buf.code_action(call_opts)
+end
+
+--- The quick fix for the diagnostic on the cursor line.
+---
+--- lspsaga let you jump to a diagnostic, read it in a float, and press a key
+--- there to run the matching code action. `]d` already does the first two;
+--- this is the third: the same code-action list, asked for that line's
+--- diagnostics and only for `quickfix` kinds, so the answer is "how do I fix
+--- this" and not "what could I refactor here".
+---@return nil
+function M.diag_code_action()
+  local lnum = vim.api.nvim_win_get_cursor(0)[1] - 1
+  ---@type table[]
+  local diagnostics = {}
+  for _, d in ipairs(vim.diagnostic.get(0, { lnum = lnum })) do
+    -- The LSP-shaped original travels in `user_data.lsp`, which is what the
+    -- server needs to attach its fixes to; `lsp.core.lightbulb` reads the same
+    -- field for the same reason.
+    local original = d.user_data and d.user_data.lsp
+    if original then
+      diagnostics[#diagnostics + 1] = original
+    end
+  end
+  if #diagnostics == 0 then
+    notify().info("no LSP diagnostic on this line")
+    return
+  end
+  M.code_action({ context = { diagnostics = diagnostics, only = { "quickfix" } } })
+end
+
+--- Everything that uses, implements or defines the symbol, in one list.
+---
+--- lspsaga's `finder`, on fzf-lua's `lsp_finder`: same idea -- the LSP
+--- locations merged into one picker with a preview -- as a flat list rather
+--- than a tree. `finder.*` picks the sources.
+---@return nil
+function M.finder()
+  local fzf = fzf_lua()
+  if not fzf then
+    notify().warn("the finder needs fzf-lua")
+    return
+  end
+
+  local sources = cfg().finder
+  local ansi = fzf.utils and fzf.utils.ansi_codes
+  -- Colour where fzf-lua offers it, plain text where it does not: the prefix
+  -- is only there to tell the sources apart.
+  ---@param colour string
+  ---@param text string
+  ---@return string
+  local function label(colour, text)
+    local paint = ansi and ansi[colour]
+    return paint and paint(text) or text
+  end
+  local order = {
+    { "references", "ref ", "blue" },
+    { "implementations", "impl", "green" },
+    { "definitions", "def ", "green" },
+    { "declarations", "decl", "magenta" },
+    { "typedefs", "type", "yellow" },
+  }
+
+  ---@type table[]
+  local providers = {}
+  for _, source in ipairs(order) do
+    if sources[source[1]] then
+      providers[#providers + 1] = { source[1], prefix = label(source[3], source[2]) }
+    end
+  end
+  if #providers == 0 then
+    notify().warn("every finder source is switched off (finder.*)")
+    return
+  end
+  fzf.lsp_finder({ providers = providers })
+end
+
+---@internal
+--- Type hierarchy in one direction, after checking a client can answer it.
+---
+--- Few servers do -- clangd, jdtls and dartls -- so on most buffers the honest
+--- reply to the key is a sentence, not "No results" after a wait.
+---@param direction "super"|"sub"
+---@return nil
+local function type_hierarchy(direction)
+  local clients = vim.lsp.get_clients({
+    bufnr = 0,
+    method = "textDocument/prepareTypeHierarchy",
+  })
+  if #clients == 0 then
+    notify().info("no attached server offers a type hierarchy (usually clangd, jdtls, dartls)")
+    return
+  end
+  local fzf = fzf_lua()
+  if fzf then
+    fzf[direction == "super" and "lsp_type_super" or "lsp_type_sub"]()
+    return
+  end
+  vim.lsp.buf.typehierarchy(direction == "super" and "supertypes" or "subtypes")
+end
+
+--- Supertypes of the type under the cursor.
+---@return nil
+function M.type_super()
+  type_hierarchy("super")
+end
+
+--- Subtypes of the type under the cursor.
+---@return nil
+function M.type_sub()
+  type_hierarchy("sub")
+end
+
+-- -------------------------------------------------------------------- peek
+
+--- Peek the definition in a floating, editable window.
+---@return nil
+function M.peek_definition()
+  require("lsp.core.peek").peek("definition")
+end
+
+--- Peek the type definition in a floating, editable window.
+---@return nil
+function M.peek_type_definition()
+  require("lsp.core.peek").peek("type_definition")
+end
+
+-- ------------------------------------------------------------------ winbar
+
+---@internal
+--- The runtime toggle for the LSP breadcrumb.
+---@return table|nil
+local function winbar()
+  local ok, mod = pcall(require, "lsp.core.winbar")
+  return ok and mod or nil
+end
+
+--- Toggle the winbar breadcrumb globally.
+---@return nil
+function M.winbar_toggle()
+  local wb = winbar()
+  if wb then
+    wb.toggle(nil)
+  end
+end
+
+--- Toggle the winbar breadcrumb for the current buffer's filetype only.
+---@return nil
+function M.winbar_toggle_filetype()
+  local wb = winbar()
+  if wb == nil then
+    return
+  end
+  local ft = vim.bo[0].filetype
+  if ft == "" then
+    notify().warn("this buffer has no filetype")
+    return
+  end
+  wb.toggle(ft)
+end
+
 return M

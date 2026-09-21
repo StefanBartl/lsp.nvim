@@ -51,11 +51,10 @@ local M = {}
 --- * `languages`    -- the per-filetype setup this tree wants.
 ---
 --- The omissions are the point, so they are named rather than left implicit.
---- All eleven of them, which is one more than this list held until now:
---- `auto_restart` was refused by the allowlist and mentioned nowhere, so the
---- one option whose omission a reader had to infer was the one about restarting
---- processes. Counted rather than eyeballed -- nine allowed plus the eleven
---- below is every top-level key in `DEFAULTS`.
+--- All sixteen of them. `auto_restart` was once refused by the allowlist and
+--- mentioned nowhere, so the one option whose omission a reader had to infer
+--- was the one about restarting processes. Counted rather than eyeballed --
+--- nine allowed plus the sixteen below is every top-level key in `DEFAULTS`.
 ---
 --- * `preset`                -- a property of the machine, not the repository.
 --- * `keymaps`, `usrcmds`,
@@ -70,6 +69,13 @@ local M = {}
 ---                              a restart loop.
 --- * `completion`, `rename`  -- host data and a personal habit; neither is a
 ---                              property of the code being edited.
+--- * `winbar`, `peek`,
+---   `implement`,
+---   `code_actions`, `finder` -- how *your* editor looks and which picker it
+---                              opens. None of it is a fact about the tree, and
+---                              `implement` and `code_actions.gitsigns` start
+---                              extra requests or an extra in-process server,
+---                              which a checkout must not switch on.
 --- * `lspdoctor`             -- report formatting, which is yours to choose.
 --- * `project`               -- a project file pointing at another project
 ---                              file is a loop with nothing to gain.

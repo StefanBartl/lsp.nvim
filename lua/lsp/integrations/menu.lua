@@ -62,13 +62,13 @@ local function group_of(name)
   -- named to the same convention as everything else here, so the header's
   -- claim -- that following the convention groups an entry correctly -- was
   -- what failed, not the names.
-  if name:match("^hints_") or name:match("^lightbulb_") then
+  if name:match("^hints_") or name:match("^lightbulb_") or name:match("^winbar_") then
     return "  Toggles"
   end
   if name:match("^workspace_") then
     return "  Workspace"
   end
-  return "  Navigation" -- goto_*, document_symbols, code_action, signature_help, root_scope_pick, marksman_hints
+  return "  Navigation" -- goto_*, peek_*, document_symbols, code_action, signature_help, root_scope_pick, marksman_hints
 end
 
 ---@internal

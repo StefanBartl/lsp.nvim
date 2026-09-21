@@ -40,7 +40,7 @@ The full option surface is `:h lsp.nvim-config`, with
 ## With or without the pack
 
 `import = "lsp.pack"` additionally installs and configures conform, lazydev,
-workspace-diagnostics, trouble, lspsaga, lensline and inc-rename. Drop it and
+workspace-diagnostics, trouble, lensline and inc-rename. Drop it and
 you get the plugin alone: it wires up whichever of those happen to be installed
 and reports the rest in `:checkhealth lsp`.
 
@@ -53,10 +53,10 @@ any `setup(opts)` exists to read:
 vim.g.lsp_nvim = {
   pack = {
     core = true,          -- conform, lazydev, workspace-diagnostics
-    ui = true,            -- trouble, lspsaga, lensline, inc-rename
+    ui = true,            -- trouble, lensline, inc-rename
     completion = "blink", -- "cmp" | "blink" | false (default: blink)
     completion_accept = "cr", -- "cr" | "ctrl_y" (default: cr) -- blink only
-    disable = { "lspsaga.nvim" },
+    disable = { "lensline.nvim" },
   },
 }
 ```

@@ -47,6 +47,10 @@ local PRESETS = {
     -- request and continuous by nature, which is exactly the class of cost
     -- this preset turns off.
     lightbulb = { enable = false },
+    -- One `textDocument/documentSymbol` request per edit pause, for a bar that
+    -- only decorates the window. The path-and-symbols breadcrumb is the first
+    -- thing on this list that a weak machine can do without.
+    winbar = { enable = false },
     -- Left ON. It costs nothing while nothing crashes, and a weak machine is
     -- where a server gets OOM-killed in the first place -- exactly where
     -- noticing by hand is most expensive.
@@ -83,6 +87,10 @@ local PRESETS = {
     -- "more feedback, sooner", and a refactor you did not know was on offer is
     -- feedback.
     lightbulb = { enable = true, kinds = {} },
+    -- Both cost something the defaults decline to pay: one request per marked
+    -- symbol per edit pause, and an extra in-process server.
+    implement = { enable = true },
+    code_actions = { gitsigns = true },
     attach = {
       use_workspace_diagnostics = true,
       use_lazydev = true,

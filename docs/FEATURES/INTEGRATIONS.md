@@ -1,7 +1,7 @@
 # Integrations
 
-One adapter per third-party plugin, and these two are the ones that add
-something rather than only wiring a plugin up.
+One adapter per third-party plugin, and this is the one that adds something
+rather than only wiring a plugin up.
 
 ## Right-click context menu
 
@@ -22,59 +22,12 @@ into its own menu.
 - **Config:** `menu.enable` (default `true`)
 - **Docs:** [BINDINGS.md](../BINDINGS.md#right-click-context-menu)
 
-## Breadcrumb depth
+## The breadcrumb is not an integration any more
 
-lspsaga draws the winbar breadcrumb, and it descends into every document
-symbol that contains the cursor line. In Markdown that is the whole heading
-hierarchy — `folder > file > H1 > H2 > H3` — because marksman reports headings
-as a nested outline; in Lua the same code yields `folder > file`, because
-lua_ls reports no symbol at all for a line outside a function. The difference
-is what the server sends, not how it is drawn, and lspsaga has no depth option
-(`ignore_patterns`, the only related knob, matches the buffer name and would
-remove the folder and file name too). So the adapter re-cuts the winbar after
-lspsaga has written it: path items plus a per-filetype number of symbols.
-
-- **Module:** `integrations/lspsaga.lua` (`M.winbar_max_symbols`,
-  `M.set_winbar_max_symbols`, `M.trim_winbar`)
-- **Default:** `markdown = 1` — the file's own top heading and nothing below
-  it. A filetype not named there keeps the full chain.
-
-`M.configure()` also sets `ui.winbar_prefix = " "` in the `lspsaga.setup()`
-call — lspsaga's own default there is `""`, which leaves the folder icon
-flush against the window's left edge, one column tighter than every other
-glyph in the breadcrumb (each already carries a leading space baked into its
-own icon string).
-
-Same `ui` table overrides lspsaga's icon for LSP SymbolKind `String` with a
-hashtag glyph (`ui.kind.String = { "\xEF\x8A\x92 ", "Title" }`, nf-fa-hashtag
-U+F292). Headings have no SymbolKind of their own in the LSP protocol, so
-marksman reports them as `String` — lspsaga's own default icon for that kind
-is a boxed-letter badge ("S"), which reads as a data-type marker rather than
-"this is a heading". A hashtag reads as Markdown's own `#` syntax instead.
-
-## Breadcrumb chips
-
-lspsaga's breadcrumb is one flat string, and its path groups (`SagaFolderName`,
-`SagaFileName`, `SagaSep`) default to a link to `Comment` — grey text on a
-grey bar. The adapter rewrites the string after lspsaga has written it, the
-same way it does for the depth cap: every part becomes a rounded chip (U+E0B6 /
-U+E0B4 caps), tinted from a role colour, with the part's own icon colour kept
-on the chip background.
-
-| Role | Colour from | What it holds |
-| --- | --- | --- |
-| `folder` | `Special` | the folder icon and name |
-| `file` | `Function` (bold) | the filetype icon and file name |
-| `symbol` | `String` | every symbol after the file, headings included — icon and name in the role colour, not the per-kind one |
-
-The role comes from what lspsaga put in the part, not from its position, so a
-file in the project root is still a file chip. The separator between chips is
-left as lspsaga wrote it.
-
-- **Modules:** `integrations/lspsaga_chips.lua` (`M.style`, `M.roles`, `M.tint`,
-  `M.setup_highlights`), `integrations/lspsaga.lua` (`M.winbar_chips`,
-  `M.style_winbar`)
-- **Default:** on. `M.winbar_chips = false` leaves lspsaga's own string.
-- **Colours:** read from the colourscheme. `M.roles[role].hl` changes which
-  group a role takes its colour from, `M.tint` how far the chip background is
-  pulled towards it (default 0.2). `SagaSep` is linked to `Operator`.
+This page used to carry two more sections, "Breadcrumb depth" and "Breadcrumb
+chips", because the breadcrumb was lspsaga's and this plugin re-cut and re-styled
+the string lspsaga had written. lspsaga is gone from the pack, and so is the
+adapter (`integrations/lspsaga.lua`, `lspsaga_chips.lua`): the breadcrumb is now
+this plugin's own, in [INDICATORS.md](INDICATORS.md#lsp-breadcrumb-winbar). What
+replaced each lspsaga feature is in
+[NAVIGATION.md](NAVIGATION.md#coming-from-lspsaga).

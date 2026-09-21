@@ -93,11 +93,33 @@ local entries = {
     rhs = vim.lsp.buf.document_symbol,
     desc = "Document symbols",
   },
+  -- Through `actions.code_action`, which opens fzf-lua's picker (a diff preview
+  -- of the edit before it is applied) when fzf-lua is installed and falls back
+  -- to `vim.lsp.buf.code_action` when it is not -- `code_actions.picker` pins
+  -- either. `x` as well: a range asks for the actions of a selection.
   code_action = {
     lhs = "lsa",
+    mode = { "n", "x" },
+    rhs = actions.code_action,
+    desc = "Code action (with diff preview)",
+  },
+  -- The floating, editable peek (`lsp.core.peek`): look at a definition
+  -- without leaving the code. `lsd`/`lst` jump and lose the place, `lsr`/`lsi`
+  -- list; this is what sits between. lspsaga's `peek_definition` /
+  -- `peek_type_definition`, and the same mnemonic: `p` for peek, the
+  -- capital for the type -- the shifted `lsD` and `lsC` follow the same
+  -- "sibling on shift" pattern.
+  peek_definition = {
+    lhs = "lsp",
     mode = "n",
-    rhs = vim.lsp.buf.code_action,
-    desc = "Code action",
+    rhs = actions.peek_definition,
+    desc = "Peek definition (floating, editable)",
+  },
+  peek_type_definition = {
+    lhs = "lsT",
+    mode = "n",
+    rhs = actions.peek_type_definition,
+    desc = "Peek type definition (floating, editable)",
   },
   signature_help = {
     lhs = "<M-s>",
@@ -182,6 +204,17 @@ local entries = {
     desc = "Toggle the code-action indicator for this filetype",
   },
 
+  -- ------------------------------------------------------- winbar breadcrumb
+  -- `tW`, not `tw`: `<leader>tw` is gitsigns' word-diff toggle, and the shifted
+  -- key is free. The breadcrumb is a per-window bar, so this is the global
+  -- switch; the per-filetype one is `:Lsp winbar toggle <filetype>`.
+  winbar_toggle = {
+    lhs = "<leader>tW",
+    mode = "n",
+    rhs = actions.winbar_toggle,
+    desc = "Toggle the LSP breadcrumb in the winbar (global)",
+  },
+
   -- ------------------------------------------------------------ diagnostics
   diag_to_qflist = {
     lhs = "<leader>wq",
@@ -214,6 +247,15 @@ local entries = {
     mode = { "n", "x", "o" },
     rhs = actions.diag_prev,
     desc = "Prev diagnostic (buffer)",
+  },
+  -- The quick fix for the diagnostic on this line: `]d` jumps and shows it,
+  -- this applies the fix. In `<leader>x`, the namespace this plugin owns
+  -- outright (see `groups` below).
+  diag_code_action = {
+    lhs = "<leader>xa",
+    mode = "n",
+    rhs = actions.diag_code_action,
+    desc = "Quick fix for the diagnostic on this line",
   },
   qf_next = {
     lhs = "]q",
@@ -304,6 +346,16 @@ local entries = {
     desc = "Trouble: document symbols",
     requires = "trouble",
   },
+  -- The outline sidebar: Trouble's `symbols` mode is already configured as a
+  -- right-hand panel that follows the cursor, unlike `trouble_symbols` above,
+  -- which is the plain list. lspsaga's `outline`.
+  trouble_outline = {
+    lhs = "<leader>xo",
+    mode = "n",
+    rhs = "<cmd>Trouble symbols toggle<cr>",
+    desc = "Trouble: outline sidebar (document symbols)",
+    requires = "trouble",
+  },
   trouble_loclist = {
     lhs = "<leader>xl",
     mode = "n",
@@ -388,6 +440,31 @@ local entries = {
     requires = "fzf-lua",
   },
 
+  -- Everything that uses, implements or defines the symbol, in one list with
+  -- a preview (lspsaga's `finder`). `f` for finder.
+  picker_finder = {
+    lhs = "lsf",
+    mode = "n",
+    rhs = actions.finder,
+    desc = "Picker: finder (references + implementations + definitions)",
+    requires = "fzf-lua",
+  },
+  -- Type hierarchy. Few servers answer it (clangd, jdtls, dartls); the action
+  -- says so instead of waiting for "No results". `h` for hierarchy: lower case
+  -- is the direction asked for more, up to the supertypes.
+  picker_type_super = {
+    lhs = "lsh",
+    mode = "n",
+    rhs = actions.type_super,
+    desc = "Picker: supertypes of this type",
+  },
+  picker_type_sub = {
+    lhs = "lsH",
+    mode = "n",
+    rhs = actions.type_sub,
+    desc = "Picker: subtypes of this type",
+  },
+
   -- ------------------------------------------------------------ misc
   root_scope_pick = {
     lhs = "<leader>lsp",
@@ -438,6 +515,13 @@ local entries = {
 ---   out 'timeoutlen'. If that wait is the reason for picking the preset,
 ---   `keymaps.map = { picker_incoming_calls = false, picker_outgoing_calls =
 ---   false }` is what finishes the job.
+---
+--- The entries added with the lspsaga replacement (`peek_*`, `picker_finder`,
+--- `picker_type_*` -- all `ls*` keys -- plus `trouble_outline`, `winbar_toggle`
+--- and `diag_code_action`) are deliberately not in `minimal`. The `ls*` ones
+--- would each cost the wait this preset exists to avoid; the three others are
+--- leader keys and could be, but a preset that keeps growing stops being the
+--- short list it is for.
 ---@type table<LspNvim.KeymapPreset, string[]>
 local presets = {
   default = vim.tbl_keys(entries),

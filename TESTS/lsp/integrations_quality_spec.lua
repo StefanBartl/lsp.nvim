@@ -77,7 +77,7 @@ describe("lsp.integrations", function()
   -- of the same broken state impossible to diff.
   it("reports load failures in the order the adapters are declared", function()
     local saved = {}
-    for _, name in ipairs({ "trouble", "blink", "cmp", "lazydev", "menu", "nvchad", "lspsaga" }) do
+    for _, name in ipairs({ "trouble", "blink", "cmp", "lazydev", "menu", "nvchad" }) do
       local key = "lsp.integrations." .. name
       saved[key] = package.loaded[key]
       -- A module that raises on require is recorded as a load failure.
@@ -127,6 +127,6 @@ describe("lsp.integrations", function()
     -- only drifts between sessions. What does catch it is the order itself.
     -- These are `ADAPTERS` order, which is the order the plugin declares its
     -- adapters in and the order the report has to follow.
-    assert.are.same({ "nvchad", "cmp", "blink", "lazydev", "trouble", "lspsaga" }, first)
+    assert.are.same({ "nvchad", "cmp", "blink", "lazydev", "trouble" }, first)
   end)
 end)

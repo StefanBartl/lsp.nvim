@@ -85,7 +85,7 @@ With lazy.nvim: >lua
                                                             *lsp.nvim-pack*
 `import = "lsp.pack"` additionally installs and configures the ecosystem, in
 four spec modules: `core` (conform, lazydev, workspace-diagnostics), `ui`
-(trouble, lspsaga, lensline, inc-rename) and a completion engine -- blink.cmp
+(trouble, lensline, inc-rename) and a completion engine -- blink.cmp
 by default, nvim-cmp when `pack.completion = "cmp"`, neither on `false`. Drop
 the `import` to bring your own: the plugin then wires up whatever of those is
 installed and reports the rest in |:checkhealth-lsp|.
@@ -96,9 +96,9 @@ lazy evaluates `import` while it is still collecting specs, long before
     vim.g.lsp_nvim = {
       pack = {
         core = true,          -- conform, lazydev, workspace-diagnostics
-        ui = true,            -- trouble, lspsaga, lensline, inc-rename
+        ui = true,            -- trouble, lensline, inc-rename
         completion = "blink", -- "cmp" | "blink" | false (default: blink)
-        disable = { "lspsaga.nvim" },
+        disable = { "lensline.nvim" },
       },
     }
 <
@@ -156,6 +156,26 @@ Defaults (excerpt -- the full table is `lua/lsp/config/DEFAULTS.lua`): >lua
         text = "󰌵",
         debounce_ms = 150, priority = 20,
       },
+      winbar = {   -- the LSP breadcrumb: folder > file > Class > method
+        enable = true, filetypes = {},
+        show_file = true, folder_level = 1, separator = " › ",
+        chips = true,
+        max_symbols = { markdown = 1 },  -- symbols allowed after the file
+        debounce_ms = 60, refresh_ms = 300,
+      },
+      peek = {   -- floating, editable definition (lsp, lsT, :Lsp peek)
+        width = 0.7, height = 0.5, border = "rounded", beacon = true,
+        keys = { close = "q", edit = "<C-o>", vsplit = "<C-v>",
+                 split = "<C-x>", tabedit = "<C-t>" },
+      },
+      implement = {   -- implementation markers; off unless you turn it on
+        enable = false, filetypes = {},
+        kinds = { Interface = true }, text = " %d impl",
+        debounce_ms = 600, max_requests = 20,
+      },
+      code_actions = { picker = "auto", gitsigns = false },
+      finder = { references = true, implementations = true,
+                 definitions = true, declarations = false, typedefs = false },
       auto_restart = {   -- bring a crashed server back
         enable = true, max_attempts = 4,
         initial_delay_ms = 1000, max_delay_ms = 30000,
@@ -347,6 +367,73 @@ lightbulb.priority    (integer)   Extmark priority. Above |vim.diagnostic|'s
                                   sign priority (10) by default, which is the
                                   point: on a line that has both, the
                                   actionable mark is the one worth seeing.
+winbar.enable          (boolean)   Global startup default for the LSP breadcrumb
+                                  in the window bar: the file's path, then
+                                  every symbol containing the cursor. Replaces
+                                  lspsaga's `symbol_in_winbar`. The runtime
+                                  toggle (|:Lsp-winbar|, `<leader>tW`) owns it
+                                  from there. Off under `preset = "lean"`.
+winbar.filetypes      (table<string, boolean>)
+                                  Per-filetype override, resolved exactly as
+                                  `inlay_hints.filetypes` is.
+winbar.show_file      (boolean)   Draw the path in front of the symbols.
+winbar.folder_level   (integer)   Directories shown before the file name.
+winbar.separator      (string)    Between parts.
+winbar.chips          (boolean)   Rounded, coloured chips; false is one flat
+                                  string coloured by linked highlight groups.
+winbar.max_symbols    (table<string, integer|false>)
+                                  How many symbols may follow the file, per
+                                  filetype. `{ markdown = 1 }` by default,
+                                  because marksman reports headings as a
+                                  nested outline and a cursor in an H3 would
+                                  otherwise draw `file > H1 > H2 > H3`. A map,
+                                  so your entries merge over the default;
+                                  `markdown = false` lifts the cap.
+winbar.debounce_ms    (integer)   Between the last cursor movement and the
+                                  repaint. Reads a cache; sends nothing.
+winbar.refresh_ms     (integer)   Between the last edit and the next
+                                  `textDocument/documentSymbol` request.
+peek.width            (number)    Width of the peek float: a fraction of the
+                                  editor up to 1, cells above.
+peek.height           (number)    Height, the same way.
+peek.border           (string|string[])
+                                  `nvim_open_win` border.
+peek.beacon           (boolean)   Flash the target line when a peek is taken
+                                  into a real window.
+peek.keys             (table<string, string|false>)
+                                  Keys inside the peek, by action: `close`,
+                                  `edit`, `vsplit`, `split`, `tabedit`.
+                                  Buffer-local to the peeked buffer and given
+                                  back when the last peek over it closes.
+                                  `false` unbinds an action.
+implement.enable      (boolean)   Implementation markers: a count at the end
+                                  of the line of an interface that something
+                                  implements. Off by default -- one
+                                  `textDocument/implementation` request per
+                                  marked symbol per edit pause.
+implement.filetypes   (table<string, boolean>)
+                                  Per-filetype override.
+implement.kinds       (table<string, boolean>)
+                                  SymbolKind names that get a marker.
+                                  `{ Interface = true }` by default. A map,
+                                  not a list: lists merge index by index.
+implement.text        (string)    Marker text; `%d` is the count.
+implement.debounce_ms (integer)   Between the last edit and the requests.
+implement.max_requests (integer)  Cap on requests per round.
+code_actions.picker   ("auto"|"fzf-lua"|"native")
+                                  What `lsa` opens. `auto` is fzf-lua's
+                                  picker, with the edit previewed as a diff,
+                                  when fzf-lua is installed, and
+                                  `vim.lsp.buf.code_action` when it is not.
+code_actions.gitsigns (boolean)   Offer gitsigns' hunk actions (stage, reset,
+                                  preview) in the same list. Runs a small
+                                  in-process language server, which shows up
+                                  in |:Lsp| servers -- hence off by default.
+finder.references     (boolean)   Sources of `lsf`. A map of switches rather
+finder.implementations (boolean)  than a list, because lists merge index by
+finder.definitions    (boolean)   index. References, implementations and
+finder.declarations   (boolean)   definitions are on by default.
+finder.typedefs       (boolean)
 auto_restart.enable   (boolean)   Bring a language server back when it dies
                                   mid-session. A crashed server is otherwise
                                   invisible -- hover stops answering,
@@ -525,16 +612,24 @@ means adding a catalogue entry; nothing is hardcoded at the binding site.
 `scripts/gen_bindings.lua`, which CI checks, so the list cannot drift from the
 code.
 
-The `default` preset binds 49 entries; `minimal` binds the 33 that have no
-Neovim 0.11 equivalent (it drops 16: `grn`, `grt`, `]d`/`[d`, seven of the nine
-prefixless `ls*` keys, and the five `<leader>xl*` Trouble views); `none` binds
-nothing.
+The `default` preset binds 57 entries; `minimal` binds the 33 that have no
+Neovim 0.11 equivalent (it drops 24: `grn`, `grt`, `]d`/`[d`, twelve of the
+fourteen prefixless `ls*` keys, the five `<leader>xl*` Trouble views, and the
+three leader keys added with the navigation features -- `<leader>xo`,
+`<leader>xa`, `<leader>tW`); `none` binds nothing.
 
 `minimal` keeps two `ls*` keys, `lsc` and `lsC`: call hierarchy is the one
 thing in that family Neovim has no default for. So the 'timeoutlen' cost below
 is NOT bought back by the preset -- two prefixless `ls` maps cost exactly what
-nine do. `keymaps.map = { picker_incoming_calls = false, picker_outgoing_calls
+fourteen do. `keymaps.map = { picker_incoming_calls = false, picker_outgoing_calls
 = false }` is what finishes the job.
+
+The navigation keys -- what replaced lspsaga -- are `lsp` / `lsT` (peek the
+definition / type definition in a floating, editable window), `lsa` (code
+actions with a diff preview, Normal and Visual), `<leader>xa` (the quick fix
+for the diagnostic on this line), `lsf` (finder), `lsh` / `lsH` (type
+hierarchy), `<leader>xo` (outline sidebar) and `<leader>tW` (winbar toggle).
+`docs/FEATURES/NAVIGATION.md` has the detail.
 
 Overriding, per action: >lua
     keymaps = {
@@ -726,6 +821,29 @@ closed unless it says otherwise.
                     clients advertise `codeActionProvider`, which
                     CodeActionKinds are on the allowlist, and whether a mark
                     is on screen right now.
+
+    :Lsp winbar [action] [filetype]                                  *:Lsp-winbar*
+                    The LSP breadcrumb in the winbar, globally or for one
+                    filetype. Actions: `toggle` (default), `on`, `off`,
+                    `status`, `clear`, with the same meaning as for
+                    |:Lsp-lightbulb|. `status` says which attached client
+                    answers `textDocument/documentSymbol` in this buffer and
+                    whether the symbols cached for it are fresh.
+
+    :Lsp implement [action] [filetype]                            *:Lsp-implement*
+                    Implementation markers on interfaces, globally or for one
+                    filetype. Same actions and arguments as |:Lsp-winbar|.
+                    `status` names the client that would answer
+                    `textDocument/implementation` and how many markers are on
+                    screen. Off unless `implement.enable` says otherwise.
+
+    :Lsp peek [kind]                                                   *:Lsp-peek*
+                    Peek a definition in a floating, editable window. `kind`
+                    is `definition` (default), `type_definition`,
+                    `implementation` or `declaration`; the last two have no
+                    key. Inside the float `q` closes, `<C-o>` takes the buffer
+                    into the window you came from, `<C-v>`/`<C-x>` into a
+                    split and `<C-t>` into a tab (`peek.keys`).
 
     :Lsp log open                                          *:Lsp-log-open*
                     Open Neovim's LSP log file (|vim.lsp.get_log_path()|) in a

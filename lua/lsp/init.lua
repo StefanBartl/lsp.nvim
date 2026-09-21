@@ -333,6 +333,14 @@ local function bootstrap(cfg)
   step("code-action lightbulb", function()
     require("lsp.core.lightbulb").setup(cfg.lightbulb)
   end)
+  -- The breadcrumb, for the same reason: its `LspAttach` handler draws the
+  -- path-only bar the moment the first client attaches.
+  step("winbar breadcrumb", function()
+    require("lsp.core.winbar").setup(cfg.winbar)
+  end)
+  step("implementation markers", function()
+    require("lsp.core.implement").setup(cfg.implement)
+  end)
   -- Before the servers for a second reason beyond the LspAttach handler: it
   -- registers the `on_exit` hook on the `"*"` config, and a server started
   -- before that would run unsupervised until its next restart.
@@ -421,6 +429,12 @@ local function bootstrap(cfg)
       })
     end)
   end
+
+  -- After the servers are enabled: it starts a client of its own, and only for
+  -- buffers gitsigns is attached to.
+  step("gitsigns code actions", function()
+    require("lsp.core.gitsigns_actions").setup(cfg.code_actions)
+  end)
 
   step("lspdoctor", function()
     local doctor = require("lsp.lspdoctor")

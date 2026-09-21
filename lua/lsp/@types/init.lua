@@ -96,6 +96,47 @@ require("lsp.@types.subsystem")
 ---@field debounce_ms? integer # Window between the last cursor movement and the request.
 ---@field priority? integer # Extmark priority. Above `vim.diagnostic`'s signs (10) by default.
 
+---@class LspNvim.WinbarOpts
+--- The LSP breadcrumb in the window bar. `filetypes` resolves exactly like
+--- `LspNvim.InlayHintsOpts.filetypes`.
+---@field enable? boolean # Global default; the runtime toggle owns it afterwards.
+---@field filetypes? table<string, boolean> # Per-filetype override. An absent key inherits `enable`; `false` is an explicit off.
+---@field show_file? boolean # Draw the path in front of the symbols.
+---@field folder_level? integer # Directories shown before the file name.
+---@field separator? string # Between parts.
+---@field chips? boolean # Rounded chips, or one flat string.
+---@field max_symbols? table<string, integer|false> # Symbols allowed after the file, per filetype. `false` lifts a default cap.
+---@field debounce_ms? integer # Between the last cursor movement and the repaint.
+---@field refresh_ms? integer # Between the last edit and the next document-symbol request.
+
+---@class LspNvim.PeekOpts
+---@field width? number # Fraction of the editor when <= 1, cells above.
+---@field height? number # Fraction of the editor when <= 1, cells above.
+---@field border? string|string[] # `nvim_open_win` border.
+---@field beacon? boolean # Flash the target line after a peek is taken into a real window.
+---@field keys? table<string, string|false> # close / edit / vsplit / split / tabedit -> key; `false` unbinds.
+
+---@class LspNvim.ImplementOpts
+---@field enable? boolean # Global default.
+---@field filetypes? table<string, boolean> # Per-filetype override.
+---@field kinds? table<string, boolean> # SymbolKind names that get a marker.
+---@field text? string # Marker text; `%d` is the implementation count.
+---@field debounce_ms? integer # Between the last edit and the requests.
+---@field max_requests? integer # Cap on requests per round.
+
+---@class LspNvim.CodeActionsOpts
+---@field picker? "auto"|"fzf-lua"|"native" # What `lsa` opens.
+---@field gitsigns? boolean # Add gitsigns' hunk actions to the list.
+
+---@class LspNvim.FinderOpts
+--- Which sources `lsf` merges into one list. A map, because lists merge index
+--- by index.
+---@field references? boolean
+---@field implementations? boolean
+---@field definitions? boolean
+---@field declarations? boolean
+---@field typedefs? boolean
+
 ---@class LspNvim.AutoRestartOpts
 --- Automatic restart after a client crash, supervised by `lsp.core.supervisor`.
 ---@field enable? boolean # Bring a crashed server back at all.
@@ -189,6 +230,11 @@ require("lsp.@types.subsystem")
 ---@field workspace LspNvim.Workspace
 ---@field inlay_hints LspNvim.InlayHintsOpts
 ---@field lightbulb LspNvim.LightbulbOpts
+---@field winbar LspNvim.WinbarOpts
+---@field peek LspNvim.PeekOpts
+---@field implement LspNvim.ImplementOpts
+---@field code_actions LspNvim.CodeActionsOpts
+---@field finder LspNvim.FinderOpts
 ---@field auto_restart LspNvim.AutoRestartOpts
 ---@field attach LspNvim.AttachOpts
 ---@field mason LspNvim.MasonOpts
@@ -212,6 +258,11 @@ require("lsp.@types.subsystem")
 ---@field workspace? LspNvim.WorkspaceOpts
 ---@field inlay_hints? LspNvim.InlayHintsOpts
 ---@field lightbulb? LspNvim.LightbulbOpts
+---@field winbar? LspNvim.WinbarOpts
+---@field peek? LspNvim.PeekOpts
+---@field implement? LspNvim.ImplementOpts
+---@field code_actions? LspNvim.CodeActionsOpts
+---@field finder? LspNvim.FinderOpts
 ---@field auto_restart? LspNvim.AutoRestartOpts
 ---@field attach? LspNvim.AttachOpts
 ---@field mason? LspNvim.MasonOpts
