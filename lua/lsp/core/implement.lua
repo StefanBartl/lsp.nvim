@@ -256,6 +256,16 @@ local function run(bufnr, nodes)
       return
     end
     inflight[bufnr] = nil
+    -- The answers are keyed to the lines the symbols had when they were asked
+    -- about. If the text has moved since (typing in Insert mode fires no
+    -- `TextChanged`, so nothing cancelled this round), drawing them puts the
+    -- markers on the lines those numbers name now, and clearing first would take
+    -- away the markers that are still right: extmarks follow the text by
+    -- themselves. Leave the buffer as it is; `InsertLeave` / `TextChanged` ask
+    -- again for the text as it is by then.
+    if api.nvim_buf_get_changedtick(bufnr) ~= tick then
+      return
+    end
     api.nvim_buf_clear_namespace(bufnr, NS, 0, -1)
     local line_count = api.nvim_buf_line_count(bufnr)
     for _, answer in ipairs(answers) do

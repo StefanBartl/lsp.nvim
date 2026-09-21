@@ -159,7 +159,11 @@ markers for text it no longer has. And an answer for text that has changed since
 the request went out is not acted on: typing in Insert mode fires no
 `TextChanged`, so a late answer would mark the wrong lines, and because a round
 counts as handled per `changedtick` it would also turn the right round away.
-`InsertLeave` and `TextChanged` ask again once the edit is over.
+That holds for both stages of a round — the symbols, and the
+`implementation` answers, which are checked once more when the last one lands:
+a stale round draws nothing and takes nothing away, and the markers already on
+screen keep following their lines. `InsertLeave` and `TextChanged` ask again
+once the edit is over.
 
 `kinds` is a map of SymbolKind names (`Interface`, `Class`, `Method`, …), not a
 list — a list would merge index by index over the default.

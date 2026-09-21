@@ -148,6 +148,12 @@ describe("lsp.core.implement", function()
         hold = false,
         ---@type function|nil
         held = nil,
+        -- While set, `implementation` answers are kept in `held_impl` instead of
+        -- being handed back, and `release_impl()` delivers them -- an answer that
+        -- lands after the text has moved on.
+        hold_impl = false,
+        ---@type function[]
+        held_impl = {},
       }
       function client:request(method, params, handler, bufnr_)
         sent[#sent + 1] = method
@@ -172,11 +178,24 @@ describe("lsp.core.implement", function()
           for i = 1, n do
             result[i] = { uri = "file:///impl" .. i, range = {} }
           end
+          if self.hold_impl then
+            self.held_impl[#self.held_impl + 1] = function()
+              handler(nil, result)
+            end
+            return true, 2000 + #sent
+          end
           handler(nil, result)
         end
         return true, #sent
       end
       function client:cancel_request() end
+      function client:release_impl()
+        local held = self.held_impl
+        self.held_impl = {}
+        for _, deliver in ipairs(held) do
+          deliver()
+        end
+      end
       return client
     end
 
@@ -372,6 +391,54 @@ describe("lsp.core.implement", function()
         assert.are.equal(1, marks()[1][2], "the marker is not on the line of `Repo`")
       end
     )
+
+    -- The other place text can move under a round: after the requests are out.
+    -- Typing in Insert mode fires no `TextChanged`, so nothing cancels the round,
+    -- and the answers -- keyed to the lines the symbols had when they were asked
+    -- about -- were drawn on the lines those numbers name *now*.
+    it("does not draw answers that arrive after the text has changed", function()
+      local client = stub_client({ [0] = 3 })
+      client.hold_impl = true
+      run({ enable = true }, client)
+      vim.wait(1000, function()
+        return #client.held_impl >= 2
+      end, 10)
+      assert.are.equal(2, #client.held_impl, "Repo and Cache were never asked about")
+
+      vim.api.nvim_buf_set_lines(bufnr, 0, 0, false, { "" }) -- typed above while in flight
+      client:release_impl()
+
+      assert.are.equal(0, #marks(), "a stale answer was drawn on the wrong line")
+    end)
+
+    -- What the skipped round must not do either: take away or move the markers
+    -- already there. They are extmarks, so they follow the text by themselves.
+    it("keeps a marker on the line it moved to when a stale answer arrives", function()
+      local client = stub_client({ [0] = 3, [1] = 3 })
+      run({ enable = true }, client)
+      vim.wait(2000, function()
+        return #marks() == 1
+      end, 10)
+      assert.are.equal(0, marks()[1][2])
+
+      -- A second round, for the text after one line was typed above...
+      client.hold_impl = true
+      client.shift = 1
+      vim.api.nvim_buf_set_lines(bufnr, 0, 0, false, { "" })
+      vim.api.nvim_exec_autocmds("TextChanged", { buffer = bufnr })
+      vim.wait(1000, function()
+        return #client.held_impl >= 1
+      end, 10)
+      assert.is_true(#client.held_impl >= 1, "the second round never asked")
+
+      -- ...and another line typed while that round is on the wire.
+      vim.api.nvim_buf_set_lines(bufnr, 0, 0, false, { "" })
+      client:release_impl()
+
+      local found = marks()
+      assert.are.equal(1, #found)
+      assert.are.equal(2, found[1][2], "the marker is not on the line of `Repo` any more")
+    end)
 
     it("sends nothing at all when no client implements the method", function()
       run({ enable = true }, stub_client({ [0] = 3 }, false))
