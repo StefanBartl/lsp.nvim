@@ -108,9 +108,13 @@ selection) touches a hunk. They arrive the way every code action does — from a
 language server, here a small **in-process** one (`cmd` is a Lua function: no
 process, no stdio, nothing to install) that answers `initialize` and
 `textDocument/codeAction` and nothing else, on buffers gitsigns is attached to.
-The commands run client-side. Off by default, because it is one more client in
-`:Lsp servers`; on under `preset = "full"`. Their kind is `refactor.gitsigns`,
-which the [code-action indicator](INDICATORS.md#code-action-indicator)'s default
+The commands run client-side. At the cursor they act on the hunk under it; over
+a selection (`gra` in Visual mode) *Stage* and *Reset* act on the lines in the
+selection, like gitsigns' own `:'<,'>Gitsigns stage_hunk`, and *Preview* shows
+the first hunk the selection touches. Off by default, because it is one more
+client in `:Lsp servers`; on under `preset = "full"`. Their kind is
+`refactor.gitsigns`, which the
+[code-action indicator](INDICATORS.md#code-action-indicator)'s default
 allowlist does not light on — a hunk action is neither a fix nor a source
 action, and the bulb would otherwise burn on every changed line.
 
