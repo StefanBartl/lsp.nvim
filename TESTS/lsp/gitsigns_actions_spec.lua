@@ -16,22 +16,30 @@ describe("lsp.core.gitsigns_actions", function()
   local ran
   ---@type table[]
   local hunks
+  --- What gitsigns was handed: the range of stage/reset (nil for the hunk under
+  --- the cursor), and the line the cursor stood on when preview ran.
+  ---@type { stage: table|nil, reset: table|nil, preview_line: integer|nil }
+  local seen
 
   before_each(function()
     ran = {}
+    seen = {}
     hunks = {}
     package.loaded["gitsigns"] = {
       get_hunks = function()
         return hunks
       end,
-      stage_hunk = function()
+      stage_hunk = function(range)
         ran[#ran + 1] = "stage"
+        seen.stage = range
       end,
-      reset_hunk = function()
+      reset_hunk = function(range)
         ran[#ran + 1] = "reset"
+        seen.reset = range
       end,
       preview_hunk = function()
         ran[#ran + 1] = "preview"
+        seen.preview_line = vim.api.nvim_win_get_cursor(0)[1]
       end,
     }
     vim.cmd("enew!")
@@ -157,6 +165,59 @@ describe("lsp.core.gitsigns_actions", function()
     it("offers nothing off a hunk", function()
       hunks = { { added = { start = 3, count = 1 } } }
       assert.are.same({}, gs_actions.code_actions(params(0, 0)))
+    end)
+
+    -- A request at the cursor has no range worth passing on: gitsigns acts on
+    -- the hunk under the cursor, and a `{ line, line }` range would stage that
+    -- one line instead of the hunk.
+    it("carries no range for a request at the cursor", function()
+      hunks = { { added = { start = 3, count = 2 } } }
+      for _, action in ipairs(gs_actions.code_actions(params(2, 2))) do
+        assert.is_nil(action.command.arguments, action.title)
+      end
+    end)
+
+    -- A selection is a different thing to act on. The offered actions used to
+    -- forget it and run on whatever hunk the cursor happened to end up in.
+    it("carries the selection, 1-based, when the request is for one", function()
+      hunks = { { added = { start = 3, count = 2 } } }
+      local out = gs_actions.code_actions(params(1, 4))
+      assert.are.equal(3, #out)
+      for _, action in ipairs(out) do
+        assert.are.same({ { first = 2, last = 5 } }, action.command.arguments, action.title)
+      end
+    end)
+
+    it("tells a selection within one line from a cursor by its columns", function()
+      hunks = { { added = { start = 3, count = 1 } } }
+      local p = params(2, 2)
+      p.range["end"].character = 1
+      for _, action in ipairs(gs_actions.code_actions(p)) do
+        assert.are.same({ { first = 3, last = 3 } }, action.command.arguments, action.title)
+      end
+    end)
+  end)
+
+  describe("first_touched", function()
+    it("is the first line of the first hunk the range touches", function()
+      hunks = {
+        { added = { start = 2, count = 1 } },
+        { added = { start = 5, count = 2 } },
+      }
+      assert.are.equal(1, gs_actions.first_touched(bufnr, 0, 5))
+      assert.are.equal(4, gs_actions.first_touched(bufnr, 2, 5))
+    end)
+
+    it("stays inside the range when the hunk starts above it", function()
+      hunks = { { added = { start = 1, count = 4 } } } -- 0-based lines 0..3
+      assert.are.equal(2, gs_actions.first_touched(bufnr, 2, 5))
+    end)
+
+    it("is nil when nothing is touched", function()
+      hunks = { { added = { start = 5, count = 1 } } }
+      assert.is_nil(gs_actions.first_touched(bufnr, 0, 2))
+      hunks = {}
+      assert.is_nil(gs_actions.first_touched(bufnr, 0, 5))
     end)
   end)
 
@@ -458,6 +519,108 @@ describe("lsp.core.gitsigns_actions", function()
       server.notify("exit")
       assert.are.equal(1, exits)
       assert.is_true(server.is_closing())
+    end)
+  end)
+
+  -- The picker's choice is executed after it has closed, by which time the
+  -- Visual selection it was offered for is gone and the cursor sits on one end
+  -- of it. "Stage hunk" / "Reset hunk" used to act on the hunk under that
+  -- cursor whatever the request was for: over a selection that spans two hunks
+  -- they touched one of them, or none.
+  describe("running an action on what it was offered for", function()
+    ---@return vim.lsp.Client
+    local function attached()
+      gs_actions.setup({ gitsigns = true })
+      vim.b[bufnr].gitsigns_status_dict = {}
+      vim.api.nvim_exec_autocmds("User", {
+        pattern = "GitSignsUpdate",
+        data = { buffer = bufnr },
+      })
+      vim.wait(2000, function()
+        return #vim.lsp.get_clients({ name = gs_actions.NAME, bufnr = bufnr }) > 0
+      end, 10)
+      vim.wait(50)
+      return assert(vim.lsp.get_clients({ name = gs_actions.NAME, bufnr = bufnr })[1])
+    end
+
+    --- Run one of the offered commands the way Neovim does after the picker.
+    ---@param client vim.lsp.Client
+    ---@param id string
+    ---@param arguments table|nil
+    ---@param ctx_bufnr integer|nil
+    local function run(client, id, arguments, ctx_bufnr)
+      local before = #ran
+      client:exec_cmd({
+        title = id,
+        command = "lsp_nvim.gitsigns." .. id,
+        arguments = arguments,
+      }, { bufnr = ctx_bufnr or bufnr })
+      vim.wait(1000, function()
+        return #ran > before
+      end, 10)
+    end
+
+    it("hands a selection's range to stage and to reset", function()
+      local client = attached()
+      run(client, "stage_hunk", { { first = 3, last = 5 } })
+      run(client, "reset_hunk", { { first = 3, last = 5 } })
+      assert.are.same({ 3, 5 }, seen.stage)
+      assert.are.same({ 3, 5 }, seen.reset)
+    end)
+
+    it("hands gitsigns no range for a request at the cursor", function()
+      local client = attached()
+      run(client, "stage_hunk")
+      run(client, "reset_hunk")
+      assert.are.same({ "stage", "reset" }, ran)
+      assert.is_nil(seen.stage)
+      assert.is_nil(seen.reset)
+    end)
+
+    -- Preview has no range: it shows the hunk under the cursor. So the cursor
+    -- goes to the first hunk the selection touches, or "the hunk under the
+    -- cursor" is whichever one the selection happened to end in.
+    it("points preview at the first hunk a selection touches", function()
+      hunks = { { added = { start = 4, count = 2 } } } -- 0-based lines 3..4
+      local client = attached()
+      vim.api.nvim_win_set_cursor(0, { 1, 0 })
+
+      run(client, "preview_hunk", { { first = 1, last = 6 } })
+
+      assert.are.same({ "preview" }, ran)
+      assert.are.equal(4, seen.preview_line)
+    end)
+
+    it("keeps the cursor inside the selection when the hunk starts above it", function()
+      hunks = { { added = { start = 1, count = 4 } } } -- 0-based lines 0..3
+      local client = attached()
+      vim.api.nvim_win_set_cursor(0, { 6, 0 })
+
+      run(client, "preview_hunk", { { first = 3, last = 6 } })
+
+      assert.are.equal(3, seen.preview_line)
+    end)
+
+    it("leaves the cursor alone for a request at the cursor", function()
+      hunks = { { added = { start = 4, count = 2 } } }
+      local client = attached()
+      vim.api.nvim_win_set_cursor(0, { 5, 0 })
+
+      run(client, "preview_hunk")
+
+      assert.are.equal(5, seen.preview_line)
+    end)
+
+    it("does not move the cursor of a window that shows another buffer", function()
+      hunks = { { added = { start = 4, count = 2 } } }
+      local client = attached()
+      vim.api.nvim_win_set_cursor(0, { 1, 0 })
+      local other = vim.api.nvim_create_buf(true, false)
+
+      run(client, "preview_hunk", { { first = 1, last = 6 } }, other)
+
+      assert.are.equal(1, seen.preview_line)
+      vim.api.nvim_buf_delete(other, { force = true })
     end)
   end)
 end)

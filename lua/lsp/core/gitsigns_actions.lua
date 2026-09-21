@@ -14,6 +14,12 @@
 --- client-side handlers (`config.commands`), which is where Neovim looks
 --- before it would send `workspace/executeCommand` anywhere.
 ---
+--- **Cursor or selection.** At the cursor the actions act on the hunk under it.
+--- Over a selection they act on the selection: *Stage* and *Reset* on the lines
+--- in it (the range travels in the command's arguments, because the picker runs
+--- the command after the selection is gone), *Preview* -- which takes no range --
+--- on the first hunk the selection touches.
+---
 --- **Why the kind is `refactor.gitsigns`.** The code-action indicator
 --- (`lsp.core.lightbulb`) lights on `quickfix` and `source` and treats an action
 --- with no kind as a match. A hunk action is neither a fix nor a source
@@ -51,35 +57,16 @@ M.NAME = util.INTERNAL_PREFIX .. "gitsigns"
 ---@type string
 M.GROUP = "lsp_nvim_gitsigns_actions"
 
+--- What an action is run for. Both fields are nil for a request at the cursor,
+--- which is what gitsigns' own actions default to acting on.
+---@class LspGitsigns.RunContext
+---@field range? integer[] # `{ first, last }`, 1-based: the selection the action was offered for.
+---@field bufnr? integer # The buffer it was offered for.
+
 ---@class LspGitsigns.Action
 ---@field id string
 ---@field title string
----@field run fun(gs: table)
-
----@type LspGitsigns.Action[]
-M.ACTIONS = {
-  {
-    id = "stage_hunk",
-    title = "Stage hunk",
-    run = function(gs)
-      gs.stage_hunk()
-    end,
-  },
-  {
-    id = "reset_hunk",
-    title = "Reset hunk",
-    run = function(gs)
-      gs.reset_hunk()
-    end,
-  },
-  {
-    id = "preview_hunk",
-    title = "Preview hunk",
-    run = function(gs)
-      gs.preview_hunk()
-    end,
-  },
-}
+---@field run fun(gs: table, ctx: LspGitsigns.RunContext)
 
 ---@type boolean
 local registered = false
@@ -91,7 +78,8 @@ local function gitsigns()
   return ok and gs or nil
 end
 
---- Does the 0-based line range `[first, last]` touch a hunk of the buffer?
+--- The 0-based, inclusive line span of each hunk of a buffer, as gitsigns
+--- reports them; `nil` when gitsigns cannot say.
 ---
 --- A hunk covers the lines it added; one that only removed lines covers the
 --- single line the removal sits on, which is where gitsigns draws its sign.
@@ -100,20 +88,21 @@ end
 --- gitsigns' own `find_hunk` and its signs bend the rule and so does this: a
 --- deletion above the first line is `start == 0` and belongs to line 1, one
 --- after the last is `start == line_count + 1` and belongs to the last line.
+---@internal
 ---@param bufnr integer
----@param first integer
----@param last integer
----@return boolean
-function M.touches_hunk(bufnr, first, last)
+---@return integer[][]|nil
+local function hunk_spans(bufnr)
   local gs = gitsigns()
   if gs == nil or type(gs.get_hunks) ~= "function" then
-    return false
+    return nil
   end
   local ok, hunks = pcall(gs.get_hunks, bufnr)
   if not ok or type(hunks) ~= "table" then
-    return false
+    return nil
   end
   local line_count = api.nvim_buf_is_valid(bufnr) and api.nvim_buf_line_count(bufnr) or 1
+  ---@type integer[][]
+  local spans = {}
   for _, hunk in ipairs(hunks) do
     local added = hunk.added
     if added then
@@ -122,16 +111,90 @@ function M.touches_hunk(bufnr, first, last)
       if added.count == 0 then
         from = math.min(math.max(from, 0), line_count - 1)
       end
-      local to = from + math.max(added.count, 1) - 1
-      if last >= from and first <= to then
-        return true
-      end
+      spans[#spans + 1] = { from, from + math.max(added.count, 1) - 1 }
     end
   end
-  return false
+  return spans
+end
+
+--- The 0-based line range `[first, last]`'s first line that lies in a hunk: the
+--- hunk's own first line, or `first` when the hunk starts above the range.
+--- `nil` when the range touches no hunk.
+---@param bufnr integer
+---@param first integer
+---@param last integer
+---@return integer|nil
+function M.first_touched(bufnr, first, last)
+  for _, span in ipairs(hunk_spans(bufnr) or {}) do
+    if last >= span[1] and first <= span[2] then
+      return math.max(span[1], first)
+    end
+  end
+  return nil
+end
+
+--- Does the 0-based line range `[first, last]` touch a hunk of the buffer?
+---@param bufnr integer
+---@param first integer
+---@param last integer
+---@return boolean
+function M.touches_hunk(bufnr, first, last)
+  return M.first_touched(bufnr, first, last) ~= nil
+end
+
+---@type LspGitsigns.Action[]
+M.ACTIONS = {
+  {
+    id = "stage_hunk",
+    title = "Stage hunk",
+    -- A range stages the lines in it (gitsigns' `:'<,'>Gitsigns stage_hunk`);
+    -- none stages the hunk under the cursor.
+    run = function(gs, ctx)
+      gs.stage_hunk(ctx.range)
+    end,
+  },
+  {
+    id = "reset_hunk",
+    title = "Reset hunk",
+    run = function(gs, ctx)
+      gs.reset_hunk(ctx.range)
+    end,
+  },
+  {
+    id = "preview_hunk",
+    title = "Preview hunk",
+    -- Preview takes no range: it shows the hunk under the cursor. For a
+    -- selection the cursor is wherever the selection ended, which may be in no
+    -- hunk at all, so it goes to the first hunk the selection touches -- but
+    -- only in the window that shows the buffer the action was offered for.
+    run = function(gs, ctx)
+      if ctx.range and ctx.bufnr and api.nvim_get_current_buf() == ctx.bufnr then
+        local line = M.first_touched(ctx.bufnr, ctx.range[1] - 1, ctx.range[2] - 1)
+        if line then
+          pcall(api.nvim_win_set_cursor, 0, { line + 1, 0 })
+        end
+      end
+      gs.preview_hunk()
+    end,
+  },
+}
+
+--- Is this range a selection, as against the cursor? A request at the cursor
+--- has the same start and end.
+---@internal
+---@param range table
+---@return boolean
+local function is_selection(range)
+  return range.start.line ~= range["end"].line or range.start.character ~= range["end"].character
 end
 
 --- The `CodeAction`s for a `textDocument/codeAction` request.
+---
+--- For a selection the commands carry it (`{ first, last }`, 1-based): the
+--- picker runs them after it has closed, when the selection is gone and the
+--- cursor is wherever the selection ended. A request at the cursor carries
+--- nothing, because gitsigns then acts on the hunk under the cursor -- a range
+--- of one line would stage that line rather than the hunk.
 ---@param params table
 ---@return table[]
 function M.code_actions(params)
@@ -139,6 +202,12 @@ function M.code_actions(params)
   local range = params.range
   if not range or not M.touches_hunk(bufnr, range.start.line, range["end"].line) then
     return {}
+  end
+
+  ---@type table[]|nil
+  local arguments = nil
+  if is_selection(range) then
+    arguments = { { first = range.start.line + 1, last = range["end"].line + 1 } }
   end
 
   ---@type table[]
@@ -150,6 +219,7 @@ function M.code_actions(params)
       command = {
         title = action.title,
         command = "lsp_nvim.gitsigns." .. action.id,
+        arguments = arguments,
       },
     }
   end
@@ -163,13 +233,26 @@ local function commands()
   ---@type table<string, fun(command: table, ctx: table)>
   local out = {}
   for _, action in ipairs(M.ACTIONS) do
-    out["lsp_nvim.gitsigns." .. action.id] = function()
+    out["lsp_nvim.gitsigns." .. action.id] = function(command, ctx)
       local gs = gitsigns()
       if gs then
+        local offered = type(command) == "table"
+            and type(command.arguments) == "table"
+            and command.arguments[1]
+          or nil
+        ---@type LspGitsigns.RunContext
+        local run_ctx = { bufnr = type(ctx) == "table" and ctx.bufnr or nil }
+        if
+          type(offered) == "table"
+          and type(offered.first) == "number"
+          and type(offered.last) == "number"
+        then
+          run_ctx.range = { offered.first, offered.last }
+        end
         -- Scheduled: the picker that ran the action is still closing, and
         -- gitsigns acts on the *current* buffer and cursor.
         vim.schedule(function()
-          action.run(gs)
+          action.run(gs, run_ctx)
         end)
       end
     end
