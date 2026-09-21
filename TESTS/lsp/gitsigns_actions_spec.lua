@@ -311,4 +311,153 @@ describe("lsp.core.gitsigns_actions", function()
       assert.are.equal(0, #vim.lsp.get_clients({ name = gs_actions.NAME }))
     end)
   end)
+
+  -- Measured against the real config: `:LspRestartHere` force-stops every
+  -- client (`Client:stop(true)`), which for a client with no process is a call
+  -- to the server's `terminate()` and nothing else. Neovim drops a client from
+  -- `get_clients()` only when it hears `on_exit`, and nobody told it, so the
+  -- client stayed listed as stopped, `attach` counted it as attached, and the
+  -- hunk actions were gone until the editor restarted.
+  describe("being force-stopped", function()
+    ---@return integer
+    local function live_count()
+      local n = 0
+      for _, client in ipairs(vim.lsp.get_clients({ name = gs_actions.NAME, bufnr = bufnr })) do
+        if not client:is_stopped() then
+          n = n + 1
+        end
+      end
+      return n
+    end
+
+    local function hunk_update()
+      vim.api.nvim_exec_autocmds("User", {
+        pattern = "GitSignsUpdate",
+        data = { buffer = bufnr },
+      })
+    end
+
+    ---@return vim.lsp.Client
+    local function attached_client()
+      gs_actions.setup({ gitsigns = true })
+      vim.b[bufnr].gitsigns_status_dict = {}
+      hunk_update()
+      vim.wait(2000, function()
+        return live_count() == 1
+      end, 10)
+      -- `setup()` also attaches, on the next tick, to every buffer that still
+      -- carries `gitsigns_status_dict` from an earlier case. Let that happen
+      -- now, not in the middle of the stop below.
+      vim.wait(50)
+      return assert(vim.lsp.get_clients({ name = gs_actions.NAME, bufnr = bufnr })[1])
+    end
+
+    it("leaves the client list instead of lingering as a stopped client", function()
+      local id = attached_client().id
+      assert.is_not_nil(vim.lsp.get_client_by_id(id))
+
+      assert(vim.lsp.get_client_by_id(id)):stop(true)
+      vim.wait(2000, function()
+        return vim.lsp.get_client_by_id(id) == nil
+      end, 10)
+
+      assert.is_nil(vim.lsp.get_client_by_id(id), "the stopped client is still listed")
+    end)
+
+    it("is attached again by the next hunk update", function()
+      local id = attached_client().id
+      assert(vim.lsp.get_client_by_id(id)):stop(true)
+      vim.wait(2000, function()
+        return vim.lsp.get_client_by_id(id) == nil
+      end, 10)
+      assert.are.equal(0, live_count())
+
+      hunk_update()
+      vim.wait(2000, function()
+        return live_count() == 1
+      end, 10)
+      assert.are.equal(1, live_count())
+      local again = assert(vim.lsp.get_clients({ name = gs_actions.NAME, bufnr = bufnr })[1])
+      assert.are_not.equal(id, again.id)
+    end)
+
+    -- The guard on its own, without the fix above: a stopped client that is
+    -- still in the list (a stand-in that never reports its exit) must not count
+    -- as "already attached".
+    it("does not count a stopped client that is still listed as attached", function()
+      gs_actions.setup({ gitsigns = true })
+      vim.b[bufnr].gitsigns_status_dict = {}
+      local id = assert(vim.lsp.start({
+        name = gs_actions.NAME,
+        cmd = function()
+          local closing = false
+          return {
+            request = function(method, _, callback)
+              if method == "initialize" then
+                callback(nil, { capabilities = { codeActionProvider = true } })
+              end
+              return true, 1
+            end,
+            notify = function()
+              return true
+            end,
+            is_closing = function()
+              return closing
+            end,
+            terminate = function()
+              closing = true -- and never `on_exit`: the client stays listed
+            end,
+          }
+        end,
+        root_dir = nil,
+      }, { bufnr = bufnr }))
+      local zombie = assert(vim.lsp.get_client_by_id(id))
+      zombie:stop(true)
+      vim.wait(200)
+      assert.is_true(zombie:is_stopped())
+      assert.is_not_nil(vim.lsp.get_client_by_id(id), "the stand-in is still listed")
+
+      hunk_update()
+      vim.wait(2000, function()
+        return live_count() == 1
+      end, 10)
+      assert.are.equal(1, live_count())
+    end)
+
+    -- What the server tells Neovim, without Neovim in the way: one exit, whichever
+    -- way it comes -- the graceful `exit` notification or `terminate()`.
+    it("reports its exit to Neovim once, from terminate and from exit alike", function()
+      local exits = {}
+      local server = gs_actions.server({
+        on_exit = function(code, signal)
+          exits[#exits + 1] = { code, signal }
+        end,
+      })
+      assert.is_false(server.is_closing())
+
+      -- `terminate()` alone has to say it: for a client with no process nothing
+      -- else will, and that is the whole defect.
+      server.terminate()
+      assert.are.same({ { 0, 0 } }, exits)
+      assert.is_true(server.is_closing())
+
+      -- And once is enough: a second terminate, or the graceful `exit` that
+      -- follows a shutdown request, must not report it again.
+      server.terminate()
+      server.notify("exit")
+      assert.are.same({ { 0, 0 } }, exits)
+    end)
+
+    it("reports the exit when Neovim asks for a graceful stop", function()
+      local exits = 0
+      local server = gs_actions.server({
+        on_exit = function()
+          exits = exits + 1
+        end,
+      })
+      server.notify("exit")
+      assert.are.equal(1, exits)
+      assert.is_true(server.is_closing())
+    end)
+  end)
 end)

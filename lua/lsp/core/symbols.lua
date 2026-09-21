@@ -37,6 +37,7 @@
 ---@see lsp.core.implement
 
 local autocmd = require("lib.nvim.bindings.autocmd")
+local util = require("lsp.core.util")
 
 local api = vim.api
 
@@ -294,11 +295,14 @@ function M.provider(bufnr)
   return best
 end
 
---- Is any client attached to the buffer at all?
+--- Is any language server attached to the buffer?
+---
+--- lsp.nvim's own in-process clients (`lsp.nvim-gitsigns`) do not count: they
+--- are attached to every buffer gitsigns tracks, and provide no symbols.
 ---@param bufnr integer
 ---@return boolean
 function M.attached(bufnr)
-  return #vim.lsp.get_clients({ bufnr = bufnr }) > 0
+  return #util.server_clients(bufnr) > 0
 end
 
 --- The cursor as an LSP character offset in the buffer's answering client's

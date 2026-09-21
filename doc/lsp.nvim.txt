@@ -429,6 +429,9 @@ code_actions.gitsigns (boolean)   Offer gitsigns' hunk actions (stage, reset,
                                   preview) in the same list. Runs a small
                                   in-process language server, which shows up
                                   in |:Lsp| servers -- hence off by default.
+                                  The winbar and |:Lsp| stop / restart look
+                                  past it; other plugins that list
+                                  vim.lsp.get_clients() will see it.
 finder.references     (boolean)   Sources of `lsf`. A map of switches rather
 finder.implementations (boolean)  than a list, because lists merge index by
 finder.definitions    (boolean)   index. References, implementations and

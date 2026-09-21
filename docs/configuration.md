@@ -474,8 +474,10 @@ finder = {
 `picker = "auto"` is fzf-lua's `lsp_code_actions` — the edit previewed as a
 diff — when fzf-lua is installed, and `vim.lsp.buf.code_action` when it is not;
 the other two pin one. `gitsigns = true` starts a small in-process language
-server on buffers gitsigns is attached to, which is why it is opt-in: it shows
-up in `:Lsp servers`. See [FEATURES/NAVIGATION.md](FEATURES/NAVIGATION.md).
+server (`lsp.nvim-gitsigns`) on buffers gitsigns is attached to, which is why it
+is opt-in: it shows up in `:Lsp servers`, and in anything else that lists
+`vim.lsp.get_clients()`. The winbar and `:Lsp stop` / `:Lsp restart` look past
+it. See [FEATURES/NAVIGATION.md](FEATURES/NAVIGATION.md).
 
 ## auto_restart
 

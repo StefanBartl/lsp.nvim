@@ -252,6 +252,25 @@ describe("lsp.core.symbols", function()
       assert.are.equal(0, #sent)
     end)
 
+    -- Measured against the real config with `code_actions.gitsigns = true`: the
+    -- in-process client `lsp.nvim-gitsigns` is attached to every buffer gitsigns
+    -- tracks, so a `.txt` or `.json` file with no language server got a
+    -- breadcrumb -- the very case the winbar's own guard exists to refuse.
+    it("does not count lsp.nvim's own in-process clients as attached", function()
+      vim.lsp.get_clients = function()
+        return { { id = 7, name = "lsp.nvim-gitsigns" } }
+      end
+      assert.is_false(symbols.attached(bufnr))
+    end)
+
+    it("counts a language server that sits next to an in-process client", function()
+      local client = stub_client(false)
+      vim.lsp.get_clients = function()
+        return { { id = 7, name = "lsp.nvim-gitsigns" }, client }
+      end
+      assert.is_true(symbols.attached(bufnr))
+    end)
+
     it("asks the provider, caches the answer and hands it to the callback", function()
       local client = stub_client(false)
       vim.lsp.get_clients = function()

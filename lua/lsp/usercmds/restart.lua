@@ -12,13 +12,16 @@ local M = {}
 
 local notify = require("lib.nvim.notify").create("[LSP.Restart] ")
 local supervisor = require("lsp.core.supervisor")
-local lsp = vim.lsp
+local util = require("lsp.core.util")
 
---- Get clients attached to buffer
+--- Language servers attached to buffer. lsp.nvim's own in-process clients are
+--- not among them: they have no process to restart and no registered
+--- configuration to start again from, so "restart everything" stopped them,
+--- failed to bring them back, and counted the failure.
 ---@param bufnr integer|nil
 ---@return vim.lsp.Client[]
 local function get_buffer_clients(bufnr)
-  return lsp.get_clients({ bufnr = bufnr or 0 })
+  return util.server_clients(bufnr or 0)
 end
 
 --- Start LSP server by name and ATTACH to buffer.
@@ -34,6 +37,19 @@ end
 ---@return nil
 function M.execute(args)
   local bufnr = vim.api.nvim_get_current_buf()
+
+  -- Asked for by name, before "nothing to restart" is decided: the answer to
+  -- this name is not "no clients", it is "not one of those".
+  if util.is_internal_name(args.args) then
+    notify.info(
+      string.format(
+        "'%s' is lsp.nvim's own in-process client, not a language server; it re-attaches by itself on the next gitsigns update",
+        args.args
+      )
+    )
+    return
+  end
+
   local clients = get_buffer_clients(bufnr)
 
   if #clients == 0 then

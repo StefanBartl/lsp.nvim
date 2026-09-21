@@ -128,9 +128,10 @@ end
 --- Should this window carry a breadcrumb at all?
 ---
 --- Floats are out (a peek window is a float, and has its own title), so is
---- anything that is not a plain file buffer, and so is a buffer nothing is
---- attached to: with no client there are no symbols and the path alone is not
---- what this feature is for.
+--- anything that is not a plain file buffer, and so is a buffer no language
+--- server is attached to: with no server there are no symbols and the path
+--- alone is not what this feature is for. (lsp.nvim's own in-process clients
+--- do not count as a server; see `lsp.core.util.server_clients`.)
 ---@param win integer
 ---@return boolean
 local function eligible(win)
