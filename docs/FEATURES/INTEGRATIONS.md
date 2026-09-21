@@ -63,9 +63,9 @@ on the chip background.
 
 | Role | Colour from | What it holds |
 | --- | --- | --- |
-| `folder` | `Directory` | the folder icon and name |
+| `folder` | `Special` | the folder icon and name |
 | `file` | `Function` (bold) | the filetype icon and file name |
-| `symbol` | `Title` | every symbol after the file, headings included |
+| `symbol` | `String` | every symbol after the file, headings included — icon and name in the role colour, not the per-kind one |
 
 The role comes from what lspsaga put in the part, not from its position, so a
 file in the project root is still a file chip. The separator between chips is
@@ -77,4 +77,4 @@ left as lspsaga wrote it.
 - **Default:** on. `M.winbar_chips = false` leaves lspsaga's own string.
 - **Colours:** read from the colourscheme. `M.roles[role].hl` changes which
   group a role takes its colour from, `M.tint` how far the chip background is
-  pulled towards it (default 0.16). `SagaSep` is linked to `Operator`.
+  pulled towards it (default 0.2). `SagaSep` is linked to `Operator`.

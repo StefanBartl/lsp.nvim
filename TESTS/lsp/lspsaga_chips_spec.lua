@@ -87,7 +87,7 @@ describe("lsp.integrations.lspsaga_chips", function()
 
   it("turns the grey path text into the role colour", function()
     local chips = fresh()
-    vim.api.nvim_set_hl(0, "Directory", { fg = 0x7aa2f7 })
+    vim.api.nvim_set_hl(0, "Special", { fg = 0x7aa2f7 })
     vim.api.nvim_set_hl(0, "SagaFolderName", { link = "Comment" })
 
     chips.setup_highlights()
@@ -95,6 +95,36 @@ describe("lsp.integrations.lspsaga_chips", function()
 
     local hl = vim.api.nvim_get_hl(0, { name = "SagaChipfolder_SagaFolderName", link = false })
     assert.are.equal(0x7aa2f7, hl.fg)
+  end)
+
+  it("gives folder, file and symbol chips different colours", function()
+    local chips = fresh()
+    vim.api.nvim_set_hl(0, "Special", { fg = 0x2ac3de })
+    vim.api.nvim_set_hl(0, "Function", { fg = 0x7aa2f7 })
+    vim.api.nvim_set_hl(0, "String", { fg = 0x9ece6a })
+    vim.api.nvim_set_hl(0, "Title", { fg = 0x7aa2f7 })
+
+    chips.setup_highlights()
+    chips.style({ FOLDER, FILE, HEADING }, SEP)
+
+    local function fg(name)
+      return vim.api.nvim_get_hl(0, { name = name, link = false }).fg
+    end
+    assert.are.equal(0x2ac3de, fg("SagaChipBodyfolder"))
+    assert.are.equal(0x7aa2f7, fg("SagaChipBodyfile"))
+    assert.are.equal(0x9ece6a, fg("SagaChipBodysymbol"))
+  end)
+
+  it("colours a symbol's icon and name in the role colour, not the kind's", function()
+    local chips = fresh()
+    vim.api.nvim_set_hl(0, "String", { fg = 0x9ece6a })
+    vim.api.nvim_set_hl(0, "SagaString", { fg = 0xff0000 })
+
+    chips.setup_highlights()
+    chips.style({ HEADING }, SEP)
+
+    local hl = vim.api.nvim_get_hl(0, { name = "SagaChipsymbol_SagaString", link = false })
+    assert.are.equal(0x9ece6a, hl.fg)
   end)
 
   it("leaves an already styled line alone", function()
