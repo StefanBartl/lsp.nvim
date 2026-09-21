@@ -2,27 +2,35 @@
 
 `lua/lsp/bindings/autocmds.lua`'s own doc comment says "One group, `lsp_nvim`"
 and names only the formatter as an exception. That understates it: this
-plugin registers **34 autocommands across 25 augroups**, spread over
+plugin registers **43 autocommands across 29 augroups**, spread over
 `bindings/`, `core/`, `formatter/`, `languages/`, `tools/`, `servers/` and
-`integrations/`. [BINDINGS.md](BINDINGS.md#autocommands) covers only the four
-groups that back the keymap/rename layer; this page is the complete list.
+`integrations/`. [BINDINGS.md](BINDINGS.md#autocommands) covers only the groups
+that back the keymap/rename layer and the indicators; this page is the
+complete list.
 
 Counted are call sites (`autocmd.create` / `nvim_create_autocmd`), not event
-registrations — the lightbulb watcher listens on four events from one call
-site, and counts once here. Verified against source on 2026-09-18: 34 call
-sites, up one from the 33 this page carried, because `markdown.lua` grew a
-`ColorScheme` handler on 2026-09-17. Counted two ways and they agree — 34
-call sites in source, against 30 records in `lib.nvim.bindings.autocmd`'s own
-registry after a bare `setup({ formatter = { on_save = true } })`, which is
-the same number once the four that cannot be there are taken out (the two
-lspsaga ones, with lspsaga not installed; the per-window signature popup,
-created only when one opens; and `LangJava`'s nested `BufWritePre`, created
-only when a Java buffer does).
+registrations -- the lightbulb watcher listens on four events from one call
+site, and counts once here. The figure is the 2026-09-18 one, which was
+verified against source and against a live registry, carried forward by what
+changed since: **-4** for the lspsaga breadcrumb (`LspNvimSagaWinbarDepth`,
+removed when lspsaga was) and **+13** for the four modules that replaced its
+features (`lsp_nvim_winbar` 7, `lsp_nvim_symbols` 2, `lsp_nvim_implement` 2,
+`lsp_nvim_peek` 1) plus the opt-in `lsp_nvim_gitsigns_actions` 1. It was not
+re-counted from scratch. What was measured on 2026-09-21: a bare
+`setup({ formatter = { on_save = true } })` leaves **35** records from this
+plugin's own files in `lib.nvim.bindings.autocmd`'s registry (36 with ui.nvim's
+`lib_kit_toast_resize`, which is not ours). Six of the difference to 43 are
+named -- `lsp_nvim_symbols` (2) and `lsp_nvim_peek` (1) are created lazily, on
+the first request and the first peek; `lsp_nvim_gitsigns_actions` (1) only with
+`code_actions.gitsigns`; the per-window signature popup and `LangJava`'s
+nested `BufWritePre` only when one opens -- and two are not traced to a file.
 
-25 groups = 20 named string literals + `lsp_nvim`, `lsp_nvim_inlay_hints`,
-`lsp_nvim_lightbulb`, `lsp_nvim_supervisor` (built from `M.GROUP` constants)
-+ `LspSignaturePopup_<winid>`, whose name is built at runtime — a grep for
-the literal string finds the first 20 and none of the last 5.
+29 groups = 19 named string literals + `lsp_nvim`, `lsp_nvim_inlay_hints`,
+`lsp_nvim_lightbulb`, `lsp_nvim_supervisor`, `lsp_nvim_winbar`,
+`lsp_nvim_symbols`, `lsp_nvim_implement`, `lsp_nvim_peek`,
+`lsp_nvim_gitsigns_actions` (built from `M.GROUP` constants) +
+`LspSignaturePopup_<winid>`, whose name is built at runtime -- a grep for the
+literal string finds the first 19 and none of the last 10.
 
 ## Core
 
@@ -33,13 +41,27 @@ the literal string finds the first 20 and none of the last 5.
 | `lsp_nvim_lightbulb` | `CursorMoved`, `BufEnter`, `InsertLeave`, `DiagnosticChanged` | — | — | Asks `textDocument/codeAction` for the cursor position, debounced (`lightbulb.debounce_ms`, default 150ms), marks the line on a hit |
 | `lsp_nvim_lightbulb` | `InsertEnter` | — | — | Clears the mark, **without** debounce — hiding is never what rate-limiting is for |
 | `lsp_nvim_lightbulb` | `LspAttach` | — | — | Asks once as soon as a client is there |
+| `lsp_nvim_winbar` | `CursorMoved` | — | — | Repaints the LSP breadcrumb for the current window, debounced (`winbar.debounce_ms`, default 60ms); reads the symbol cache, sends nothing |
+| `lsp_nvim_winbar` | `BufWinEnter`, `WinEnter`, `BufEnter` | — | — | Repaints the window that just changed and asks for symbols if the cache is stale (not debounced: entering a buffer is one event, not a burst) |
+| `lsp_nvim_winbar` | `TextChanged`, `InsertLeave` | — | filetype enabled | Re-requests `textDocument/documentSymbol`, debounced per buffer (`winbar.refresh_ms`, default 300ms) |
+| `lsp_nvim_winbar` | `LspAttach` | — | — | Draws the path-only bar at once and asks for symbols |
+| `lsp_nvim_winbar` | `LspDetach` | — | — | Drops the bar when the last client leaves (`vim.schedule`d: the client is still listed while this fires) |
+| `lsp_nvim_winbar` | `BufWipeout` | — | — | Forgets that buffer's refresh timer |
+| `lsp_nvim_winbar` | `ColorScheme` | — | — | Redefines the chip highlight groups under their old names |
+| `lsp_nvim_symbols` | `BufWipeout`, `BufUnload` | — | — | Drops a buffer's cached document symbols and cancels its request. Registered on the first symbol request |
+| `lsp_nvim_symbols` | `LspDetach` | — | the client was the one that answered | Drops symbols that came from a client that is leaving |
+| `lsp_nvim_implement` | `TextChanged`, `InsertLeave`, `BufEnter`, `LspAttach` | — | filetype enabled | Asks for implementations after an edit, debounced (`implement.debounce_ms`, default 600ms); one round per `changedtick` |
+| `lsp_nvim_implement` | `BufWipeout` | — | — | Cancels and forgets that buffer's round |
+| `lsp_nvim_peek` | `WinClosed` | `*` | window is a peek | Gives back the peek's keymaps, closes what was opened from it, unloads a buffer the peek loaded. Registered on the first peek |
+| `lsp_nvim_gitsigns_actions` | `User` | `GitSignsUpdate` | `code_actions.gitsigns` | Starts the in-process server on a buffer gitsigns is attached to |
 | `lsp_nvim_supervisor` | `LspAttach` | — | — | Records server name, buffer and start time per client id |
 | `lsp_nvim_supervisor` | `VimLeavePre` | — | — | Sets the flag that keeps client exits during `:qa` from counting as crashes |
 
-`lsp_nvim_inlay_hints` and `lsp_nvim_lightbulb` are their own groups rather
-than folded into `lsp_nvim` because that group is cleared whenever
-`keymaps.enable = false` — hints and the lightbulb are not a keymap concern
-and must not disappear with the keymaps.
+`lsp_nvim_inlay_hints`, `lsp_nvim_lightbulb`, `lsp_nvim_winbar` and
+`lsp_nvim_implement` are their own groups rather than folded into `lsp_nvim`
+because that group is cleared whenever `keymaps.enable = false` — hints, the
+lightbulb and the breadcrumb are not a keymap concern and must not disappear
+with the keymaps.
 
 **Why the supervisor bookkeeps at attach at all:** the actual trigger is not
 an autocommand but `on_exit` from the `vim.lsp.config("*")` setup, which only
@@ -144,40 +166,31 @@ raises `BufWipeout`, which is the event that actually deletes the group.
 `ToolsNoiceIntegration` is registered at module level (not inside a `setup()`
 function), so it fires as soon as the module is required.
 
-## Breadcrumb depth and chips (`integrations/lspsaga.lua`)
+## The breadcrumb (`core/winbar/`)
 
-| Augroup (`clear=true`) | Event | Pattern | Condition | Action |
-| --- | --- | --- | --- | --- |
-| `LspNvimSagaWinbarDepth` | `CursorMoved` | — | Filetype has a depth limit, or chips are on | Trims the winbar lspsaga wrote to path + N symbols, then draws it as chips |
-| `LspNvimSagaWinbarDepth` | `User` | `SagaSymbolUpdate` | same | same, after a fresh symbol response |
-| `LspNvimSagaWinbarDepth` | `LspAttach`, `BufWinEnter` | — | same | styles the path-only bar lspsaga writes before any symbol arrives |
-| `LspNvimSagaWinbarDepth` | `ColorScheme` | — | chips are on | redefines the chip highlight groups under their old names |
+The rows are in the Core table above. What is worth knowing that a table does
+not say:
 
-Registered from `M.configure()`, which the plugin spec calls on
-`event = "LspAttach"` when lspsaga loads — without lspsaga installed, the
-group never exists. Two call sites, two events, one group.
+**One `CursorMoved` handler, and it sends nothing.** Moving the cursor only
+reads the cached symbol tree (`lsp.core.symbols`) and writes `'winbar'` when
+the string changed. The request is a separate path, off `TextChanged` and
+`InsertLeave`, debounced per buffer -- a single shared debounce would drop the
+refresh of buffer A when buffer B changed inside the window.
 
-**Why an autocommand and not an option:** lspsaga has no depth limit of its
-own. `find_in_node` descends into every child containing the cursor line, and
-marksman returns Markdown headings as a nested outline, so the cursor can sit
-inside three symbols at once and the winbar reads
-`folder > file > H1 > H2 > H3`. `ignore_patterns`, the only related switch,
-matches on the buffer name and would take the folder and filename with it —
-so this trims what lspsaga already wrote instead.
+**It draws the string instead of rewriting one.** The breadcrumb used to be
+lspsaga's, and this plugin trimmed its depth and styled it as chips by
+rewriting what lspsaga had written, from an autocommand that had to defer with
+`vim.schedule` because lspsaga installed its own per-buffer `CursorMoved`
+handler at `LspAttach` time and ordering between the two could not be relied
+on. That whole class of problem is gone with lspsaga: there is one writer.
 
-**Why `vim.schedule` and not autocommand ordering:** lspsaga installs its own
-per-buffer `CursorMoved` handler at `LspAttach` time. An autocommand
-registered here at `config` time cannot rely on running after it, so
-deferring to the event loop makes it order-independent. Cost on the hot
-path: the callback exits after one table lookup when the filetype has no
-limit (i.e. for everything but markdown); the trim itself only runs inside
-`vim.schedule`.
-
-Fixed 2026-09-02 (lsp.nvim `ab79a0b`): this pair used to be the one exception
-to "every autocommand in this plugin goes through
-`lib.nvim.bindings.autocmd`" — introduced on the raw API by `fa6d97a`, caught
-and corrected the same day. It is on `lib.nvim.bindings.autocmd` now, same as
-every other group in this file except the formatter's (see below).
+**Ownership of `'winbar'`.** Written over on any window that shows a normal,
+LSP-attached buffer; cleared only when the string in it carries the
+`LspNvimWinbar` group names every string this module writes. A window whose
+`'winbar'` another plugin set is never cleared, and on release the window goes
+back to the *global* value (`setlocal winbar<`) rather than to `""`, so a
+plugin that sets `vim.o.winbar` does not lose it on the windows this module
+had drawn on.
 
 ## Two autocommands that used to stack
 
@@ -223,6 +236,11 @@ of blindness that let two groupless autocommands (above) stack unnoticed.
 
 ## Changelog
 
+- 2026-09-21: lspsaga removed. `LspNvimSagaWinbarDepth` (4 call sites) is gone;
+  `lsp_nvim_winbar` (7), `lsp_nvim_symbols` (2), `lsp_nvim_implement` (2),
+  `lsp_nvim_peek` (1) and, opt-in, `lsp_nvim_gitsigns_actions` (1) are new.
+  43 call sites across 29 groups; see the top of the page for what was
+  measured and what was carried forward.
 - 2026-09-18: this page re-measured against a live `setup()` rather than read.
   Four corrections: the `ColorScheme` row below was missing (34 call sites, not
   33); `LspSignaturePopup_<winid>` no longer registers `WinClosed`;

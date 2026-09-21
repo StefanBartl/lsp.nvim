@@ -10,9 +10,9 @@
 ---     vim.g.lsp_nvim = {
 ---       pack = {
 ---         core = true,          -- conform, lazydev, workspace-diagnostics
----         ui = true,            -- trouble, lspsaga, lensline, inc-rename
+---         ui = true,            -- trouble, lensline, inc-rename
 ---         completion = "blink", -- "cmp" | "blink" | false (default: blink)
----         disable = { "lspsaga.nvim" },
+---         disable = { "lensline.nvim" },
 ---       },
 ---     }
 --- <
@@ -104,7 +104,7 @@ end
 ---
 --- Returns a value rather than a closure: lazy reads `enabled` when it resolves
 --- the spec, which is after the import, so the answer is already knowable.
----@param name string # Plugin short name, e.g. "lspsaga.nvim".
+---@param name string # Plugin short name, e.g. "lensline.nvim".
 ---@param group "core"|"ui"|nil # Group that must also be on.
 ---@return boolean
 function M.enabled(name, group)

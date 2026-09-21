@@ -1,9 +1,9 @@
 # In-buffer indicators
 
-Two displays that follow the cursor rather than answering a request you made.
-Both take the same two-level shape — a global default plus a per-filetype
-override map — because both are worth having in one language and noise in
-another.
+Four displays that follow the cursor or the text rather than answering a request
+you made. All four take the same two-level shape — a global default plus a
+per-filetype override map — because each is worth having in one language and
+noise in another.
 
 ## Inlay hints
 
@@ -52,3 +52,110 @@ distinguish it can answer more cheaply, and skipped entirely in insert mode.
   `lightbulb.priority`
 - **Commands:** `:Lsp lightbulb [toggle|on|off|status|clear] [filetype]`
 - **Keys:** `<leader>tb` (global), `<leader>tB` (this filetype)
+
+## LSP breadcrumb (winbar)
+
+`folder > file > Class > method`: the file's path, then every symbol that
+contains the cursor, outermost first, drawn as rounded chips in the window bar.
+It is what lspsaga's `symbol_in_winbar` used to be here, and it is now this
+plugin's own — one writer for `'winbar'`, instead of a string lspsaga wrote and
+this plugin rewrote.
+
+**What it costs.** One `textDocument/documentSymbol` request per text change,
+debounced (`refresh_ms`), cached per buffer against `changedtick` in
+`core/symbols.lua`, and shared with the implementation markers below. Moving the
+cursor is a walk over the cached tree and, when the result did not change, no
+write at all. The cache is stale-while-revalidate: after an edit the previous
+tree stays on screen until the new answer lands, so the bar does not blink out
+while the server thinks.
+
+**Where the cursor is.** By line, with the column consulted only where the line
+alone would be wrong: a symbol that starts and ends on one line, and the last
+line of one. A cursor anywhere on the header line of a function — indentation
+included — is inside it. A range that ends at column 0 of a later line is read
+as ending on the line *before*, which is how a section-shaped symbol (a Markdown
+heading) says "up to, not including, the next heading"; read inclusively it puts
+the cursor on `## Next` inside the previous section as well. Both flat
+(`SymbolInformation[]`) and hierarchical (`DocumentSymbol[]`) answers work; the
+tree of a flat one is rebuilt from range containment.
+
+**The depth cap.** `max_symbols` says how many symbols may follow the file, per
+filetype, and only `markdown = 1` is set by default. The reason is the shape of
+what the servers send, not anything about drawing: marksman reports headings as
+a *nested* outline, so a cursor in the body of an H3 is inside three symbols and
+the bar would read `folder > file > H1 > H2 > H3`. lua_ls reports no symbol at
+all for a line outside a function, so the same code yields `folder > file`. The
+value that reads best is the file's own top heading and nothing below it —
+deeper levels are a table of contents, and a breadcrumb is not one.
+`markdown = false` lifts it; a filetype not named has no cap. Measured against
+real servers: in a Markdown file with three nested headings the bar shows the
+first only, and all three with the cap lifted.
+
+**Headings** arrive as SymbolKind `String` — the protocol has no "Heading" kind —
+so for Markdown that one kind is drawn with a hashtag instead of the
+boxed-letter data-type icon, which reads as "a heading" rather than as a type
+badge. Icons for every other kind are the set lspsaga shipped, so nothing on
+screen changed with the switch.
+
+**Chips.** Three roles, coloured from the colourscheme and tinted towards the
+window background (`M.tint`, default 0.2): `folder` from `Special`, `file` from
+`Function` (bold), `symbol` from `String`. Those three are picked because
+`Directory`, `Function` and `Title` are one and the same blue in tokyonight. The
+file keeps its devicon's own colour on the chip background. The role comes from
+what the part *is*, not from its position, so a file in the project root is
+still a file chip. `chips = false` draws one flat string instead, coloured by
+highlight groups that are *linked* (`LspNvimWinbarFolder`, `…File`, `…Symbol`,
+`…Sep`), so a `:hi link` of your own wins. A colorscheme change clears every
+group; the derived chip groups are redefined under the same names, because the
+strings already in a window's `'winbar'` keep naming them.
+
+**Who owns `'winbar'`.** It is window-local, and this module writes it only on
+windows showing a normal, LSP-attached buffer (`buftype == ""`, not a float — a
+peek window is a float and has its own title). It writes over whatever was
+there, which is the contract lspsaga had. What it clears is only its own: a
+string is recognised as ours by the `LspNvimWinbar` group names every string
+carries, so a winbar another plugin put on a help or terminal window is never
+touched, and a released window goes back to the *global* `'winbar'` rather than
+to an empty one.
+
+- **Modules:** `core/winbar/` (`init.lua`, `render.lua`, `kinds.lua`),
+  `core/symbols.lua`
+- **Config:** `winbar.enable`, `winbar.filetypes`, `winbar.show_file`,
+  `winbar.folder_level`, `winbar.separator`, `winbar.chips`,
+  `winbar.max_symbols`, `winbar.debounce_ms`, `winbar.refresh_ms`
+- **Commands:** `:Lsp winbar [toggle|on|off|status|clear] [filetype]`
+- **Keys:** `<leader>tW` (global)
+- **Presets:** off under `lean` — a request per edit pause for a bar that only
+  decorates the window
+
+## Implementation markers
+
+`interface Repository` — and nothing on the line says that two classes implement
+it. This asks: for every symbol of a configured kind (`Interface` by default) it
+sends `textDocument/implementation`, and when the answer is not empty it puts a
+count at the end of the line: `interface Repository  2 impl`. Measured against
+ts_ls on a file with one interface and two implementing classes, that is exactly
+what appears, on the interface's line and nowhere else.
+
+**Off by default, and that is the design.** It is one request per marked symbol
+per edit pause — the same shape of load that was measured at ~214ms in a startup
+sample for the code-action indicator — and it earns its keep only in languages
+that have interfaces: TypeScript, Go, Java, C#. Markdown's server (marksman) has
+no `implementationProvider`, which is checked before a single request is sent;
+lua_ls has one but reports no `Interface` symbols, so there is nothing to ask
+about. `max_requests` caps a round, so a generated file with two hundred
+interfaces costs twenty requests. Rounds are keyed to `changedtick`: entering
+the buffer, an attach and the schedule in `setup()` all lead to the same round,
+and only the first sends anything for text that has not changed. The old
+markers stay on screen until the new answers replace them together, so an edit
+does not blink every marker off and on.
+
+`kinds` is a map of SymbolKind names (`Interface`, `Class`, `Method`, …), not a
+list — a list would merge index by index over the default.
+
+- **Module:** `core/implement.lua`
+- **Config:** `implement.enable`, `implement.filetypes`, `implement.kinds`,
+  `implement.text` (`%d` is the count), `implement.debounce_ms`,
+  `implement.max_requests`
+- **Commands:** `:Lsp implement [toggle|on|off|status|clear] [filetype]`
+- **Presets:** on under `full`

@@ -209,7 +209,10 @@ describe("lsp.config.KEYMAPS", function()
         all[#all + 1] = spec.lhs
       end
     end
-    assert.are.equal(9, #all)
+    -- Nine when this was written; five more arrived with the lspsaga
+    -- replacement (`lsp`, `lsT` peek, `lsf` finder, `lsh`/`lsH` hierarchy) --
+    -- none of them in `minimal`, which is what the assertion above pins.
+    assert.are.equal(14, #all)
   end)
 
   it("Neovim's own gr* maps are global, so the catalogue replaces them", function()
@@ -238,8 +241,9 @@ describe("lsp.config.project", function()
     -- "The omissions are the point, so they are named rather than left
     -- implicit." `auto_restart` was refused and named nowhere, which left the
     -- single option about relaunching processes as the one a reader had to
-    -- infer. Nine allowed plus eleven named omissions is all twenty top-level
-    -- keys, and this case is what keeps it that way when a twenty-first lands.
+    -- infer. Nine allowed plus sixteen named omissions is all twenty-five
+    -- top-level keys, and this case is what keeps it that way when the next one
+    -- lands.
     local src = source_of("lua/lsp/config/project.lua")
     local header = src:match("^(.-)\nM%.ALLOWED")
     assert.is_string(header, "the ALLOWED block moved")
@@ -379,8 +383,8 @@ describe("lsp.config.pack", function()
       { pack = { completion = "blnik" } },
       { pack = { completion = true } },
       { pack = { completion_accept = "CTRL_Y" } },
-      { pack = { disable = "lspsaga.nvim" } },
-      { pack = { disable = { ["lspsaga.nvim"] = true } } },
+      { pack = { disable = "lensline.nvim" } },
+      { pack = { disable = { ["lensline.nvim"] = true } } },
     }
 
     for _, shape in ipairs(shapes) do
@@ -392,7 +396,7 @@ describe("lsp.config.pack", function()
       assert.is_table(pack.opts(), label)
       assert.is_boolean(pack.group("core"), label)
       assert.is_boolean(pack.group("ui"), label)
-      assert.is_boolean(pack.enabled("lspsaga.nvim", "ui"), label)
+      assert.is_boolean(pack.enabled("lensline.nvim", "ui"), label)
       local choice = pack.completion()
       assert.is_true(choice == "cmp" or choice == "blink" or choice == false, label)
       local accept = pack.completion_accept()

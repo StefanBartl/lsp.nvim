@@ -13,7 +13,6 @@
 ---@see lsp.pack
 ---@see lsp.config.pack
 ---@see lsp.integrations.trouble
----@see lsp.integrations.lspsaga
 ---@see lsp.integrations.lensline
 ---@see lsp.integrations.inc_rename
 
@@ -41,19 +40,6 @@ return {
     cmd = "Trouble",
     config = function()
       require("lsp.integrations.trouble").configure()
-    end,
-  },
-
-  {
-    "nvimdev/lspsaga.nvim",
-    enabled = pack.enabled("lspsaga.nvim", "ui"),
-    event = "LspAttach",
-    dependencies = {
-      "nvim-treesitter/nvim-treesitter",
-      "nvim-tree/nvim-web-devicons",
-    },
-    config = function()
-      require("lsp.integrations.lspsaga").configure()
     end,
   },
 

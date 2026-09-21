@@ -102,7 +102,12 @@ local function register_filetype_argtype()
       -- this argument type: an override for a filetype no buffer currently
       -- uses is otherwise uncompletable, and clearing it is exactly what the
       -- `clear` action is for.
-      for _, module in ipairs({ "lsp.core.inlay_hints", "lsp.core.lightbulb" }) do
+      for _, module in ipairs({
+        "lsp.core.inlay_hints",
+        "lsp.core.lightbulb",
+        "lsp.core.winbar",
+        "lsp.core.implement",
+      }) do
         local ok, mod = pcall(require, module)
         if ok then
           for _, ft in ipairs(mod.overridden()) do
@@ -248,6 +253,41 @@ local function dispatch(map, choice, fallback)
     return
   end
   fn()
+end
+
+---@internal
+--- The `toggle|on|off|status|clear [filetype]` shape that every switchable
+--- indicator (`hints`, `lightbulb`, `winbar`, `implement`) shares, for the ones
+--- written after the first two: the same behaviour, in one place.
+---@param module string # A module with `set`, `toggle`, `clear` and `status`.
+---@param label string # The command word, for the `clear` warning.
+---@param ctx { args: table }
+---@return nil
+local function switch_route(module, label, ctx)
+  local feature = require(module)
+  local action = ctx.args.action or "toggle"
+  local ft = ctx.args.filetype
+
+  if action == "status" then
+    report(feature.status())
+    return
+  end
+  if action == "clear" then
+    -- As with `:Lsp hints clear`: dropping "the global override" would be
+    -- dropping the setting itself, so this one needs a filetype.
+    if ft == nil then
+      notify.warn(("`:Lsp %s clear` needs a filetype"):format(label))
+      return
+    end
+    feature.clear(ft)
+    return
+  end
+
+  if action == "toggle" then
+    feature.toggle(ft)
+  else
+    feature.set(action == "on", ft)
+  end
 end
 
 --- Register the `:Lsp` verb.
@@ -498,6 +538,59 @@ function M.setup()
           else
             lightbulb.set(action == "on", ft)
           end
+        end,
+      },
+
+      -- ------------------------------------------------- winbar breadcrumb
+      {
+        path = { "winbar" },
+        args = {
+          {
+            name = "action",
+            type = "STRING",
+            enum = { "toggle", "on", "off", "status", "clear" },
+            optional = true,
+          },
+          { name = "filetype", type = "LSP_FILETYPE", optional = true },
+        },
+        desc = "LSP breadcrumb in the winbar: control globally, or for one filetype",
+        run = function(ctx)
+          switch_route("lsp.core.winbar", "winbar", ctx)
+        end,
+      },
+
+      -- ------------------------------------------- implementation markers
+      {
+        path = { "implement" },
+        args = {
+          {
+            name = "action",
+            type = "STRING",
+            enum = { "toggle", "on", "off", "status", "clear" },
+            optional = true,
+          },
+          { name = "filetype", type = "LSP_FILETYPE", optional = true },
+        },
+        desc = "Implementation markers: control globally, or for one filetype",
+        run = function(ctx)
+          switch_route("lsp.core.implement", "implement", ctx)
+        end,
+      },
+
+      -- ------------------------------------------------------------ peek
+      {
+        path = { "peek" },
+        args = {
+          {
+            name = "kind",
+            type = "STRING",
+            enum = { "definition", "type_definition", "implementation", "declaration" },
+            optional = true,
+          },
+        },
+        desc = "Peek a definition (or type, implementation, declaration) in a float",
+        run = function(ctx)
+          require("lsp.core.peek").peek(ctx.args.kind or "definition")
         end,
       },
 

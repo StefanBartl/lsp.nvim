@@ -88,8 +88,11 @@ with no native equivalent — it is `vim.lsp.buf.definition()` or nothing under
 the catalogue's keys as well.
 
 `full` is the inverse trade: `update_in_insert`, inlay hints on, a 50ms
-throttle instead of 150, and the code-action indicator unfiltered rather than
-narrowed to `quickfix`/`source`.
+throttle instead of 150, the code-action indicator unfiltered rather than
+narrowed to `quickfix`/`source`, the implementation markers on, and gitsigns'
+hunk actions in the code-action list. `lean` also switches the winbar
+breadcrumb off — a `documentSymbol` request per edit pause, for a bar that only
+decorates the window.
 
 Two things no preset ever sets, whatever its name suggests:
 
@@ -130,7 +133,7 @@ one.
 `inlay_hints`, `lightbulb`, `attach`, `workspace`, `tools`, `languages` are
 accepted; everything else is dropped with a warning. The line is not "what
 could break" but *whose question is this*. Those nine describe the codebase, so
-the codebase may answer them. The other eleven top-level keys do not, and the
+the codebase may answer them. The other sixteen top-level keys do not, and the
 omissions are named rather than left to be inferred. `keymaps`, `usrcmds`,
 `which_key` and `menu` describe you — opening a repository must not move a key
 or drop a command. `mason` installs software. `preset` is a property of the
@@ -138,7 +141,10 @@ machine. `auto_restart` is a supervision policy: how often this editor
 relaunches a crashed process belongs to the machine running the servers, and it
 is the one omission a repository could otherwise turn into a restart loop.
 `lspdoctor` is report formatting and `rename` a personal habit, neither of them
-a property of the code being edited. `completion` is host data —
+a property of the code being edited. So are `winbar`, `peek`, `implement`,
+`code_actions` and `finder`: how *your* editor looks and which picker it opens —
+and two of them start extra requests or an extra in-process server, which a
+checkout must not switch on. `completion` is host data —
 `personal_names.labels` is a function and could not be expressed anyway. And
 `project` itself: a file naming its own successor is a loop with nothing to
 gain.
@@ -360,6 +366,113 @@ distinguish it can answer more cheaply, and not sent at all in insert mode.
 off the other continuous costs.
 
 `<leader>tb`, `<leader>tB` and `:Lsp lightbulb` move the same state at runtime.
+
+## winbar
+
+The LSP breadcrumb — `folder > file > Class > method` — in the window bar. It
+replaces lspsaga's `symbol_in_winbar`, and takes the same two-level shape as
+`inlay_hints`:
+
+```lua
+winbar = {
+  enable = true,
+  filetypes = { help = false },
+  show_file = true,          -- the path in front of the symbols
+  folder_level = 1,          -- directories shown before the file name
+  separator = " › ",
+  chips = true,              -- rounded, coloured chips; false = one flat string
+  max_symbols = { markdown = 1 },
+  debounce_ms = 60,          -- cursor movement -> repaint
+  refresh_ms = 300,          -- last edit -> next documentSymbol request
+},
+```
+
+**`max_symbols` is the depth cap, and it is a map for a reason.** Only markdown
+is capped by default: marksman reports headings as a *nested* outline, so a
+cursor in an H3 is inside three symbols and would draw `file > H1 > H2 > H3`,
+which is a table of contents and not a breadcrumb. Your entries merge over that
+default, so `{ lua = 2 }` adds a cap and leaves markdown's; `markdown = false`
+removes it. `0` is a legal cap and shows the path alone.
+
+**`debounce_ms` and `refresh_ms` are different costs.** The first only decides
+how often the bar is redrawn — the cursor reads a cache. The second decides
+how often the server is asked, and is the one to raise on a slow machine.
+
+`<leader>tW` and `:Lsp winbar` move the same state at runtime, per filetype
+with the second. See [FEATURES/INDICATORS.md](FEATURES/INDICATORS.md#lsp-breadcrumb-winbar)
+for what it costs and who owns `'winbar'`.
+
+## peek
+
+The floating, editable peek of a definition (`lsp`, `lsT`, `:Lsp peek`):
+
+```lua
+peek = {
+  width = 0.7,               -- a fraction of the editor up to 1, cells above
+  height = 0.5,
+  border = "rounded",
+  beacon = true,             -- flash the line when a peek is taken into a window
+  keys = {
+    close = "q",
+    edit = "<C-o>",
+    vsplit = "<C-v>",
+    split = "<C-x>",
+    tabedit = "<C-t>",
+  },
+},
+```
+
+`keys` merges per action: `{ close = "<Esc>" }` changes one and leaves the rest,
+`false` unbinds one, and an action that does not exist is dropped with a
+warning. They are buffer-local to the peeked buffer and removed when the last
+peek window over it closes.
+
+## implement
+
+Implementation markers on interfaces. **Off by default**, and the reason is a
+number, not a preference: one `textDocument/implementation` request per marked
+symbol per edit pause is the same shape of load that was measured at ~214ms in a
+startup sample for the code-action indicator.
+
+```lua
+implement = {
+  enable = false,
+  filetypes = { typescript = true },   -- on here, off everywhere else
+  kinds = { Interface = true },        -- SymbolKind names; add Class = true
+  text = " %d impl",                   -- %d is the count
+  debounce_ms = 600,
+  max_requests = 20,                   -- per round
+},
+```
+
+`kinds` is a **map**, not `{ "Interface" }`: `vim.tbl_deep_extend` merges two
+lists index by index, so a list would leave you the default's entries you meant
+to replace. The same reason makes `finder` below a map of switches. A `text`
+with no `%d` would print no count and is refused in favour of the default.
+
+## code_actions and finder
+
+What `lsa` and `lsf` open:
+
+```lua
+code_actions = {
+  picker = "auto",           -- "auto" | "fzf-lua" | "native"
+  gitsigns = false,          -- hunk actions in the same list
+},
+finder = {
+  references = true,
+  implementations = true,
+  definitions = true,
+  declarations = false,
+  typedefs = false,
+},
+```
+
+`picker = "auto"` is fzf-lua's `lsp_code_actions` — the edit previewed as a
+diff — when fzf-lua is installed, and `vim.lsp.buf.code_action` when it is not;
+the other two pin one. `gitsigns = true` starts a small in-process language
+server on buffers gitsigns is attached to, which is why it is opt-in: it shows
+up in `:Lsp servers`. See [FEATURES/NAVIGATION.md](FEATURES/NAVIGATION.md).
 
 ## auto_restart
 

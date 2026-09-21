@@ -8,7 +8,8 @@ The full table — every route, every argument, every legacy alias — is in
 ```
 :Lsp status | servers | info | health | doctor
 :Lsp start | stop | restart | force-restart | recover
-:Lsp format | diag | workspace | root | hints | lightbulb | autorestart | log
+:Lsp format | diag | workspace | root | hints | lightbulb | winbar | implement | peek
+:Lsp autorestart | log
 ```
 
 `:Lsp doctor` takes the name of the question you have, not a verbosity level:
@@ -45,6 +46,15 @@ and means the same thing by it. Its `status` answers the question that decides
 whether the indicator is worth having here: which clients in this buffer
 advertise `codeActionProvider`, which CodeActionKinds are on the allowlist, and
 whether a mark is on screen right now.
+
+`:Lsp winbar` and `:Lsp implement` take the same argument pair again, for the
+LSP breadcrumb in the winbar and for the implementation markers. `winbar status`
+says which client answers document symbols in this buffer and whether the cache
+is fresh; `implement status` says which client would answer
+`textDocument/implementation` and how many markers are on screen. Both need a
+filetype for `clear`, as the other two do. `:Lsp peek [kind]` opens a floating,
+editable peek of a definition (the default), type definition, implementation or
+declaration — the last two have no key, only this route.
 
 `:Lsp autorestart` controls whether a crashed server is brought back on its
 own. Its `status` is the one worth reading after something went wrong: it names

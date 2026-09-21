@@ -241,6 +241,27 @@ local function check_plugin()
       cfg.formatter.timeout_ms
     )
   )
+  health.info(
+    ("winbar breadcrumb: %s, %s"):format(
+      cfg.winbar.enable and "on" or "off",
+      cfg.winbar.chips and "chips" or "flat"
+    )
+  )
+
+  -- The picker `lsa` opens is decided by whether fzf-lua is there, so the
+  -- answer is worth printing rather than leaving to be inferred.
+  local picker = cfg.code_actions.picker
+  if picker == "native" then
+    health.info('code actions: native list (code_actions.picker = "native")')
+  elseif module_state("fzf-lua") == "ok" then
+    health.ok("code actions: fzf-lua picker with a diff preview")
+  elseif picker == "fzf-lua" then
+    health.warn('code_actions.picker is "fzf-lua" but fzf-lua is not installed', {
+      '`lsa` falls back to the native list. Install fzf-lua, or set the picker to "auto".',
+    })
+  else
+    health.info("code actions: native list (fzf-lua is not installed)")
+  end
 end
 
 ---@internal

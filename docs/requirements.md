@@ -19,7 +19,9 @@ not, so those are bring-your-own either way:
 | [trouble.nvim](https://github.com/folke/trouble.nvim) | The diagnostics list |
 | [lazydev.nvim](https://github.com/folke/lazydev.nvim) | Neovim-aware `lua_ls` completion |
 | [workspace-diagnostics.nvim](https://github.com/artemave/workspace-diagnostics.nvim) | Diagnostics beyond the open buffers |
-| [lspsaga.nvim](https://github.com/nvimdev/lspsaga.nvim) | The winbar breadcrumb, re-cut per filetype by this plugin's adapter |
+| [fzf-lua](https://github.com/ibhagwan/fzf-lua) | The pickers, the finder, and the diff preview in `lsa`'s code-action list; without it `lsa` is the native list |
+| [gitsigns.nvim](https://github.com/lewis6991/gitsigns.nvim) | Hunk actions in the code-action list, with `code_actions.gitsigns` |
+| [nvim-web-devicons](https://github.com/nvim-tree/nvim-web-devicons) | The file icon in the winbar breadcrumb; without it a generic file glyph |
 | [lensline.nvim](https://github.com/oribarilan/lensline.nvim) | Code lenses |
 | [inc-rename.nvim](https://github.com/smjonas/inc-rename.nvim) | Live-preview rename |
 | [mason.nvim](https://github.com/mason-org/mason.nvim) | Server and tool installation |

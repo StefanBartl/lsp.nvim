@@ -38,7 +38,6 @@ local ADAPTERS = {
   "trouble",
   "inc_rename",
   "picker",
-  "lspsaga",
   "lensline",
   "noice",
   "mason",

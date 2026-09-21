@@ -137,6 +137,113 @@ local DEFAULTS = {
     priority = 20,
   },
 
+  -- The LSP breadcrumb in the window bar: `folder > file > Class > method`,
+  -- where `Class > method` are the symbols containing the cursor.
+  --
+  -- Replaces lspsaga's `symbol_in_winbar`, which is what this used to be. One
+  -- `textDocument/documentSymbol` request per text change (debounced), shared
+  -- with `implement` below; moving the cursor only reads the cache.
+  --
+  -- `filetypes` works exactly as `inlay_hints.filetypes` does: absent inherits
+  -- `enable`, `false` is an explicit off.
+  winbar = {
+    enable = true,
+    ---@type table<string, boolean>
+    filetypes = {},
+    -- The path in front of the symbols: `folder_level` directories and the
+    -- file. `show_file = false` leaves the symbols alone.
+    show_file = true,
+    folder_level = 1,
+    separator = " › ",
+    -- Rounded, coloured chips; false is one flat string.
+    chips = true,
+    -- How many symbols may follow the file, per filetype. Markdown is capped
+    -- at one because marksman reports headings as a nested outline: without
+    -- the cap a cursor in an H3 draws `file > H1 > H2 > H3`, which is a table
+    -- of contents rather than a breadcrumb. A filetype not named here has no
+    -- cap; `markdown = false` lifts the one that is.
+    ---@type table<string, integer|false>
+    max_symbols = { markdown = 1 },
+    -- Between the last cursor movement and the repaint. Reads the cache, so
+    -- this is about redraws, not requests.
+    debounce_ms = 60,
+    -- Between the last edit and the next `textDocument/documentSymbol`.
+    refresh_ms = 300,
+  },
+
+  -- Peek: the definition (or type definition) in a floating, *editable* window
+  -- over the code, without leaving it. `q` closes, `<C-o>`/`<C-v>`/`<C-x>`/`<C-t>`
+  -- take the peeked buffer into the window you came from, a split, or a tab.
+  -- A peek inside a peek stacks, and `q` closes the top one.
+  --
+  -- `width`/`height` are fractions of the editor when they are at most 1, and
+  -- cells above that. `keys` maps an action to a key; `false` unbinds it. All
+  -- of them are buffer-local to the peeked buffer and removed when the last
+  -- peek window over it closes.
+  peek = {
+    width = 0.7,
+    height = 0.5,
+    border = "rounded",
+    -- Flash the target line after a peek is taken into a real window, which
+    -- is the one place an eye loses the cursor.
+    beacon = true,
+    ---@type table<string, string|false>
+    keys = {
+      close = "q",
+      edit = "<C-o>",
+      vsplit = "<C-v>",
+      split = "<C-x>",
+      tabedit = "<C-t>",
+    },
+  },
+
+  -- Marks interfaces (or any other kind named in `kinds`) that have
+  -- implementations, with a count at the end of the line.
+  --
+  -- Off by default and that is the point: it is one `textDocument/implementation`
+  -- request per marked symbol per edit pause, which is exactly the kind of
+  -- continuous load that was measured expensive for the code-action indicator.
+  -- It only pays in languages that have interfaces -- TypeScript, Go, Java,
+  -- C# -- and says nothing in Markdown (marksman has no
+  -- `implementationProvider`) or in Lua (lua_ls has one but reports no
+  -- interfaces to ask about). `max_requests` caps one round.
+  implement = {
+    enable = false,
+    ---@type table<string, boolean>
+    filetypes = {},
+    -- SymbolKind names. A map, not a list: lists merge index by index.
+    ---@type table<string, boolean>
+    kinds = { Interface = true },
+    -- `%d` is the number of implementations.
+    text = " %d impl",
+    debounce_ms = 600,
+    max_requests = 20,
+  },
+
+  -- What `lsa` (and the diagnostic quick fix) opens.
+  code_actions = {
+    -- "fzf-lua" is fzf-lua's picker with a preview of the edit as a diff, so a
+    -- refactor is not applied blind; "native" is `vim.lsp.buf.code_action`;
+    -- "auto" is fzf-lua when it is installed and native when it is not.
+    ---@type "auto"|"fzf-lua"|"native"
+    picker = "auto",
+    -- Offer gitsigns' hunk actions (stage / reset / preview) in the same list,
+    -- when the cursor is in a hunk. Off by default because it runs a small
+    -- in-process language server beside the real ones, which shows up in
+    -- `:Lsp servers`.
+    gitsigns = false,
+  },
+
+  -- What `lsf` puts in one list: every place a symbol is used, implemented or
+  -- defined. A map of switches rather than a list, for the merge reason above.
+  finder = {
+    references = true,
+    implementations = true,
+    definitions = true,
+    declarations = false,
+    typedefs = false,
+  },
+
   formatter = {
     -- Off at startup; the runtime toggle (`:LspFormatToggle`, `<leader>tft`)
     -- owns it from there.
