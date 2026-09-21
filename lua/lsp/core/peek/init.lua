@@ -27,6 +27,12 @@
 --- somewhere else -- otherwise ten peeks leave ten buffers in the list. A
 --- buffer that was already loaded is never touched.
 ---
+--- **The buffer list.** A peek opens its buffer through `bufadd`, which leaves
+--- it *unlisted*: right for the buffer it unloads again, wrong for one that
+--- stays. A buffer taken into a window and one that was edited and so cannot be
+--- unloaded are both listed, so `:ls`, the tabline and the pickers show what
+--- the editor is holding.
+---
 --- lspsaga had this as `peek_definition` / `peek_type_definition`; the float,
 --- the four "take it" keys and the nesting are the same idea, minus a plugin.
 ---
@@ -219,7 +225,11 @@ local function map_keys(bufnr)
   for action, fn in pairs(actions) do
     local lhs = opts().keys[action]
     if type(lhs) == "string" and lhs ~= "" then
-      local prev = vim.fn.maparg(lhs, "n", false, true)
+      -- `maparg` answers for the current buffer, which is the peeked one only
+      -- by the coincidence that `open` has just entered its window.
+      local prev = api.nvim_buf_call(bufnr, function()
+        return vim.fn.maparg(lhs, "n", false, true)
+      end)
       if type(prev) == "table" and prev.buffer == 1 then
         record.previous[lhs] = prev
       end
@@ -247,7 +257,13 @@ local function unmap_keys(bufnr)
     pcall(vim.keymap.del, "n", lhs, { buffer = bufnr })
     local prev = record.previous[lhs]
     if prev then
-      pcall(vim.fn.mapset, "n", false, prev)
+      -- `mapset` puts a buffer-local map back into the *current* buffer, and
+      -- the float is not always where the cursor is when it closes:
+      -- `M.close()` closes the top peek from any window, and a peek closes
+      -- the ones stacked above it from `WinClosed`.
+      api.nvim_buf_call(bufnr, function()
+        pcall(vim.fn.mapset, "n", false, prev)
+      end)
     end
   end
 end
@@ -306,10 +322,17 @@ local function on_closed(win)
       and entry.fresh
       and api.nvim_buf_is_valid(bufnr)
       and api.nvim_buf_is_loaded(bufnr)
-      and not vim.bo[bufnr].modified
       and #vim.fn.win_findbuf(bufnr) == 0
     then
-      pcall(api.nvim_buf_delete, bufnr, { unload = true })
+      if vim.bo[bufnr].modified then
+        -- It was edited, so it cannot be unloaded -- and it was opened through
+        -- `bufadd`, which leaves it unlisted. Loaded, modified and hidden from
+        -- `:ls` is a buffer `:qa` refuses to leave and nothing shows: list it,
+        -- so it is where the user would look for it.
+        vim.bo[bufnr].buflisted = true
+      else
+        pcall(api.nvim_buf_delete, bufnr, { unload = true })
+      end
     end
   end)
 end
@@ -569,6 +592,11 @@ function M.take(how)
     vim.cmd("tab split")
   end
   local target_win = api.nvim_get_current_win()
+  -- The peek opened the buffer through `bufadd`, which leaves it unlisted, and
+  -- putting it in a window does not change that: without this it would sit in
+  -- a real window that `:ls`, the tabline and every buffer picker deny exists.
+  -- `:edit` lists a buffer it switches to, and this is the same act.
+  vim.bo[bufnr].buflisted = true
   api.nvim_win_set_buf(target_win, bufnr)
   pcall(api.nvim_win_set_cursor, target_win, pos)
   vim.cmd("normal! zz")

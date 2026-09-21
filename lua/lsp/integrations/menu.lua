@@ -14,11 +14,12 @@
 --- `keymaps.preset`, with `keymaps.map` overrides/disables already
 --- applied) — rather than a second hand-maintained list, the same
 --- anti-drift reasoning `config/KEYMAPS.lua`'s own header states for why
---- keymaps are declarative data in the first place. Two entries are
+--- keymaps are declarative data in the first place. Three entries are
 --- skipped as pure alternate-key duplicates of one already included
---- (`rename_leader`, `goto_type_definition_gr` — see `config/KEYMAPS.lua`'s
---- own "one action, two keys" comments), and any entry whose `requires`
---- names a plugin that isn't installed is skipped too: unlike a keymap
+--- (`rename_leader`, `goto_type_definition_gr`, `code_action_range` — see
+--- `config/KEYMAPS.lua`'s own "one action, two keys" comments), and any
+--- entry whose `requires` names a plugin that isn't installed is skipped
+--- too: unlike a keymap
 --- (invisible until pressed, so a missing `requires` is harmless — see
 --- `lsp.bindings.keymaps`'s header), a menu entry is something the user is
 --- actively looking at, so one that would just error on click is worse
@@ -30,7 +31,7 @@ local M = {}
 
 ---@internal
 --- Alternate-key duplicates of an already-included action.
-local SKIP = { rename_leader = true, goto_type_definition_gr = true }
+local SKIP = { rename_leader = true, goto_type_definition_gr = true, code_action_range = true }
 
 ---@internal
 --- Fly-out group for a catalogue entry, derived from its name so a new

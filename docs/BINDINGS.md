@@ -63,12 +63,13 @@ Two things worth knowing about the left-hand sides:
 
 <!-- BEGIN GENERATED KEYMAPS -->
 
-The `default` preset binds all 57 entries below. `minimal` binds the 33
+The `default` preset binds all 58 entries below. `minimal` binds the 33
 marked in the last column; `none` binds nothing.
 
 | action | lhs | mode | needs | minimal | description |
 | --- | --- | --- | --- | --- | --- |
-| `code_action` | `lsa` | n, x | — | — | Code action (with diff preview) |
+| `code_action` | `lsa` | n | — | — | Code action (with diff preview) |
+| `code_action_range` | `gra` | x | — | — | Code action for the selection (with diff preview) |
 | `diag_code_action` | `<leader>xa` | n | — | — | Quick fix for the diagnostic on this line |
 | `diag_next` | `]d` | n, x, o | — | — | Next diagnostic (buffer) |
 | `diag_prev` | `[d` | n, x, o | — | — | Prev diagnostic (buffer) |
@@ -143,9 +144,10 @@ active `keymaps.preset` and any `keymaps.map` overrides/disables already
 applied — the same anti-drift reasoning `config/KEYMAPS.lua` itself exists
 for. Grouped into fly-outs (Navigation, Rename, Formatter, Diagnostics,
 Trouble, Picker) derived from each entry's catalogue name, in the shape
-[nvzone/menu](https://github.com/nvzone/menu) expects. `rename_leader` and
-`goto_type_definition_gr` are skipped as pure alternate-key duplicates of an
-already-included action; any entry whose `requires` names a plugin that
+[nvzone/menu](https://github.com/nvzone/menu) expects. `rename_leader`,
+`goto_type_definition_gr` and `code_action_range` are skipped as pure
+alternate-key duplicates of an already-included action; any entry whose
+`requires` names a plugin that
 isn't installed (Trouble, fzf-lua) is skipped too — a menu entry is
 something you're actively looking at, so one that would just error on
 click is worse than one that doesn't appear.

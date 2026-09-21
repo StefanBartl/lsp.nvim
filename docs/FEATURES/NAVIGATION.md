@@ -10,13 +10,16 @@ Every key below is a catalogue entry (`keymaps.map.<action> = "<lhs>"` moves it,
 `= false` drops it), lives in the `default` preset and is **not** in `minimal`.
 The five `ls*` ones extend the prefixless family whose price is a `timeoutlen`
 wait on every Normal-mode `l` — see [BINDINGS.md](../BINDINGS.md#keymaps) — and
-`minimal` exists to avoid that, so it stays as it was.
+`minimal` exists to avoid that, so it stays as it was. The family is **Normal
+mode only**: a Visual-mode mapping that starts with `l` would make every `l`
+there wait too, and `vl` / `vjl` are how a selection gets extended.
 
 | Key | Action | Does |
 | --- | --- | --- |
 | `lsp` | `peek_definition` | The definition, in an editable float over the code |
 | `lsT` | `peek_type_definition` | The same for the type |
-| `lsa` | `code_action` | Code actions, with the edit previewed as a diff (Normal and Visual) |
+| `lsa` | `code_action` | Code actions, with the edit previewed as a diff |
+| `gra` (Visual) | `code_action_range` | The same for the selection |
 | `<leader>xa` | `diag_code_action` | The quick fix for the diagnostic on this line |
 | `lsf` | `picker_finder` | References, implementations and definitions in one list |
 | `lsh` / `lsH` | `picker_type_super` / `picker_type_sub` | Type hierarchy, up and down |
@@ -55,6 +58,12 @@ answer to "which".
 A buffer that was not open before the peek is unloaded again when the peek
 closes, unless it was modified or is shown somewhere else — otherwise ten peeks
 leave ten buffers in the list. A buffer that was already open is never touched.
+
+A peek opens its buffer without listing it (`bufadd`), which is right for the
+one it unloads again and wrong for one that stays: a buffer you take into a
+window, and one you edited so it could not be unloaded, are both **listed** —
+`:ls`, the tabline and the buffer pickers show what the editor is holding.
+
 After a peek is taken into a real window the target line flashes
 (`peek.beacon`), which is the one moment the eye loses the cursor.
 
@@ -78,8 +87,14 @@ and the native list when it is not; `"fzf-lua"` and `"native"` pin one — the
 former says so, once, if fzf-lua is missing and the key still works. fzf-lua's
 picker is opened with `silent = true`, so it does not warn that it is not your
 global `vim.ui.select` backend; it takes that role for this one call only.
-Visual mode asks for the actions of the selection, which is what
-`vim.lsp.buf.code_action` does natively and fzf-lua calls it.
+A selection asks for the actions of the selection, which is what
+`vim.lsp.buf.code_action` does natively and fzf-lua calls it — on **`gra`** in
+Visual mode, not on `lsa`. `lsa` is Normal-mode only because a Visual-mode
+mapping that starts with `l` makes every `l` there wait out `timeoutlen`
+(`vl`, `vjl`), while `g` + `r` is already a prefix in Visual mode, so `gra` adds
+no wait to any key. It is the catalogue's entry (`code_action_range`) replacing
+Neovim's own Visual-mode `gra` the way `grn` and `grt` replace theirs; in Normal
+mode Neovim's `gra` stays as it is.
 
 **Quick fix for a diagnostic.** `]d` already jumps to a diagnostic and shows it.
 `<leader>xa` is the missing third step: the same list, asked for the
@@ -98,6 +113,13 @@ The commands run client-side. Off by default, because it is one more client in
 which the [code-action indicator](INDICATORS.md#code-action-indicator)'s default
 allowlist does not light on — a hunk action is neither a fix nor a source
 action, and the bulb would otherwise burn on every changed line.
+
+A hunk that only *removed* lines counts as the one line it sits on, as it does
+for gitsigns' own sign — with the two edges gitsigns bends the rule for: a
+deletion above the first line belongs to line 1, one after the last line to the
+last line. The server also reports each request as answered (the fourth argument
+of `request`); one that does not leaves every code-action query registered as
+pending on the client for good, and the indicator asks on every `CursorHold`.
 
 - **Modules:** `bindings/actions.lua` (`code_action`, `diag_code_action`),
   `core/gitsigns_actions.lua`

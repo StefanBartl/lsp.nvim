@@ -190,6 +190,23 @@ describe("lsp.bindings.keymaps", function()
     assert.are.equal(#KEYMAPS.presets.default, #registered)
   end)
 
+  -- A mapping whose lhs starts with a Visual-mode motion makes that motion
+  -- wait out 'timeoutlen' for the rest of the mapping. In Normal mode that is
+  -- the documented price of the `ls*` family; in Visual mode it is not, and
+  -- `vl` / `vjl` are how a selection gets extended. Measured on the bound
+  -- catalogue, not read off the lhs: a native default that starts the same
+  -- way would count too.
+  it("does not make a Visual-mode motion wait for a longer mapping", function()
+    keymaps.setup(cfg())
+    for _, key in ipairs({ "h", "j", "k", "l", "w", "b", "e" }) do
+      assert.are.equal(
+        "",
+        vim.fn.mapcheck(key, "x"),
+        ("`%s` waits on a mapping in Visual mode"):format(key)
+      )
+    end
+  end)
+
   it("binds nothing when disabled", function()
     package.loaded["lsp.config"] = nil
     local disabled = require("lsp.config").setup({ keymaps = { enable = false } })

@@ -54,11 +54,28 @@ describe("the lspsaga replacement: keymap catalogue", function()
     end
   end)
 
-  it("keeps `lsa` on the code-action entry, now in Normal and Visual mode", function()
+  -- `{ "n", "x" }` for one commit. `lsa` starts with `l`, and a Visual-mode
+  -- mapping that starts with `l` makes every `l` there wait out 'timeoutlen'
+  -- for an `s` -- measured, `mapcheck("l", "x")` answered with this mapping --
+  -- and `vl` / `vjl` are how a selection gets extended.
+  it("keeps `lsa` on the code-action entry, in Normal mode only", function()
     assert.are.equal("lsa", entries.code_action.lhs)
-    assert.are.same({ "n", "x" }, entries.code_action.mode)
+    assert.are.equal("n", entries.code_action.mode)
     assert.are.equal("function", type(entries.code_action.rhs))
   end)
+
+  it(
+    "gives a selection its code actions on `gra`, which is already a prefix in Visual mode",
+    function()
+      local range = entries.code_action_range
+      assert.is_not_nil(range, "the range entry is missing")
+      assert.are.equal("gra", range.lhs)
+      assert.are.equal("x", range.mode)
+      assert.are.equal(entries.code_action.rhs, range.rhs, "a different action than `lsa`")
+      assert.is_true(vim.tbl_contains(KEYMAPS.presets.default, "code_action_range"))
+      assert.is_false(vim.tbl_contains(KEYMAPS.presets.minimal, "code_action_range"))
+    end
+  )
 
   it("names the plugin an entry needs, and only where it needs one", function()
     assert.are.equal("fzf-lua", entries.picker_finder.requires)
@@ -580,6 +597,22 @@ describe("the lspsaga replacement: config", function()
     assert.are.same({ Interface = true }, cfg.implement.kinds)
     assert.are.same({ typescript = true }, cfg.implement.filetypes)
     assert.are.equal(7, #warnings)
+  end)
+
+  -- `implement.text` goes through `string.format` on every answer. A string that
+  -- cannot print a number would fail there each time, so it is refused up front
+  -- and named, instead of being accepted and never drawing a marker.
+  it("refuses an implement.text that cannot print a count, and takes %% for a percent", function()
+    for _, text in ipairs({ "impl", " %d% impl", "%d %d" }) do
+      local cfg, warnings = setup({ implement = { text = text } })
+      assert.are.equal(" %d impl", cfg.implement.text, text)
+      assert.are.equal(1, #warnings, text)
+      assert.is_truthy(warnings[1]:find("implement.text", 1, true), text)
+    end
+
+    local cfg, warnings = setup({ implement = { text = " %d%% impl" } })
+    assert.are.equal(" %d%% impl", cfg.implement.text)
+    assert.are.same({}, warnings)
   end)
 
   it("accepts each code-action picker and refuses the rest", function()

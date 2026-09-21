@@ -96,12 +96,29 @@ local entries = {
   -- Through `actions.code_action`, which opens fzf-lua's picker (a diff preview
   -- of the edit before it is applied) when fzf-lua is installed and falls back
   -- to `vim.lsp.buf.code_action` when it is not -- `code_actions.picker` pins
-  -- either. `x` as well: a range asks for the actions of a selection.
+  -- either.
+  --
+  -- Normal mode only. This was `{ "n", "x" }` for one commit, and that made
+  -- every `l` in Visual mode wait out 'timeoutlen' -- measured with
+  -- `mapcheck("l", "x")`, which answered with this mapping. The Normal-mode
+  -- wait of the `ls*` family is a documented price; Visual mode had none, and
+  -- `vl` / `vjl` are how a selection gets extended. The range case is
+  -- `code_action_range` below, on a key that is already a prefix there.
   code_action = {
     lhs = "lsa",
-    mode = { "n", "x" },
+    mode = "n",
     rhs = actions.code_action,
     desc = "Code action (with diff preview)",
+  },
+  -- The same picker for a selection. `gra` is Neovim's own Visual-mode code
+  -- action, so `g` + `r` is already a pending prefix in `x` mode and this adds
+  -- no wait to any key -- the catalogue replaces the native mapping the way
+  -- `grn` and `grt` replace theirs. Normal mode keeps Neovim's own `gra`.
+  code_action_range = {
+    lhs = "gra",
+    mode = "x",
+    rhs = actions.code_action,
+    desc = "Code action for the selection (with diff preview)",
   },
   -- The floating, editable peek (`lsp.core.peek`): look at a definition
   -- without leaving the code. `lsd`/`lst` jump and lose the place, `lsr`/`lsi`

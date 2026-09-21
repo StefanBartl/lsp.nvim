@@ -150,12 +150,21 @@ and only the first sends anything for text that has not changed. The old
 markers stay on screen until the new answers replace them together, so an edit
 does not blink every marker off and on.
 
+Two guards keep a marker on the line it describes. The refresh is debounced **per
+buffer** — one shared timer keeps only the last call's buffer, so editing one
+buffer and moving to another inside the window would leave the first with
+markers for text it no longer has. And an answer for text that has changed since
+the request went out is not acted on: typing in Insert mode fires no
+`TextChanged`, so a late answer would mark the wrong lines, and because a round
+counts as handled per `changedtick` it would also turn the right round away.
+`InsertLeave` and `TextChanged` ask again once the edit is over.
+
 `kinds` is a map of SymbolKind names (`Interface`, `Class`, `Method`, …), not a
 list — a list would merge index by index over the default.
 
 - **Module:** `core/implement.lua`
 - **Config:** `implement.enable`, `implement.filetypes`, `implement.kinds`,
-  `implement.text` (`%d` is the count), `implement.debounce_ms`,
-  `implement.max_requests`
+  `implement.text` (`%d` is the count; `%%` is a literal percent sign),
+  `implement.debounce_ms`, `implement.max_requests`
 - **Commands:** `:Lsp implement [toggle|on|off|status|clear] [filetype]`
 - **Presets:** on under `full`
