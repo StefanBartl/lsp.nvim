@@ -137,8 +137,9 @@ nvim --headless -u NONE -c "set rtp^=." -c "set rtp^=/path/to/lib.nvim" \
 ```
 
 [GitHub Actions](../.github/workflows/ci.yml) runs stylua, luacheck, the
-bindings check, both suites, and then force-pushes `ci-verified` to the tested
-commit so dependent repositories can pin a known-good state.
+bindings check, both suites, and then moves `ci-verified` to the tested commit
+so dependent repositories can pin a known-good state. It only ever moves
+forward, and a failed lookup stops the job instead of pushing.
 
 ## Workflow
 
