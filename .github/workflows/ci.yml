@@ -78,6 +78,7 @@ jobs:
         with:
           repository: StefanBartl/ui.nvim
           path: .deps/ui.nvim
+          ref: ci-verified
       - uses: rhysd/action-setup-vim@v1
         with: { neovim: true, version: stable }
       # TESTS/lsp/probe_live_spec.lua runs `:LspDoctor probe` against a real
@@ -135,6 +136,7 @@ jobs:
         with:
           repository: StefanBartl/ui.nvim
           path: .deps/ui.nvim
+          ref: ci-verified
       - uses: rhysd/action-setup-vim@v1
         with: { neovim: true, version: stable }
       - run: |
