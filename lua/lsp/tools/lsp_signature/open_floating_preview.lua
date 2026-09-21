@@ -162,14 +162,21 @@ return function(lines, opts)
 
   local group_name = "LspSignaturePopup_" .. tostring(winid)
   local aug_id = api.nvim_create_augroup(group_name, { clear = true })
+  local hook_id
   -- `WinClosed` used to be in this list. Its pattern is a *window id*, and a
   -- buffer-local registration compiles to `<buffer=N>`: measured, the autocmd
   -- was created with pattern `<buffer=2>`, which no `WinClosed` can ever
   -- match. Nothing is lost by dropping it -- the window closing wipes the
   -- buffer (`bufhidden=wipe`), so `BufWipeout` is the event that actually
   -- runs, and it is the one that deletes this group again.
-  Autocmd.create({ "BufWipeout", "BufHidden", "BufLeave" }, function()
+  -- The record goes with it: `nvim_del_augroup_by_id` drops the autocmd but not
+  -- its record in lib.nvim's autocmd registry, which is only dropped through
+  -- `delete(id)` or by asking for the same group again -- and this group's name
+  -- carries the window id, which is never asked for twice. Without this every
+  -- popup ever shown left one record behind for the rest of the session.
+  hook_id = Autocmd.create({ "BufWipeout", "BufHidden", "BufLeave" }, function()
     pcall(require("lsp.tools.lsp_signature.state").close)
+    pcall(Autocmd.delete, hook_id)
     pcall(api.nvim_del_augroup_by_id, aug_id)
   end, {
     group = aug_id,

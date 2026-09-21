@@ -107,6 +107,29 @@ describe("lsp.tools.lsp_signature", function()
     assert.are.equal("%=/src/pkg/mod.lua%=", api.nvim_get_option_value("statusline", { win = win }))
   end)
 
+  -- Each popup hooks its buffer under a group named after its window id and
+  -- drops that group when it closes. `nvim_del_augroup_by_id` removes the
+  -- autocmd but not its record in lib.nvim's autocmd registry (only
+  -- `delete(id)`, or asking for the same group again, does), and a window id is
+  -- never asked for twice -- so every popup ever shown left a record behind.
+  it("takes back its autocmd record and group when the popup closes", function()
+    local lib_autocmd = require("lib.nvim.bindings.autocmd")
+    local ofp = require("lsp.tools.lsp_signature.open_floating_preview")
+    local before = #lib_autocmd.registered()
+
+    for _ = 1, 5 do
+      local _, win = ofp({ "foo(a, b)" })
+      assert.is_not_nil(win)
+      assert.are.equal(before + 1, #lib_autocmd.registered(), "one record while it is open")
+      api.nvim_win_close(win, true) -- 'bufhidden' is wipe: the hook runs
+      assert.are.equal(before, #lib_autocmd.registered(), "and none once it is closed")
+      assert.is_false(
+        pcall(api.nvim_get_autocmds, { group = "LspSignaturePopup_" .. win }),
+        "the group is gone too"
+      )
+    end
+  end)
+
   -- `nvim_create_buf` signals failure by returning 0, and 0 is not an invalid
   -- handle -- it aliases the *current* buffer. An unchecked failure here
   -- would retarget every following `nvim_buf_*`/`nvim_open_win` call in this
