@@ -30,7 +30,10 @@ nested `BufWritePre` only when one opens -- and two are not traced to a file.
 `lsp_nvim_symbols`, `lsp_nvim_implement`, `lsp_nvim_peek`,
 `lsp_nvim_gitsigns_actions` (built from `M.GROUP` constants) +
 `LspSignaturePopup_<winid>`, whose name is built at runtime -- a grep for the
-literal string finds the first 19 and none of the last 10.
+literal string finds the first 19 and none of the last 10. That one exists only
+while its popup is open: the hook deletes itself -- its record in `lib.nvim`'s
+autocmd registry included -- and the group when the popup closes, so a session
+that shows a thousand popups does not carry a thousand records.
 
 ## Core
 
