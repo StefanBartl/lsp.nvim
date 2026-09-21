@@ -144,12 +144,14 @@ raises `BufWipeout`, which is the event that actually deletes the group.
 `ToolsNoiceIntegration` is registered at module level (not inside a `setup()`
 function), so it fires as soon as the module is required.
 
-## Breadcrumb depth (`integrations/lspsaga.lua`)
+## Breadcrumb depth and chips (`integrations/lspsaga.lua`)
 
 | Augroup (`clear=true`) | Event | Pattern | Condition | Action |
 | --- | --- | --- | --- | --- |
-| `LspNvimSagaWinbarDepth` | `CursorMoved` | — | Filetype has a depth limit | Trims the winbar lspsaga wrote to path + N symbols |
+| `LspNvimSagaWinbarDepth` | `CursorMoved` | — | Filetype has a depth limit, or chips are on | Trims the winbar lspsaga wrote to path + N symbols, then draws it as chips |
 | `LspNvimSagaWinbarDepth` | `User` | `SagaSymbolUpdate` | same | same, after a fresh symbol response |
+| `LspNvimSagaWinbarDepth` | `LspAttach`, `BufWinEnter` | — | same | styles the path-only bar lspsaga writes before any symbol arrives |
+| `LspNvimSagaWinbarDepth` | `ColorScheme` | — | chips are on | redefines the chip highlight groups under their old names |
 
 Registered from `M.configure()`, which the plugin spec calls on
 `event = "LspAttach"` when lspsaga loads — without lspsaga installed, the
@@ -234,6 +236,9 @@ of blindness that let two groupless autocommands (above) stack unnoticed.
   `WinClosed` event that its buffer-local pattern could never match
   (`ea69f4e`); `MasonEslintPrettier` moved from `BufWritePre` to
   `BufWritePost` (`766d165`). 34 call sites across 25 groups.
+- 2026-09-21: `LspNvimSagaWinbarDepth` also styles the breadcrumb as chips
+  (`lspsaga_chips.lua`): two more events, `LspAttach`/`BufWinEnter` and
+  `ColorScheme`.
 - 2026-09-02: `LspNvimSagaWinbarDepth` moved onto `lib.nvim.bindings.autocmd`
   (`ab79a0b`) after having briefly landed on the raw API (`fa6d97a`) — this
   page's "everything goes through lib.nvim" claim was false for one commit.
