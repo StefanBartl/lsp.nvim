@@ -8,6 +8,7 @@ on:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
 
@@ -32,7 +33,15 @@ jobs:
       # docs/BINDINGS.md's keymap tables are generated from the catalogue.
       # Without this the two drift the first time an entry changes, which is
       # exactly what generating them was meant to prevent.
-      - run: nvim --headless -l scripts/gen_bindings.lua --check
+      - run: |
+          exec > >(tee -a "$RUNNER_TEMP/test-output.log") 2>&1
+          nvim -n -i NONE --headless -l scripts/gen_bindings.lua --check
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: test-output-lint
+          path: ${{ runner.temp }}/test-output.log
+          if-no-files-found: ignore
 
   test:
     # The spec suite. plenary provides the busted harness; lib.nvim is a hard
@@ -40,6 +49,7 @@ jobs:
     # root/workspace pickers, ...) that TESTS/lsp/pack_spec.lua exercises.
     name: test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       # One platform failing must not cancel the others: which of the three
       # broke is the whole information content of this job.
@@ -57,6 +67,8 @@ jobs:
         with:
           repository: nvim-lua/plenary.nvim
           path: .deps/plenary.nvim
+          # Pinned to the 2026-09-20 HEAD; bump deliberately, not by drifting.
+          ref: 74b06c6c75e4eeb3108ec01852001636d85a932b
       - uses: actions/checkout@v5
         with:
           repository: StefanBartl/lib.nvim
@@ -95,7 +107,14 @@ jobs:
           LIB_NVIM_PATH: .deps/lib.nvim
           UI_NVIM_PATH: .deps/ui.nvim
         run: |
-          nvim --headless --noplugin -u TESTS/minimal_init.lua             -c "PlenaryBustedDirectory TESTS/lsp { minimal_init = 'TESTS/minimal_init.lua', sequential = true }"
+          exec > >(tee -a "$RUNNER_TEMP/test-output.log") 2>&1
+          nvim -n -i NONE --headless --noplugin -u TESTS/minimal_init.lua             -c "PlenaryBustedDirectory TESTS/lsp { minimal_init = 'TESTS/minimal_init.lua', sequential = true }"
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: test-output-test-${{ matrix.os }}
+          path: ${{ runner.temp }}/test-output.log
+          if-no-files-found: ignore
 
   smoke:
     # End-to-end, and deliberately separate from the specs above: this one runs
@@ -104,6 +123,7 @@ jobs:
     # runs unconditionally, and the smoke test asserts zero setup warnings
     # under the default config -- a missing ui.kit would push one.
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
       - uses: actions/checkout@v5
@@ -118,9 +138,16 @@ jobs:
       - uses: rhysd/action-setup-vim@v1
         with: { neovim: true, version: stable }
       - run: |
-          nvim --headless -u NONE \
+          exec > >(tee -a "$RUNNER_TEMP/test-output.log") 2>&1
+          nvim -n -i NONE --headless -u NONE \
             -c "set rtp^=." -c "set rtp^=.deps/lib.nvim" -c "set rtp^=.deps/ui.nvim" \
             -c "luafile TESTS/smoke.lua" -c "qa!"
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: test-output-smoke
+          path: ${{ runner.temp }}/test-output.log
+          if-no-files-found: ignore
 
   # See lib.nvim's own templates/README.md ("Pinning lib.nvim in CI") for why:
   # ci-verified only moves once lint+test+smoke are green here, so this
@@ -131,6 +158,7 @@ jobs:
     needs: [lint, test, smoke]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:
