@@ -82,7 +82,10 @@ local function defaults()
     filetypes = {},
     show_file = true,
     folder_level = 1,
-    separator = " âº ", -- " › "
+    -- U+203A, by codepoint like the glyphs in `winbar.kinds` and
+    -- `winbar.render`: a literal here was once read as Latin-1 and written
+    -- back as UTF-8, which is not a bug a reader sees.
+    separator = " " .. vim.fn.nr2char(0x203A) .. " ",
     max_symbols = vim.deepcopy(M.DEFAULT_MAX_SYMBOLS),
     chips = true,
     debounce_ms = 60,

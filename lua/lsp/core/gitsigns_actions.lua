@@ -85,6 +85,11 @@ end
 ---
 --- A hunk covers the lines it added; one that only removed lines covers the
 --- single line the removal sits on, which is where gitsigns draws its sign.
+---
+--- That line is `added.start` -- except at the two ends of the file, where
+--- gitsigns' own `find_hunk` and its signs bend the rule and so does this: a
+--- deletion above the first line is `start == 0` and belongs to line 1, one
+--- after the last is `start == line_count + 1` and belongs to the last line.
 ---@param bufnr integer
 ---@param first integer
 ---@param last integer
@@ -98,11 +103,15 @@ function M.touches_hunk(bufnr, first, last)
   if not ok or type(hunks) ~= "table" then
     return false
   end
+  local line_count = api.nvim_buf_is_valid(bufnr) and api.nvim_buf_line_count(bufnr) or 1
   for _, hunk in ipairs(hunks) do
     local added = hunk.added
     if added then
       -- 1-based in gitsigns, 0-based here.
       local from = added.start - 1
+      if added.count == 0 then
+        from = math.min(math.max(from, 0), line_count - 1)
+      end
       local to = from + math.max(added.count, 1) - 1
       if last >= from and first <= to then
         return true
@@ -169,9 +178,10 @@ function M.server(dispatchers)
   ---@param method string
   ---@param params table
   ---@param callback fun(err: table|nil, result: any)
+  ---@param notify_reply_callback? fun(message_id: integer) # Called once the reply is out.
   ---@return boolean ok
   ---@return integer id
-  function server.request(method, params, callback)
+  function server.request(method, params, callback, notify_reply_callback)
     request_id = request_id + 1
     if method == "initialize" then
       callback(nil, {
@@ -186,6 +196,13 @@ function M.server(dispatchers)
       -- MethodNotFound. The server advertised one capability; anything else
       -- is somebody assuming too much.
       callback({ code = -32601, message = "method not supported: " .. method }, nil)
+    end
+    -- Neovim tells a request that was answered before `request` returned from
+    -- one still pending by this callback. Without it every request stays
+    -- registered as pending on `client.requests` for good -- one per code-action
+    -- query, and the code-action indicator asks on every CursorHold.
+    if notify_reply_callback then
+      notify_reply_callback(request_id)
     end
     return true, request_id
   end

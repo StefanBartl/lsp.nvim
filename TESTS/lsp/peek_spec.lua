@@ -249,6 +249,33 @@ describe("lsp.core.peek", function()
       vim.bo[buf].modified = false
     end)
 
+    -- `vim.uri_to_bufnr` is `bufadd`, which leaves a buffer out of the buffer
+    -- list. A peek that could not give the buffer back has to list it: loaded,
+    -- modified and unlisted is a buffer `:qa` refuses to leave behind and `:ls`
+    -- and the tabline never mention.
+    it("lists a buffer it could not give back because it was edited", function()
+      local entry = peek.open(target(dst, 0))
+      local buf = entry.buf
+      assert.is_false(vim.bo[buf].buflisted, "premise: a peek opens the buffer unlisted")
+      vim.api.nvim_buf_set_lines(buf, 0, 1, false, { "-- edited" })
+      peek.close()
+      vim.wait(200, function()
+        return vim.bo[buf].buflisted
+      end)
+      assert.is_true(vim.bo[buf].buflisted)
+      vim.bo[buf].modified = false
+    end)
+
+    it("leaves a buffer it did unload unlisted, as it found it", function()
+      local entry = peek.open(target(dst, 0))
+      local buf = entry.buf
+      peek.close()
+      vim.wait(500, function()
+        return not vim.api.nvim_buf_is_loaded(buf)
+      end)
+      assert.is_false(vim.bo[buf].buflisted)
+    end)
+
     it("closing a lower peek closes the ones stacked above it", function()
       local first = peek.open(target(dst, 0))
       local second = peek.open(target(src, 0))
@@ -300,9 +327,54 @@ describe("lsp.core.peek", function()
       )
       assert.is_truthy(entry)
     end)
+
+    -- `mapset` restores a buffer-local map into the *current* buffer. The float
+    -- is not always the current window when it closes -- `peek.close()` closes
+    -- the top peek from anywhere -- so the restore has to run in the peeked
+    -- buffer, or the map lands on whatever the cursor is in.
+    it("gives the shadowed map back to its own buffer when closed from another window", function()
+      vim.cmd("edit " .. vim.fn.fnameescape(dst))
+      local buf = vim.api.nvim_get_current_buf()
+      vim.keymap.set("n", "q", "<Nop>", { buffer = buf, desc = "mine" })
+      vim.api.nvim_set_current_win(main)
+      vim.cmd("edit " .. vim.fn.fnameescape(src))
+      local other = vim.api.nvim_get_current_buf()
+
+      peek.open(target(dst, 0))
+      vim.api.nvim_set_current_win(main)
+      peek.close()
+      vim.wait(200, function()
+        return #peek.entries() == 0
+      end)
+
+      ---@param b integer
+      ---@return string|nil
+      local function q_desc(b)
+        return vim.api.nvim_buf_call(b, function()
+          return vim.fn.maparg("q", "n", false, true).desc
+        end)
+      end
+      assert.are.equal("mine", q_desc(buf))
+      assert.is_nil(q_desc(other), "the map was restored into the buffer the cursor was in")
+    end)
   end)
 
   describe("take", function()
+    -- The same `bufadd`: putting an unlisted buffer in a window does not list
+    -- it, so a peek taken with `<C-o>` would sit in a window that `:ls`, the
+    -- tabline and every buffer picker deny exists.
+    for _, how in ipairs({ "edit", "vsplit", "split", "tabedit" }) do
+      it(("`%s` lists the buffer it took"):format(how), function()
+        local entry = peek.open(target(dst, 0))
+        assert.is_false(vim.bo[entry.buf].buflisted, "premise: a peek opens the buffer unlisted")
+        peek.take(how)
+        assert.is_true(vim.bo[entry.buf].buflisted)
+        if how == "tabedit" then
+          vim.cmd("tabclose")
+        end
+      end)
+    end
+
     it("`edit` puts the peeked buffer in the window it came from and closes the float", function()
       local entry = peek.open(target(dst, 2, 2))
       local buf = entry.buf

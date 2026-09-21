@@ -109,8 +109,12 @@ local state = defaults()
 ---@type boolean
 local registered = false
 
----@type Lib.Debounce.Handle|nil
-local scheduled = nil
+--- One debounce per buffer. A handle keeps the arguments of its *last* call
+--- only, so a single one shared by every buffer would drop the refresh of the
+--- buffer that changed first whenever another changed inside the window --
+--- `lsp.core.winbar` keeps one per buffer for the same reason.
+---@type table<integer, Lib.Debounce.Handle>
+local schedulers = {}
 
 --- Bumped on every round. A response carrying an older token describes text
 --- that has since changed, and drawing it would mark the wrong line.
@@ -319,10 +323,52 @@ local function refresh(bufnr)
     return
   end
   symbols.refresh(bufnr, function(nodes)
-    if nodes then
+    -- An answer describes the text it was asked about. When the buffer has
+    -- changed since -- typing in Insert mode fires no `TextChanged` -- the
+    -- lines in it are not the lines of the text, and a round counts as handled
+    -- per `changedtick`: acting on it would mark the wrong lines and then turn
+    -- the round for the current text away. `InsertLeave` and `TextChanged` ask
+    -- again once the edit is over.
+    if nodes and symbols.fresh(bufnr) then
       run(bufnr, nodes)
     end
   end)
+end
+
+---@internal
+--- Ask for a round once the buffer has been quiet for `debounce_ms`.
+---@param bufnr integer
+---@return nil
+local function schedule(bufnr)
+  local handle = schedulers[bufnr]
+  if handle == nil then
+    handle = debounce.new(refresh, state.debounce_ms)
+    schedulers[bufnr] = handle
+  end
+  handle.call(bufnr)
+end
+
+---@internal
+---@return nil
+local function drop_schedulers()
+  for _, handle in pairs(schedulers) do
+    handle.cancel()
+  end
+  schedulers = {}
+end
+
+---@internal
+--- Can `text` print a count? It must consume one number and raise nothing.
+--- `string.format` runs on every answer, inside a request handler that nothing
+--- catches, so a stray `%` would fail there each time and draw no marker at all.
+---@param text any
+---@return boolean
+local function formats_a_count(text)
+  if type(text) ~= "string" then
+    return false
+  end
+  local ok, out = pcall(string.format, text, 12345)
+  return ok and out:find("12345", 1, true) ~= nil
 end
 
 -- ---------------------------------------------------------------------- setup
@@ -351,7 +397,7 @@ function M.setup(opts)
       end
     end
   end
-  if type(opts.text) == "string" and opts.text:find("%d", 1, true) then
+  if formats_a_count(opts.text) then
     state.text = opts.text
   end
   if type(opts.debounce_ms) == "number" and opts.debounce_ms >= 0 then
@@ -365,11 +411,10 @@ function M.setup(opts)
 
   M.detach()
   registered = true
-  scheduled = debounce.new(refresh, state.debounce_ms)
   local group = autocmd.group(M.GROUP, true)
   autocmd.create({ "TextChanged", "InsertLeave", "BufEnter", "LspAttach" }, function(args)
-    if scheduled and M.enabled(vim.bo[args.buf].filetype) then
-      scheduled.call(args.buf)
+    if registered and M.enabled(vim.bo[args.buf].filetype) then
+      schedule(args.buf)
     end
   end, {
     group = group,
@@ -379,6 +424,11 @@ function M.setup(opts)
     cancel(args.buf)
     tokens[args.buf] = nil
     handled[args.buf] = nil
+    local handle = schedulers[args.buf]
+    if handle then
+      handle.cancel()
+      schedulers[args.buf] = nil
+    end
   end, {
     group = group,
     desc = "lsp.nvim: forget the implementation-marker state of a wiped buffer",
@@ -510,10 +560,7 @@ end
 --- Remove the handlers and every marker still on screen.
 ---@return nil
 function M.detach()
-  if scheduled then
-    scheduled.cancel()
-    scheduled = nil
-  end
+  drop_schedulers()
   pcall(api.nvim_del_augroup_by_name, M.GROUP)
   registered = false
   for _, bufnr in ipairs(api.nvim_list_bufs()) do

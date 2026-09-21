@@ -448,7 +448,10 @@ implement = {
 `kinds` is a **map**, not `{ "Interface" }`: `vim.tbl_deep_extend` merges two
 lists index by index, so a list would leave you the default's entries you meant
 to replace. The same reason makes `finder` below a map of switches. A `text`
-with no `%d` would print no count and is refused in favour of the default.
+that cannot print a count is refused, with a warning, in favour of the default:
+one with no `%d`, or with a lone `%` (`" %d% impl"` — write `%%` for a percent
+sign, `" %d%% impl"`). It goes through `string.format` on every answer, so what
+`string.format` rejects would otherwise fail there each time and draw nothing.
 
 ## code_actions and finder
 

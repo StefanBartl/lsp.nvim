@@ -584,6 +584,21 @@ local function normalize_ui_features(cfg)
   normalize_filetype_map(cfg, "implement")
   normalize_boolean(cfg, "implement", "enable")
   normalize_string(cfg, "implement", "text")
+  -- A string is not yet a format: `text` goes through `string.format` with the
+  -- count on every answer, and one that cannot print a number -- no `%d`, a
+  -- lone `%` -- would fail in a request handler each time and draw nothing.
+  local printed_ok, printed = pcall(string.format, cfg.implement.text, 12345)
+  if not (printed_ok and printed:find("12345", 1, true)) then
+    warn(
+      ("implement.text: %s cannot print a count (it needs a %%d, and %%%% for a percent sign), using %q"):format(
+        vim.inspect(cfg.implement.text),
+        DEFAULTS.implement.text
+      ),
+      "implement",
+      "text"
+    )
+    cfg.implement.text = DEFAULTS.implement.text
+  end
   normalize_number(cfg, "implement", "debounce_ms", true)
   normalize_number(cfg, "implement", "max_requests", false)
   normalize_map(cfg, "implement", "kinds", "kind name -> boolean", function(name, value)

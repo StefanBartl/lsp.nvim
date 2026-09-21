@@ -626,9 +626,11 @@ fourteen do. `keymaps.map = { picker_incoming_calls = false, picker_outgoing_cal
 
 The navigation keys -- what replaced lspsaga -- are `lsp` / `lsT` (peek the
 definition / type definition in a floating, editable window), `lsa` (code
-actions with a diff preview, Normal and Visual), `<leader>xa` (the quick fix
-for the diagnostic on this line), `lsf` (finder), `lsh` / `lsH` (type
-hierarchy), `<leader>xo` (outline sidebar) and `<leader>tW` (winbar toggle).
+actions with a diff preview; `gra` in Visual mode for a selection, because an
+`ls*` key there would make every `l` wait out 'timeoutlen'), `<leader>xa`
+(the quick fix for the diagnostic on this line), `lsf` (finder), `lsh` /
+`lsH` (type hierarchy), `<leader>xo` (outline sidebar) and `<leader>tW`
+(winbar toggle).
 `docs/FEATURES/NAVIGATION.md` has the detail.
 
 Overriding, per action: >lua

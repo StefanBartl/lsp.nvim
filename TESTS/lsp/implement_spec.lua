@@ -124,6 +124,9 @@ describe("lsp.core.implement", function()
     local ns
     ---@type table[]
     local sent
+    --- Every request with the buffer it was for, in order.
+    ---@type { method: string, bufnr: integer|nil, line: integer|nil }[]
+    local asked
 
     ---@param implementations table<integer, integer> # line -> how many implement it
     ---@param with_implementation? boolean # whether the client advertises the method
@@ -137,14 +140,31 @@ describe("lsp.core.implement", function()
           documentSymbolProvider = true,
           implementationProvider = with_implementation ~= false or nil,
         },
+        -- Lines the symbols sit below where they are in the buffer's first text:
+        -- a case that types above them moves the answer to match.
+        shift = 0,
+        -- While set, the symbol request is kept instead of answered, and its
+        -- handler waits in `held` for the case to release it.
+        hold = false,
+        ---@type function|nil
+        held = nil,
       }
-      function client:request(method, params, handler)
+      function client:request(method, params, handler, bufnr_)
         sent[#sent + 1] = method
+        asked[#asked + 1] = {
+          method = method,
+          bufnr = bufnr_,
+          line = params and params.position and params.position.line,
+        }
         if method == "textDocument/documentSymbol" then
+          if self.hold then
+            self.held = handler
+            return true, 1000 + #sent
+          end
           handler(nil, {
-            sym("Repo", 11, 0),
-            sym("Impl", 5, 2),
-            sym("Cache", 11, 4),
+            sym("Repo", 11, 0 + self.shift),
+            sym("Impl", 5, 2 + self.shift),
+            sym("Cache", 11, 4 + self.shift),
           })
         else
           local n = implementations[params.position.line] or 0
@@ -169,6 +189,7 @@ describe("lsp.core.implement", function()
       real_get_clients = vim.lsp.get_clients
       symbols.reset()
       sent = {}
+      asked = {}
       ns = vim.api.nvim_create_namespace("lsp_nvim_implement")
       -- `setup()` refreshes every loaded buffer, so the ones earlier cases left
       -- behind would answer to this case's stub and inflate its request count.
@@ -249,6 +270,108 @@ describe("lsp.core.implement", function()
       end, 10)
       assert.are.equal(" 2 impl", marks()[1][4].virt_text[1][1])
     end)
+
+    -- The text goes through `string.format` on every answer, inside a request
+    -- handler nothing catches: a stray `%` in it would raise there each time
+    -- and no marker would ever be drawn, for a value `setup()` had accepted.
+    it("keeps the default text when the configured one cannot format a count", function()
+      run({ enable = true, text = " %d% impl" }, stub_client({ [0] = 2 }))
+      vim.wait(2000, function()
+        return #marks() > 0
+      end, 10)
+      assert.are.equal(" 2 impl", marks()[1][4].virt_text[1][1])
+    end)
+
+    it("takes a literal percent sign in the text, written as %%", function()
+      run({ enable = true, text = " %d%% impl" }, stub_client({ [0] = 2 }))
+      vim.wait(2000, function()
+        return #marks() > 0
+      end, 10)
+      assert.are.equal(" 2% impl", marks()[1][4].virt_text[1][1])
+    end)
+
+    -- One debounce handle keeps the arguments of the *last* call only, so a
+    -- single one shared by every buffer drops the refresh of the buffer that
+    -- changed first: switching to another window inside the window leaves the
+    -- first one's markers describing text it no longer has.
+    it("refreshes every buffer that changed inside one debounce window", function()
+      local other = vim.api.nvim_create_buf(true, false)
+      vim.api.nvim_buf_set_lines(other, 0, -1, false, { "interface Other {}", "" })
+      vim.bo[other].filetype = "typescript"
+
+      run({ enable = true, debounce_ms = 100 }, stub_client({}))
+      vim.wait(500)
+      asked = {}
+
+      vim.api.nvim_buf_set_lines(bufnr, 0, 0, false, { "" })
+      vim.api.nvim_buf_set_lines(other, 0, 0, false, { "" })
+      vim.api.nvim_exec_autocmds("TextChanged", { buffer = bufnr })
+      vim.api.nvim_exec_autocmds("TextChanged", { buffer = other })
+
+      ---@type table<integer, true>
+      local refreshed = {}
+      vim.wait(1500, function()
+        for _, req in ipairs(asked) do
+          if req.method == "textDocument/documentSymbol" and req.bufnr then
+            refreshed[req.bufnr] = true
+          end
+        end
+        return refreshed[bufnr] and refreshed[other]
+      end, 10)
+      assert.is_true(refreshed[bufnr] == true, "the first buffer's refresh was dropped")
+      assert.is_true(refreshed[other] == true, "the second buffer's refresh was dropped")
+    end)
+
+    -- An answer describes the text it was asked about. When it lands after the
+    -- buffer changed (typing in Insert mode fires no `TextChanged`), drawing it
+    -- marks the wrong lines -- and, because a round is "handled" per
+    -- `changedtick`, a stale round that got as far as the requests would also
+    -- mark the *current* text as handled and turn the right round away.
+    it(
+      "does not act on an answer for text that has changed, and asks again for the new text",
+      function()
+        local client = stub_client({ [1] = 3 }) -- `Repo` is on line 1 once the text has shifted
+        client.hold = true
+        run({ enable = true }, client)
+        vim.wait(1000, function()
+          return client.held ~= nil
+        end, 10)
+        assert.is_not_nil(client.held, "the symbol request was never sent")
+
+        -- One line typed above the interfaces while the request is on the wire.
+        vim.api.nvim_buf_set_lines(bufnr, 0, 0, false, { "" })
+
+        -- From here the server answers for the new text (`Repo` on line 1, `Cache`
+        -- on line 5) -- and the answer already on the wire arrives late, still
+        -- describing the old one (lines 0 and 4).
+        client.hold = false
+        client.shift = 1
+        client.held(nil, {
+          sym("Repo", 11, 0),
+          sym("Impl", 5, 2),
+          sym("Cache", 11, 4),
+        })
+
+        -- Leaving Insert mode is what asks again.
+        vim.api.nvim_exec_autocmds("InsertLeave", { buffer = bufnr })
+        vim.wait(2000, function()
+          return #marks() > 0
+        end, 10)
+
+        for _, req in ipairs(asked) do
+          if req.method == "textDocument/implementation" then
+            assert.is_true(
+              req.line == 1 or req.line == 5,
+              ("asked about line %s, which held something else when the text changed"):format(
+                tostring(req.line)
+              )
+            )
+          end
+        end
+        assert.are.equal(1, #marks())
+        assert.are.equal(1, marks()[1][2], "the marker is not on the line of `Repo`")
+      end
+    )
 
     it("sends nothing at all when no client implements the method", function()
       run({ enable = true }, stub_client({ [0] = 3 }, false))

@@ -265,6 +265,18 @@ describe("lsp.integrations.menu", function()
     assert.is_true(#menu.items() > 0)
   end)
 
+  -- `code_action_range` is `code_action`'s Visual-mode key: the same action on
+  -- another lhs, which is what the skip list is for. Listed, the menu would
+  -- offer "Code action" twice.
+  it("lists the code action once, not once per key", function()
+    local menu = stub({ enable = true }, { "code_action", "code_action_range" })
+    local count = 0
+    for _, group in ipairs(menu.items()) do
+      count = count + #group.items
+    end
+    assert.are.equal(1, count)
+  end)
+
   -- `group_of` derives the fly-out from the entry's name, and the module
   -- header states that as the reason there is no second hand-maintained
   -- lookup table: an entry following the convention groups correctly.

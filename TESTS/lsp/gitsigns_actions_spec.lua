@@ -63,6 +63,28 @@ describe("lsp.core.gitsigns_actions", function()
       assert.is_false(gs_actions.touches_hunk(bufnr, 2, 2))
     end)
 
+    -- gitsigns' own `find_hunk` has both of these as special cases (and so do
+    -- its signs): a deletion above the first line is `added.start == 0`, drawn
+    -- and acted on at line 1, and one after the last line is `line_count + 1`,
+    -- acted on from the last line. The hunk is real in both, and `Stage hunk`
+    -- works there -- it just was not offered.
+    it("counts a deletion above the first line as line 1", function()
+      hunks = {
+        { type = "delete", added = { start = 0, count = 0 }, removed = { start = 1, count = 2 } },
+      }
+      assert.is_true(gs_actions.touches_hunk(bufnr, 0, 0))
+      assert.is_false(gs_actions.touches_hunk(bufnr, 1, 1))
+    end)
+
+    it("counts a deletion after the last line as the last line", function()
+      -- Six lines: the sign of a deletion past the end is `added.start == 7`.
+      hunks = {
+        { type = "delete", added = { start = 7, count = 0 }, removed = { start = 7, count = 1 } },
+      }
+      assert.is_true(gs_actions.touches_hunk(bufnr, 5, 5))
+      assert.is_false(gs_actions.touches_hunk(bufnr, 4, 4))
+    end)
+
     it("is true when a selection overlaps a hunk", function()
       hunks = { { added = { start = 3, count = 1 } } }
       assert.is_true(gs_actions.touches_hunk(bufnr, 0, 5))
@@ -171,6 +193,29 @@ describe("lsp.core.gitsigns_actions", function()
       assert.is_not_nil(response)
       assert.is_nil(response.err)
       assert.are.equal(3, #response.result)
+    end)
+
+    -- Neovim tells a synchronous in-process server's requests apart from
+    -- pending ones by the fourth argument of `request`, called once the reply
+    -- is out. A server that never calls it leaves every request registered as
+    -- pending on `client.requests` -- one entry per code-action query, and the
+    -- lightbulb asks on every CursorHold -- and `LspRequest` never sees one
+    -- complete.
+    it("leaves no request pending on Neovim's client once it has answered", function()
+      hunks = { { added = { start = 3, count = 1 } } }
+      local client = start()
+      for _ = 1, 3 do
+        local response = client:request_sync("textDocument/codeAction", {
+          textDocument = { uri = vim.uri_from_bufnr(bufnr) },
+          range = {
+            start = { line = 2, character = 0 },
+            ["end"] = { line = 2, character = 0 },
+          },
+          context = { diagnostics = {} },
+        }, 2000, bufnr)
+        assert.is_not_nil(response)
+      end
+      assert.are.equal(0, vim.tbl_count(client.requests))
     end)
 
     it("answers an unknown request with an error, not silence", function()
