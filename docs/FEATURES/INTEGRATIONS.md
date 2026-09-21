@@ -51,3 +51,30 @@ U+F292). Headings have no SymbolKind of their own in the LSP protocol, so
 marksman reports them as `String` — lspsaga's own default icon for that kind
 is a boxed-letter badge ("S"), which reads as a data-type marker rather than
 "this is a heading". A hashtag reads as Markdown's own `#` syntax instead.
+
+## Breadcrumb chips
+
+lspsaga's breadcrumb is one flat string, and its path groups (`SagaFolderName`,
+`SagaFileName`, `SagaSep`) default to a link to `Comment` — grey text on a
+grey bar. The adapter rewrites the string after lspsaga has written it, the
+same way it does for the depth cap: every part becomes a rounded chip (U+E0B6 /
+U+E0B4 caps), tinted from a role colour, with the part's own icon colour kept
+on the chip background.
+
+| Role | Colour from | What it holds |
+| --- | --- | --- |
+| `folder` | `Directory` | the folder icon and name |
+| `file` | `Function` (bold) | the filetype icon and file name |
+| `symbol` | `Title` | every symbol after the file, headings included |
+
+The role comes from what lspsaga put in the part, not from its position, so a
+file in the project root is still a file chip. The separator between chips is
+left as lspsaga wrote it.
+
+- **Modules:** `integrations/lspsaga_chips.lua` (`M.style`, `M.roles`, `M.tint`,
+  `M.setup_highlights`), `integrations/lspsaga.lua` (`M.winbar_chips`,
+  `M.style_winbar`)
+- **Default:** on. `M.winbar_chips = false` leaves lspsaga's own string.
+- **Colours:** read from the colourscheme. `M.roles[role].hl` changes which
+  group a role takes its colour from, `M.tint` how far the chip background is
+  pulled towards it (default 0.16). `SagaSep` is linked to `Operator`.

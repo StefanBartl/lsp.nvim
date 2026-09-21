@@ -64,6 +64,11 @@ M.winbar_max_symbols = {
   markdown = 1,
 }
 
+--- Draw the breadcrumb as rounded, coloured chips (`lspsaga_chips`). Off
+--- leaves lspsaga's own flat string, whose path text is `Comment`-grey.
+---@type boolean
+M.winbar_chips = true
+
 --- Replace the per-filetype caps. Becomes a real config key when the pack
 --- layer takes lspsaga's options over (see the module doc); until then this is
 --- the seam, so that "how deep should the breadcrumb go" is not a number
@@ -154,8 +159,49 @@ function M.trim_winbar(win)
   vim.wo[win].winbar = table.concat(vim.list_slice(parts, 1, keep), sep)
 end
 
+--- Draw the breadcrumb of `win` as rounded chips (`lsp.integrations.lspsaga_chips`).
+---
+--- A string operation on what lspsaga wrote, like `trim_winbar`, and for the
+--- same reason: lspsaga's only colour knobs are highlight groups, and it has
+--- no notion of a chip. A winbar that is not lspsaga's, or is already styled,
+--- is left alone.
+---@param win integer
+---@return nil
+function M.style_winbar(win)
+  if not M.winbar_chips or not api.nvim_win_is_valid(win) then
+    return
+  end
+
+  local line = vim.wo[win].winbar
+  if not line or not line:find("%#Saga", 1, true) then
+    return
+  end
+
+  local sep = winbar_shape()
+  if not sep then
+    return
+  end
+
+  local styled = require("lsp.integrations.lspsaga_chips").style(split_plain(line, sep), sep)
+  if styled ~= line then
+    vim.wo[win].winbar = styled
+  end
+end
+
 ---@internal
---- Watch the two moments lspsaga writes the winbar and re-cut what it wrote.
+--- Cap, then style: the cap cuts parts off the raw string, and cutting a
+--- string of chips would work too but would have to skip the caps of a chip it
+--- splits in half.
+---@param win integer
+---@return nil
+local function refresh_winbar(win)
+  M.trim_winbar(win)
+  M.style_winbar(win)
+end
+
+---@internal
+--- Watch the moments lspsaga writes the winbar and re-cut and re-style what it
+--- wrote.
 ---
 --- `vim.schedule` rather than autocmd ordering: lspsaga creates its
 --- `CursorMoved` handler per buffer at `LspAttach` time, so an autocmd
@@ -170,28 +216,51 @@ local function watch_winbar()
   local autocmd = require("lib.nvim.bindings.autocmd")
   local group = autocmd.group("LspNvimSagaWinbarDepth", true)
 
-  local function schedule_trim()
-    -- Cheapest possible guard, on the main path: one table lookup per cursor
-    -- move for filetypes that have no cap, which is all of them but one.
-    if not M.winbar_max_symbols[vim.bo.filetype] then
+  local function schedule_refresh()
+    -- Cheapest possible guard, on the main path: with chips off, one table
+    -- lookup per cursor move for filetypes that have no cap, which is all of
+    -- them but one. With chips on, every window with a breadcrumb is a
+    -- candidate, and `style_winbar` itself returns on a bar it already drew.
+    if not M.winbar_chips and not M.winbar_max_symbols[vim.bo.filetype] then
       return
     end
     local win = api.nvim_get_current_win()
     vim.schedule(function()
-      M.trim_winbar(win)
+      refresh_winbar(win)
     end)
   end
 
-  autocmd.create("CursorMoved", schedule_trim, {
+  autocmd.create("CursorMoved", schedule_refresh, {
     group = group,
-    desc = "lsp.nvim: cap the lspsaga breadcrumb's symbol depth",
+    desc = "lsp.nvim: cap and style the lspsaga breadcrumb",
   })
   -- lspsaga's own event, fired when a fresh document-symbol answer has been
   -- rendered -- the other of the two moments it writes the winbar.
-  autocmd.create("User", schedule_trim, {
+  autocmd.create("User", schedule_refresh, {
     group = group,
     pattern = "SagaSymbolUpdate",
-    desc = "lsp.nvim: cap the lspsaga breadcrumb's symbol depth after a symbol update",
+    desc = "lsp.nvim: cap and style the lspsaga breadcrumb after a symbol update",
+  })
+  -- lspsaga writes a path-only bar when it attaches, before any symbol has
+  -- arrived; a server that reports none never fires `SagaSymbolUpdate`, and
+  -- would keep the unstyled bar for good.
+  autocmd.create({ "LspAttach", "BufWinEnter" }, schedule_refresh, {
+    group = group,
+    desc = "lsp.nvim: style the lspsaga path-only breadcrumb",
+  })
+  -- A colorscheme change clears every group, the derived chip ones included.
+  -- The strings already in a winbar name them, so they are redefined under
+  -- the same names. Scheduled: lspsaga re-links its own groups on the same
+  -- event, and ours have to be the ones standing afterwards.
+  autocmd.create("ColorScheme", function()
+    vim.schedule(function()
+      if M.winbar_chips then
+        require("lsp.integrations.lspsaga_chips").setup_highlights()
+      end
+    end)
+  end, {
+    group = group,
+    desc = "lsp.nvim: rebuild the breadcrumb chip highlights",
   })
 end
 
@@ -244,6 +313,9 @@ function M.configure()
     },
   })
 
+  if M.winbar_chips then
+    require("lsp.integrations.lspsaga_chips").setup_highlights()
+  end
   watch_winbar()
   return true
 end
