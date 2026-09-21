@@ -36,12 +36,13 @@ jobs:
       - run: |
           exec > >(tee -a "$RUNNER_TEMP/test-output.log") 2>&1
           nvim -n -i NONE --headless -l scripts/gen_bindings.lua --check
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: test-output-lint
           path: ${{ runner.temp }}/test-output.log
           if-no-files-found: ignore
+          retention-days: 14
 
   test:
     # The spec suite. plenary provides the busted harness; lib.nvim is a hard
@@ -110,12 +111,13 @@ jobs:
         run: |
           exec > >(tee -a "$RUNNER_TEMP/test-output.log") 2>&1
           nvim -n -i NONE --headless --noplugin -u TESTS/minimal_init.lua             -c "PlenaryBustedDirectory TESTS/lsp { minimal_init = 'TESTS/minimal_init.lua', sequential = true }"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: test-output-test-${{ matrix.os }}
           path: ${{ runner.temp }}/test-output.log
           if-no-files-found: ignore
+          retention-days: 14
 
   smoke:
     # End-to-end, and deliberately separate from the specs above: this one runs
@@ -144,12 +146,13 @@ jobs:
           nvim -n -i NONE --headless -u NONE \
             -c "set rtp^=." -c "set rtp^=.deps/lib.nvim" -c "set rtp^=.deps/ui.nvim" \
             -c "luafile TESTS/smoke.lua" -c "qa!"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: test-output-smoke
           path: ${{ runner.temp }}/test-output.log
           if-no-files-found: ignore
+          retention-days: 14
 
   # See lib.nvim's own templates/README.md ("Pinning lib.nvim in CI") for why:
   # ci-verified only moves once lint+test+smoke are green here, so this
