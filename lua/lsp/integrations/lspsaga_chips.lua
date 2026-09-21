@@ -43,17 +43,21 @@ local MARK = "SagaChip"
 ---@field bold? boolean
 
 --- Chip roles. `folder` and `file` are the path; `symbol` is everything after.
+---
+--- The three groups are picked so that they differ in the common colourschemes:
+--- `Directory`, `Function` and `Title` are one and the same blue in
+--- tokyonight, which made all three chips look alike.
 ---@type table<string, LspNvim.SagaChipRole>
 M.roles = {
-  folder = { hl = "Directory" },
+  folder = { hl = "Special" },
   file = { hl = "Function", bold = true },
-  symbol = { hl = "Title" },
+  symbol = { hl = "String" },
 }
 
 --- How far the chip background is pulled from the window background towards
 --- the role colour. 0 is invisible, 1 is the role colour itself.
 ---@type number
-M.tint = 0.16
+M.tint = 0.2
 
 --- Groups lspsaga names for the path text. Their default colour is `Comment`,
 --- so inside a chip they take the role colour instead.
@@ -121,7 +125,10 @@ local function define(group)
     -- the window's: a group without one shows the terminal default instead
     -- of the winbar.
     api.nvim_set_hl(0, group, { fg = bg, bg = window_bg() })
-  elseif spec.kind == "body" or ROLE_TEXT[spec.name] then
+  elseif spec.kind == "body" or spec.role == "symbol" or ROLE_TEXT[spec.name] then
+    -- A symbol's icon and name are one lspsaga group, so they cannot be split;
+    -- the whole part takes the role colour. That gives up the per-kind colour
+    -- (function vs. class), and buys a heading chip that is one colour.
     api.nvim_set_hl(0, group, { fg = fg, bg = bg, bold = role.bold })
   else
     local src = resolve(spec.name)
