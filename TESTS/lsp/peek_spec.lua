@@ -22,7 +22,7 @@ local beacon = require("lsp.core.peek.beacon")
 --- with mixed separators. See TESTS/README.md, "Temp directories".
 ---@param path string
 ---@return string
-local function real(path)
+local function os_path(path)
   return vim.fs.normalize((vim.uv or vim.loop).fs_realpath(path) or path)
 end
 
@@ -148,7 +148,7 @@ describe("lsp.core.peek", function()
       local entry = peek.open(target(dst, 1, 6))
       assert.is_not_nil(entry)
       assert.are.equal("editor", vim.api.nvim_win_get_config(entry.win).relative)
-      assert.are.equal(real(dst), real(vim.api.nvim_buf_get_name(entry.buf)))
+      assert.are.equal(os_path(dst), os_path(vim.api.nvim_buf_get_name(entry.buf)))
       assert.are.same({ 2, 6 }, vim.api.nvim_win_get_cursor(entry.win))
       assert.are.equal(entry.win, vim.api.nvim_get_current_win())
       assert.are.equal(1, #peek.entries())
@@ -351,7 +351,7 @@ describe("lsp.core.peek", function()
       peek.open(target(dst, 2))
       peek.take("edit")
       vim.cmd("normal! \15")
-      assert.are.equal(real(src), real(vim.api.nvim_buf_get_name(0)))
+      assert.are.equal(os_path(src), os_path(vim.api.nvim_buf_get_name(0)))
       assert.are.same({ 2, 3 }, vim.api.nvim_win_get_cursor(0))
     end)
 
@@ -359,7 +359,10 @@ describe("lsp.core.peek", function()
       local entry = peek.open(target(dst, 0))
       vim.api.nvim_set_current_win(main)
       peek.take("edit")
-      assert.are.equal(real(src), real(vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(main))))
+      assert.are.equal(
+        os_path(src),
+        os_path(vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(main)))
+      )
       assert.is_true(vim.api.nvim_win_is_valid(entry.win))
     end)
 
@@ -442,7 +445,7 @@ describe("lsp.core.peek", function()
       peek.peek("definition")
       assert.are.equal(2, #offered)
       assert.are.equal(1, #peek.entries())
-      assert.are.equal(real(src), real(vim.api.nvim_buf_get_name(peek.entries()[1].buf)))
+      assert.are.equal(os_path(src), os_path(vim.api.nvim_buf_get_name(peek.entries()[1].buf)))
     end)
 
     it("opens nothing when the choice is cancelled", function()
