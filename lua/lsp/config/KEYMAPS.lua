@@ -466,7 +466,8 @@ local entries = {
     desc = "Picker: finder (references + implementations + definitions)",
     requires = "fzf-lua",
   },
-  -- Type hierarchy. Few servers answer it (clangd, jdtls, dartls); the action
+  -- Type hierarchy. Few servers answer it (clangd, gopls, jdtls, measured;
+  -- dartls unconfirmed); the action
   -- says so instead of waiting for "No results". `h` for hierarchy: lower case
   -- is the direction asked for more, up to the supertypes.
   picker_type_super = {

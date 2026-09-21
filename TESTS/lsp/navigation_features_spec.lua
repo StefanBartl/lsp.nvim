@@ -342,6 +342,7 @@ describe("the lspsaga replacement: actions", function()
       actions.type_sub()
       assert.are.equal(2, #said)
       assert.is_truthy(said[1]:find("clangd", 1, true))
+      assert.is_truthy(said[1]:find("gopls", 1, true))
     end)
 
     it("asks for the capability, not for any client", function()

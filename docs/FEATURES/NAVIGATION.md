@@ -160,12 +160,14 @@ every source off it refuses to open an empty list and tells you why.
 
 `lsh` (supertypes) and `lsH` (subtypes), through fzf-lua's `lsp_type_super` /
 `lsp_type_sub`, or Neovim's own `vim.lsp.buf.typehierarchy` without it. Few
-servers answer this — clangd, jdtls and dartls — so before sending anything it
-asks whether an attached client advertises `textDocument/prepareTypeHierarchy`
-and, if none does, says which servers usually do, instead of a wait and then
-"No results". Measured against lua_ls, marksman and ts_ls: none of the three
-advertises `typeHierarchyProvider`, so in Lua, Markdown and TypeScript the key
-answers with that sentence and nothing else.
+servers answer this — clangd, gopls and jdtls, measured; dartls unconfirmed —
+so before sending anything it asks whether an attached client advertises
+`textDocument/prepareTypeHierarchy` and, if none does, says which servers
+usually do, instead of a wait and then "No results". Measured against clangd,
+gopls, jdtls, lua_ls, marksman, pylsp, ts_ls, vtsls and zls: only the first
+three advertise `typeHierarchyProvider`, so in Lua, Markdown, Python and
+TypeScript the key answers with that sentence and nothing else. rust-analyzer
+is not installed here, so it stays unmeasured.
 
 ## Outline
 
