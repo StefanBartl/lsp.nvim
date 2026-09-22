@@ -164,10 +164,12 @@ servers answer this â€” clangd, gopls and jdtls, measured; dartls unconfirmed â€
 so before sending anything it asks whether an attached client advertises
 `textDocument/prepareTypeHierarchy` and, if none does, says which servers
 usually do, instead of a wait and then "No results". Measured against clangd,
-gopls, jdtls, lua_ls, marksman, pylsp, ts_ls, vtsls and zls: only the first
-three advertise `typeHierarchyProvider`, so in Lua, Markdown, Python,
-TypeScript and Zig the key answers with that sentence and nothing else.
-rust-analyzer is not installed here, so it stays unmeasured.
+gopls, jdtls, lua_ls, marksman, pylsp, rust-analyzer, ts_ls, vtsls and zls:
+only the first three advertise `typeHierarchyProvider`, so in Lua, Markdown,
+Python, Rust, TypeScript and Zig the key answers with that sentence and
+nothing else. rust-analyzer 1.95.0 reports `implementationProvider` but not
+`typeHierarchyProvider`, and answers `textDocument/prepareTypeHierarchy` with
+`MethodNotFound` when asked directly.
 
 ## Outline
 
