@@ -71,6 +71,13 @@ M.GROUP = "lsp_nvim_gitsigns_actions"
 ---@type boolean
 local registered = false
 
+--- `hunk_spans(bufnr)`'s answer as of the last `GitSignsUpdate` for that
+--- buffer -- gitsigns fires it exactly when the hunks change, so that is the
+--- only moment the spans need rebuilding. A missing entry (not yet updated
+--- once, or the buffer is gone) falls back to computing it live.
+---@type table<integer, integer[][]|nil>
+local hunk_spans_cache = {}
+
 ---@internal
 ---@return table|nil
 local function gitsigns()
@@ -91,7 +98,7 @@ end
 ---@internal
 ---@param bufnr integer
 ---@return integer[][]|nil
-local function hunk_spans(bufnr)
+local function compute_hunk_spans(bufnr)
   local gs = gitsigns()
   if gs == nil or type(gs.get_hunks) ~= "function" then
     return nil
@@ -115,6 +122,17 @@ local function hunk_spans(bufnr)
     end
   end
   return spans
+end
+
+---@internal
+---@param bufnr integer
+---@return integer[][]|nil
+local function hunk_spans(bufnr)
+  local cached = hunk_spans_cache[bufnr]
+  if cached ~= nil then
+    return cached
+  end
+  return compute_hunk_spans(bufnr)
 end
 
 --- The 0-based line range `[first, last]`'s first line that lies in a hunk: the
@@ -375,14 +393,26 @@ function M.setup(opts)
   local group = autocmd.group(M.GROUP, true)
   -- gitsigns fires `GitSignsUpdate` whenever it has (re)computed a buffer's
   -- hunks, with the buffer in `data.buffer`; the first one for a buffer is the
-  -- moment it becomes attached.
+  -- moment it becomes attached. Also the only moment the cached spans need
+  -- rebuilding -- everything between two updates asks the cache instead of
+  -- gitsigns.
   autocmd.create("User", function(args)
     local bufnr = type(args.data) == "table" and args.data.buffer or api.nvim_get_current_buf()
+    hunk_spans_cache[bufnr] = compute_hunk_spans(bufnr)
     attach(bufnr)
   end, {
     group = group,
     pattern = "GitSignsUpdate",
     desc = "lsp.nvim: offer gitsigns hunk actions as code actions",
+  })
+
+  -- A buffer that is gone will not fire another GitSignsUpdate to replace its
+  -- entry, so it would otherwise sit in the cache for the rest of the session.
+  autocmd.create({ "BufDelete", "BufWipeout" }, function(args)
+    hunk_spans_cache[args.buf] = nil
+  end, {
+    group = group,
+    desc = "lsp.nvim: drop the cached hunk spans of a buffer that is gone",
   })
 
   vim.schedule(function()
@@ -397,6 +427,7 @@ end
 function M.detach()
   registered = false
   pcall(api.nvim_del_augroup_by_name, M.GROUP)
+  hunk_spans_cache = {}
   for _, client in ipairs(vim.lsp.get_clients({ name = M.NAME })) do
     client:stop()
   end

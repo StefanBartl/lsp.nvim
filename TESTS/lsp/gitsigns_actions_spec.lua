@@ -373,6 +373,80 @@ describe("lsp.core.gitsigns_actions", function()
     end)
   end)
 
+  -- `touches_hunk`/`first_touched` used to call `gitsigns.get_hunks` and
+  -- rebuild every hunk's span on every single call -- once per code-action
+  -- query, which the indicator sends on every `CursorHold`. gitsigns already
+  -- tells us exactly when the hunks changed (`GitSignsUpdate`), so the spans
+  -- only need rebuilding then.
+  describe("hunk span caching", function()
+    --- Wraps the stubbed `gitsigns.get_hunks` to count calls.
+    ---@return fun(): integer
+    local function count_get_hunks_calls()
+      local n = 0
+      local real = package.loaded["gitsigns"].get_hunks
+      package.loaded["gitsigns"].get_hunks = function(...)
+        n = n + 1
+        return real(...)
+      end
+      return function()
+        return n
+      end
+    end
+
+    local function fire_update()
+      vim.api.nvim_exec_autocmds("User", {
+        pattern = "GitSignsUpdate",
+        data = { buffer = bufnr },
+      })
+    end
+
+    it("asks gitsigns once per GitSignsUpdate, not once per query", function()
+      hunks = { { added = { start = 3, count = 2 } } } -- 0-based span [2, 3]
+      local calls = count_get_hunks_calls()
+      gs_actions.setup({ gitsigns = true })
+      vim.b[bufnr].gitsigns_status_dict = {}
+      fire_update()
+      vim.wait(2000, function()
+        return #vim.lsp.get_clients({ name = gs_actions.NAME, bufnr = bufnr }) > 0
+      end, 10)
+
+      local after_attach = calls()
+      assert.is_true(after_attach >= 1)
+
+      gs_actions.touches_hunk(bufnr, 2, 3)
+      gs_actions.touches_hunk(bufnr, 2, 3)
+      gs_actions.touches_hunk(bufnr, 0, 0)
+      assert.are.equal(after_attach, calls())
+    end)
+
+    it("keeps serving the old spans from cache until the next GitSignsUpdate", function()
+      gs_actions.setup({ gitsigns = true })
+      vim.b[bufnr].gitsigns_status_dict = {}
+      hunks = { { added = { start = 3, count = 1 } } } -- 0-based span [2, 2]
+      local calls = count_get_hunks_calls()
+      fire_update()
+      vim.wait(2000, function()
+        return #vim.lsp.get_clients({ name = gs_actions.NAME, bufnr = bufnr }) > 0
+      end, 10)
+      assert.is_true(gs_actions.touches_hunk(bufnr, 2, 2))
+      assert.is_false(gs_actions.touches_hunk(bufnr, 5, 5))
+      local after_first = calls()
+
+      -- gitsigns has *not* told us the hunks moved yet: still the old spans,
+      -- and still no new call to get_hunks.
+      hunks = { { added = { start = 6, count = 1 } } } -- 0-based span [5, 5]
+      assert.is_true(gs_actions.touches_hunk(bufnr, 2, 2))
+      assert.is_false(gs_actions.touches_hunk(bufnr, 5, 5))
+      assert.are.equal(after_first, calls())
+
+      fire_update()
+      vim.wait(50)
+
+      assert.is_false(gs_actions.touches_hunk(bufnr, 2, 2))
+      assert.is_true(gs_actions.touches_hunk(bufnr, 5, 5))
+    end)
+  end)
+
   -- Measured against the real config: `:LspRestartHere` force-stops every
   -- client (`Client:stop(true)`), which for a client with no process is a call
   -- to the server's `terminate()` and nothing else. Neovim drops a client from
