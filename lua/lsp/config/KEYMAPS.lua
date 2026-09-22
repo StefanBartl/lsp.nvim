@@ -439,22 +439,23 @@ local entries = {
   -- Call hierarchy, through the same picker. Neovim ships
   -- `vim.lsp.buf.incoming_calls`, but it dumps into the quickfix list, which
   -- loses the tree the protocol actually returns; fzf-lua's providers keep it
-  -- browsable. `lsc`/`lsC` follow `lsd`/`lsD`: the lowercase key is the
-  -- direction one asks for far more often ("who calls this"), the shifted one
-  -- is its sibling.
+  -- browsable, and are used when present -- no `requires`, since the native
+  -- fallback (like `lsh`/`lsH`) always works. `lsc`/`lsC` follow `lsd`/`lsD`:
+  -- the lowercase key is the direction one asks for far more often ("who
+  -- calls this"), the shifted one is its sibling. In a Lua buffer with no
+  -- attached call-hierarchy client, `actions.incoming_calls`/`outgoing_calls`
+  -- fall back to documentation.nvim on demand (`lsp.core.call_hierarchy`).
   picker_incoming_calls = {
     lhs = "lsc",
     mode = "n",
-    rhs = "<cmd>FzfLua lsp_incoming_calls<cr>",
+    rhs = actions.incoming_calls,
     desc = "Picker: incoming calls (who calls this)",
-    requires = "fzf-lua",
   },
   picker_outgoing_calls = {
     lhs = "lsC",
     mode = "n",
-    rhs = "<cmd>FzfLua lsp_outgoing_calls<cr>",
+    rhs = actions.outgoing_calls,
     desc = "Picker: outgoing calls (what this calls)",
-    requires = "fzf-lua",
   },
 
   -- Everything that uses, implements or defines the symbol, in one list with

@@ -783,6 +783,21 @@ function M.type_sub()
   type_hierarchy("sub")
 end
 
+--- Who calls the function under the cursor. lua_ls has no call hierarchy;
+--- for a Lua buffer this falls back to documentation.nvim on demand.
+---@see lsp.core.call_hierarchy
+---@return nil
+function M.incoming_calls()
+  require("lsp.core.call_hierarchy").incoming()
+end
+
+--- What the function under the cursor calls.
+---@see lsp.core.call_hierarchy
+---@return nil
+function M.outgoing_calls()
+  require("lsp.core.call_hierarchy").outgoing()
+end
+
 -- -------------------------------------------------------------------- peek
 
 --- Peek the definition in a floating, editable window.

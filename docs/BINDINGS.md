@@ -98,8 +98,8 @@ marked in the last column; `none` binds nothing.
 | `picker_document_diagnostics` | `<leader>do` | n | `fzf-lua` | yes | Picker: document diagnostics |
 | `picker_document_symbols` | `<leader>dos` | n | `fzf-lua` | yes | Picker: document symbols |
 | `picker_finder` | `lsf` | n | `fzf-lua` | — | Picker: finder (references + implementations + definitions) |
-| `picker_incoming_calls` | `lsc` | n | `fzf-lua` | yes | Picker: incoming calls (who calls this) |
-| `picker_outgoing_calls` | `lsC` | n | `fzf-lua` | yes | Picker: outgoing calls (what this calls) |
+| `picker_incoming_calls` | `lsc` | n | — | yes | Picker: incoming calls (who calls this) |
+| `picker_outgoing_calls` | `lsC` | n | — | yes | Picker: outgoing calls (what this calls) |
 | `picker_type_sub` | `lsH` | n | — | — | Picker: subtypes of this type |
 | `picker_type_super` | `lsh` | n | — | — | Picker: supertypes of this type |
 | `picker_workspace_diagnostics` | `<leader>wo` | n | `fzf-lua` | yes | Picker: workspace diagnostics |
