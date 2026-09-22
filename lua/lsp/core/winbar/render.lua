@@ -269,8 +269,13 @@ function M.render(parts, opts)
   for i, part in ipairs(parts) do
     drawn[i] = opts.chips and chip(part, i == 1) or flat(part)
   end
-  -- One space of left margin: the first glyph would otherwise sit flush
-  -- against the window edge, one column tighter than the rest.
+  if opts.chips then
+    -- No left margin: the leftmost chip's squared-off edge sits flush
+    -- against the window edge, the same corner the tabline leaves flush.
+    return table.concat(drawn, sep)
+  end
+  -- Flat mode keeps one space of left margin: the first glyph would
+  -- otherwise sit tighter against the window edge than the rest.
   return " " .. table.concat(drawn, sep)
 end
 

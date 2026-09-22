@@ -77,12 +77,18 @@ describe("lsp.core.winbar.render", function()
     end)
 
     it("squares off the leftmost chip instead of rounding it", function()
-      local margin = 1 -- the leading space `M.render` adds before the first chip
       assert.are_not.equal(
         vim.fn.nr2char(0xE0B6),
-        out:sub(margin + 1, margin + 1),
+        out:sub(1, 1),
         "the first chip should not open with the rounded left cap"
       )
+    end)
+
+    it("sits flush against the window edge, with no left margin", function()
+      -- Unlike flat mode, chips mode drops the leading space: the leftmost
+      -- chip's squared-off edge should touch the window edge directly, the
+      -- same corner the tabline leaves flush.
+      assert.are_not.equal(" ", out:sub(1, 1))
     end)
 
     it("names only groups that exist and carry a background", function()
