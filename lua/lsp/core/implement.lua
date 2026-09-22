@@ -143,6 +143,28 @@ function M.enabled(ft)
   return state.enable
 end
 
+--- Declaration files and library code are excluded from asking, not just
+--- expensive to answer: `interface HTMLElement` in a real `lib.dom.d.ts`
+--- (measured: 2.3MB, 1540 interfaces) named 144 implementers on its own in
+--- ~395ms, and `textDocument/documentSymbol` on the whole file took ~1.1s --
+--- both against a real ts_ls, not a stub. A round asks about `max_requests`
+--- such symbols on every edit pause; a handful of that size make it exactly
+--- the load this feature is off by default to avoid, and the count is rarely
+--- what anyone wants while reading a type declaration rather than writing one.
+---@internal
+---@param bufnr integer
+---@return boolean
+local function excluded_path(bufnr)
+  local name = api.nvim_buf_get_name(bufnr)
+  if name:match("%.d%.ts$") then
+    return true
+  end
+  if name:match("[/\\]node_modules[/\\]") then
+    return true
+  end
+  return false
+end
+
 ---@internal
 ---@param bufnr integer
 ---@return vim.lsp.Client|nil
@@ -323,6 +345,10 @@ local function refresh(bufnr)
     return
   end
   if vim.bo[bufnr].buftype ~= "" or not M.enabled(vim.bo[bufnr].filetype) then
+    erase(bufnr)
+    return
+  end
+  if excluded_path(bufnr) then
     erase(bufnr)
     return
   end

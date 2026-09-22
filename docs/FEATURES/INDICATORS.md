@@ -165,6 +165,16 @@ a stale round draws nothing and takes nothing away, and the markers already on
 screen keep following their lines. `InsertLeave` and `TextChanged` ask again
 once the edit is over.
 
+A buffer whose name ends in `.d.ts` or sits under a `node_modules` path asks
+nothing at all — declaration files and library code, not the code someone is
+writing. Measured against a real ts_ls on the real `lib.dom.d.ts` (2.3MB,
+1540 interfaces): `textDocument/documentSymbol` on the whole file took ~1.1s,
+and asking about `HTMLElement` specifically — one symbol, not a round — took
+~395ms for 144 locations. A round of `max_requests` such symbols on every
+edit pause is exactly the load this feature stays off by default to avoid,
+and the count is rarely what anyone wants while reading a type declaration
+rather than writing one.
+
 `kinds` is a map of SymbolKind names (`Interface`, `Class`, `Method`, …), not a
 list — a list would merge index by index over the default.
 
