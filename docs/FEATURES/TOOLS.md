@@ -35,10 +35,23 @@ Call hierarchy rides on the same picker and is the reason it was worth
 consolidating first: `lsc` asks who calls the symbol under the cursor, `lsC`
 what it calls. Neovim ships `vim.lsp.buf.incoming_calls`, but it dumps into the
 quickfix list and loses the tree the protocol actually returns; fzf-lua's
-providers keep it browsable. `lsc`/`lsC` follow `lsd`/`lsD` — lowercase is the
-direction one asks for far more often.
+providers keep it browsable when fzf-lua is there, and fall back to Neovim's
+own request otherwise — same posture as `lsh`/`lsH`. `lsc`/`lsC` follow
+`lsd`/`lsD` — lowercase is the direction one asks for far more often.
 
-- **Module:** `tools/ts_type_lookup/symbol_picker.lua`, `integrations/picker.lua`
+lua_ls has no call hierarchy at all (LuaLS/lua-language-server#2832 is still
+open), so in a Lua buffer with no client already answering
+`textDocument/prepareCallHierarchy`, `lsc`/`lsC` fall back to
+[`StefanBartl/documentation.nvim`](https://github.com/StefanBartl/documentation.nvim)
+on demand, if it is installed with `opts.callhierarchy = true`: `install()` for
+the buffer's own project root (the same root `lsp.servers.lua_ls.rootresolver`
+would give lua_ls), then the picker. The scan is real work — ~2s measured on
+this repository — and happens once per project, not on every keypress. Without
+documentation.nvim, or in a non-Lua buffer with no answering client, the key
+says so instead of a wait and then "No results".
+
+- **Module:** `tools/ts_type_lookup/symbol_picker.lua`, `integrations/picker.lua`,
+  `core/call_hierarchy.lua` (the Lua fallback)
 - **Commands:** `:TypeDefPick [symbol]`
 - **Keys:** `<leader>dos`, `<leader>wos`, `<leader>do`, `<leader>wo`, `lsc`, `lsC`
 
