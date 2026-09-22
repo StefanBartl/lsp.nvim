@@ -67,11 +67,22 @@ describe("lsp.core.winbar.render", function()
   describe("chips", function()
     local out = render.render(parts, { chips = true, separator = " > " })
 
-    it("wraps every part in a left and a right cap", function()
+    it("wraps every part but the first in a left cap, and every part in a right cap", function()
+      -- The first chip sits at the window edge, same as the tabline's own
+      -- corner: squared off, not rounded.
       local _, left = out:gsub(vim.fn.nr2char(0xE0B6), "")
       local _, right = out:gsub(vim.fn.nr2char(0xE0B4), "")
-      assert.are.equal(3, left)
+      assert.are.equal(2, left)
       assert.are.equal(3, right)
+    end)
+
+    it("squares off the leftmost chip instead of rounding it", function()
+      local margin = 1 -- the leading space `M.render` adds before the first chip
+      assert.are_not.equal(
+        vim.fn.nr2char(0xE0B6),
+        out:sub(margin + 1, margin + 1),
+        "the first chip should not open with the rounded left cap"
+      )
     end)
 
     it("names only groups that exist and carry a background", function()
