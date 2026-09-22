@@ -447,6 +447,39 @@ describe("lsp.core.implement", function()
       assert.are.equal(0, #marks())
     end)
 
+    -- Measured against a real ts_ls on the real lib.dom.d.ts (2.3MB, 1540
+    -- interfaces): documentSymbol alone took ~1.1s, and asking about
+    -- HTMLElement specifically -- one symbol, not a round -- took ~395ms for
+    -- 144 locations. A round of twenty such symbols on every edit pause is
+    -- exactly the cost this feature is off by default to avoid.
+    it("sends nothing at all in a .d.ts file", function()
+      vim.api.nvim_buf_set_name(bufnr, vim.fn.tempname() .. ".d.ts")
+      run({ enable = true }, stub_client({ [0] = 3 }))
+      vim.wait(200)
+      assert.are.same({}, sent)
+      assert.are.equal(0, #marks())
+    end)
+
+    -- The check is a path-separator-bounded "node_modules" component, not a
+    -- bare substring -- the next case proves a file merely named with those
+    -- letters still works.
+    it("sends nothing at all under node_modules", function()
+      vim.api.nvim_buf_set_name(bufnr, vim.fn.tempname() .. "/node_modules/pkg/index.ts")
+      run({ enable = true }, stub_client({ [0] = 3 }))
+      vim.wait(200)
+      assert.are.same({}, sent)
+      assert.are.equal(0, #marks())
+    end)
+
+    it("still sends for a file merely named like node_modules", function()
+      vim.api.nvim_buf_set_name(bufnr, vim.fn.tempname() .. "-my_node_modules_helper.ts")
+      run({ enable = true }, stub_client({ [0] = 3 }))
+      vim.wait(2000, function()
+        return #marks() > 0
+      end, 10)
+      assert.are.equal(1, #marks())
+    end)
+
     it("sends nothing while it is off", function()
       run({ enable = false }, stub_client({ [0] = 3 }))
       vim.wait(200)
