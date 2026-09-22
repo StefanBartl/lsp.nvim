@@ -17,6 +17,10 @@
 --- `folder_level + 1` items only when the file sits deep enough, so counting
 --- would mislabel a file in the project root.
 ---
+--- The leftmost chip squares off its left edge instead of rounding it: it sits
+--- at the window edge, the same corner the tabline leaves square, so a rounded
+--- cap there would be the odd one out rather than the rest of the chips.
+---
 --- The three role colours are picked so they differ in the common
 --- colourschemes: `Directory`, `Function` and `Title` are one and the same
 --- blue in tokyonight, which made all three chips look alike.
@@ -219,8 +223,10 @@ end
 M.escape = escape
 
 ---@param part LspWinbar.Part
+---@param leftmost boolean|nil # Square off the left edge instead of rounding it:
+--- the first chip sits at the window edge, same as the tabline's own corner.
 ---@return string
-local function chip(part)
+local function chip(part, leftmost)
   local role = part.role
   local body, cap = chip_groups(role)
 
@@ -233,7 +239,8 @@ local function chip(part)
   inner = inner .. "%#" .. body .. "#" .. escape(part.text)
 
   local cap_hl = "%#" .. cap .. "#"
-  return cap_hl .. LEFT_CAP .. "%#" .. body .. "# " .. inner .. " " .. cap_hl .. RIGHT_CAP .. "%*"
+  local left = leftmost and ("%#" .. body .. "#") or (cap_hl .. LEFT_CAP .. "%#" .. body .. "#")
+  return left .. " " .. inner .. " " .. cap_hl .. RIGHT_CAP .. "%*"
 end
 
 ---@param part LspWinbar.Part
@@ -260,7 +267,7 @@ function M.render(parts, opts)
   local sep = "%#LspNvimWinbarSep#" .. escape(opts.separator) .. "%*"
   local drawn = {}
   for i, part in ipairs(parts) do
-    drawn[i] = opts.chips and chip(part) or flat(part)
+    drawn[i] = opts.chips and chip(part, i == 1) or flat(part)
   end
   -- One space of left margin: the first glyph would otherwise sit flush
   -- against the window edge, one column tighter than the rest.
