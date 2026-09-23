@@ -385,6 +385,35 @@ describe("lsp.core.winbar", function()
       assert.is_truthy(text:find("global:%s+on"))
       assert.is_truthy(text:find("lua", 1, true))
       assert.is_truthy(text:find("depth caps:%s+markdown=1"))
+      assert.is_truthy(text:find("align:%s+left"))
+    end)
+
+    it("defaults to left alignment, and draws the built-in right-align item for right", function()
+      local client = stub_client()
+      vim.lsp.get_clients = function()
+        return { client }
+      end
+
+      winbar.setup({ chips = false })
+      vim.api.nvim_exec_autocmds("LspAttach", { buffer = bufnr, data = { client_id = 1 } })
+      wait_for(function()
+        return bar():find("Repo", 1, true) ~= nil
+      end)
+      assert.are_not.equal("%=", bar():sub(1, 2))
+      assert.is_truthy(table.concat(winbar.status(), "\n"):find("align:%s+left"))
+
+      winbar.setup({ chips = false, align = "right" })
+      vim.api.nvim_exec_autocmds("LspAttach", { buffer = bufnr, data = { client_id = 1 } })
+      wait_for(function()
+        return bar():find("Repo", 1, true) ~= nil
+      end)
+      assert.are.equal("%=", bar():sub(1, 2))
+      assert.is_truthy(table.concat(winbar.status(), "\n"):find("align:%s+right"))
+    end)
+
+    it("ignores an align value that is neither left nor right", function()
+      winbar.setup({ align = "center" })
+      assert.is_truthy(table.concat(winbar.status(), "\n"):find("align:%s+left"))
     end)
   end)
 end)

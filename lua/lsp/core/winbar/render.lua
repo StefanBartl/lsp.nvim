@@ -52,6 +52,7 @@ local RIGHT_CAP = vim.fn.nr2char(0xE0B4)
 ---@class LspWinbar.RenderOpts
 ---@field chips boolean # Rounded chips, or the flat string.
 ---@field separator string # Between parts.
+---@field align? "left"|"right" # `"right"` pushes the breadcrumb to the right edge; default is `"left"`.
 
 --- Groups that appear in the strings this module writes. Every one of them
 --- starts with this, and the winbar owner check in `lsp.core.winbar` relies on
@@ -269,14 +270,26 @@ function M.render(parts, opts)
   for i, part in ipairs(parts) do
     drawn[i] = opts.chips and chip(part, i == 1) or flat(part)
   end
+
+  local body
   if opts.chips then
     -- No left margin: the leftmost chip's squared-off edge sits flush
     -- against the window edge, the same corner the tabline leaves flush.
-    return table.concat(drawn, sep)
+    body = table.concat(drawn, sep)
+  else
+    -- Flat mode keeps one space of left margin: the first glyph would
+    -- otherwise sit tighter against the window edge than the rest.
+    body = " " .. table.concat(drawn, sep)
   end
-  -- Flat mode keeps one space of left margin: the first glyph would
-  -- otherwise sit tighter against the window edge than the rest.
-  return " " .. table.concat(drawn, sep)
+
+  if opts.align == "right" then
+    -- `%=` is a built-in 'statusline' (and so 'winbar') item: everything
+    -- after it is pushed to the right edge. No padding math needed -- it is
+    -- a literal format item, not user text, so it is prepended after
+    -- `escape()` has already run on every part, icon and separator above.
+    return "%=" .. body
+  end
+  return body
 end
 
 return M

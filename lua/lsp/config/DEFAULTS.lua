@@ -157,6 +157,9 @@ local DEFAULTS = {
     separator = " › ",
     -- Rounded, coloured chips; false is one flat string.
     chips = true,
+    -- "left" (default) or "right": "right" pushes the breadcrumb to the
+    -- window's right edge via the 'winbar'/'statusline' built-in `%=` item.
+    align = "left",
     -- How many symbols may follow the file, per filetype. Markdown is capped
     -- at one because marksman reports headings as a nested outline: without
     -- the cap a cursor in an H3 draws `file > H1 > H2 > H3`, which is a table
