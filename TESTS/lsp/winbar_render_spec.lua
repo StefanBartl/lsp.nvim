@@ -141,6 +141,31 @@ describe("lsp.core.winbar.render", function()
     end)
   end)
 
+  describe("align", function()
+    it("is unchanged from the default (no align, or align = left)", function()
+      local plain = render.render(parts, { chips = false, separator = " > " })
+      local no_align = render.render(parts, { chips = false, separator = " > ", align = "left" })
+      assert.are.equal(plain, no_align)
+      assert.are_not.equal("%", plain:sub(1, 1))
+    end)
+
+    it("prepends the 'winbar' built-in right-align item for align = right", function()
+      local left = render.render(parts, { chips = false, separator = " > " })
+      local right = render.render(parts, { chips = false, separator = " > ", align = "right" })
+      assert.are.equal("%=" .. left, right)
+    end)
+
+    it("prepends %= in chips mode too, ahead of the squared-off leftmost chip", function()
+      local left = render.render(parts, { chips = true, separator = " > " })
+      local right = render.render(parts, { chips = true, separator = " > ", align = "right" })
+      assert.are.equal("%=" .. left, right)
+    end)
+
+    it("still renders an empty string for no parts, align = right included", function()
+      assert.are.equal("", render.render({}, { chips = true, separator = " > ", align = "right" }))
+    end)
+  end)
+
   describe("escaping", function()
     it("doubles a literal percent sign", function()
       local out = render.render(
@@ -188,6 +213,20 @@ describe("lsp.core.winbar.render as Neovim evaluates it", function()
       assert.is_false(result.truncated == true)
     end)
   end
+
+  it("keeps every part's text intact when right-aligned, percent signs included", function()
+    local out = render.render({
+      { role = "folder", icon = "F", text = "src" },
+      { role = "file", icon = "f", text = "a.lua" },
+      { role = "symbol", icon = "S", text = "50%off" },
+    }, { chips = false, separator = " > ", align = "right" })
+
+    local result = vim.api.nvim_eval_statusline(out, { use_winbar = true })
+    for _, want in ipairs({ "src", "a.lua", "50%off" }) do
+      assert.is_truthy(result.str:find(want, 1, true), want .. " in " .. result.str)
+    end
+    assert.is_false(result.truncated == true)
+  end)
 
   it("resolves every highlight group it names to a defined one", function()
     local out = render.render({

@@ -109,6 +109,19 @@ highlight groups that are *linked* (`LspNvimWinbarFolder`, `…File`, `…Symbol
 group; the derived chip groups are redefined under the same names, because the
 strings already in a window's `'winbar'` keep naming them.
 
+**Alignment.** `align = "right"` (default `"left"`) pushes the whole
+breadcrumb to the window's right edge. It is not a padding calculation: Neovim's
+`'statusline'` format, which `'winbar'` inherits, has `%=` as a built-in
+right-align item, and this is just prepended to the string `render.lua` already
+built. Whatever a symbol's own text contains is escaped before that (a literal
+`%` doubled) exactly as it always was — `%=` is a format item this module
+writes, not user text, so it needs no escaping of its own.
+
+**The underline some colorschemes draw under the winbar is not this module's.**
+There is no `underline` anywhere in `core/winbar/`; what you see is the active
+colorscheme's own `WinBar` highlight group. `:hi WinBar gui=NONE` (or an
+equivalent colorscheme override) removes it, independent of `align` or `chips`.
+
 **Who owns `'winbar'`.** It is window-local, and this module writes it only on
 windows showing a normal buffer with a language server attached (`buftype` is
 empty, not a float — a peek window is a float and has its own title; the
@@ -123,7 +136,7 @@ to an empty one.
 - **Modules:** `core/winbar/` (`init.lua`, `render.lua`, `kinds.lua`),
   `core/symbols.lua`
 - **Config:** `winbar.enable`, `winbar.filetypes`, `winbar.show_file`,
-  `winbar.folder_level`, `winbar.separator`, `winbar.chips`,
+  `winbar.folder_level`, `winbar.separator`, `winbar.chips`, `winbar.align`,
   `winbar.max_symbols`, `winbar.debounce_ms`, `winbar.refresh_ms`
 - **Commands:** `:Lsp winbar [toggle|on|off|status|clear] [filetype]`
 - **Keys:** `<leader>tW` (global)

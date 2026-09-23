@@ -105,6 +105,7 @@ require("lsp.@types.subsystem")
 ---@field folder_level? integer # Directories shown before the file name.
 ---@field separator? string # Between parts.
 ---@field chips? boolean # Rounded chips, or one flat string.
+---@field align? "left"|"right" # `"right"` pushes the breadcrumb to the window's right edge; default is `"left"`.
 ---@field max_symbols? table<string, integer|false> # Symbols allowed after the file, per filetype. `false` lifts a default cap.
 ---@field debounce_ms? integer # Between the last cursor movement and the repaint.
 ---@field refresh_ms? integer # Between the last edit and the next document-symbol request.

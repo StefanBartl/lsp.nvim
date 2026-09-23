@@ -381,11 +381,23 @@ winbar = {
   folder_level = 1,          -- directories shown before the file name
   separator = " › ",
   chips = true,              -- rounded, coloured chips; false = one flat string
+  align = "left",            -- "right" pushes the breadcrumb to the window's right edge
   max_symbols = { markdown = 1 },
   debounce_ms = 60,          -- cursor movement -> repaint
   refresh_ms = 300,          -- last edit -> next documentSymbol request
 },
 ```
+
+**`align = "right"` is a `'winbar'` built-in, not a padding calculation.**
+Neovim's `'statusline'` format (which `'winbar'` inherits) has `%=` as a
+right-align item: everything after it is pushed to the window's right edge.
+This module prepends it to the string it already built, so the chips or the
+flat text render exactly as before, just anchored to the other side.
+
+**On the underline some colorschemes draw under `'winbar'`:** that line is the
+colorscheme's own `WinBar` highlight group, not something this module sets —
+`:hi WinBar gui=NONE` (or an equivalent colorscheme override) removes it,
+regardless of `align`.
 
 **`max_symbols` is the depth cap, and it is a map for a reason.** Only markdown
 is capped by default: marksman reports headings as a *nested* outline, so a

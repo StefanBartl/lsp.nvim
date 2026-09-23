@@ -69,6 +69,7 @@ M.DEFAULT_MAX_SYMBOLS = { markdown = 1 }
 ---@field separator string
 ---@field max_symbols table<string, integer>
 ---@field chips boolean
+---@field align "left"|"right"
 ---@field debounce_ms integer
 ---@field refresh_ms integer
 
@@ -88,6 +89,7 @@ local function defaults()
     separator = " " .. vim.fn.nr2char(0x203A) .. " ",
     max_symbols = vim.deepcopy(M.DEFAULT_MAX_SYMBOLS),
     chips = true,
+    align = "left",
     debounce_ms = 60,
     refresh_ms = 300,
   }
@@ -254,7 +256,10 @@ function M.build(win)
     filetype = vim.bo[bufnr].filetype,
     path = path,
   })
-  return render.render(parts, { chips = state.chips, separator = state.separator })
+  return render.render(
+    parts,
+    { chips = state.chips, separator = state.separator, align = state.align }
+  )
 end
 
 -- -------------------------------------------------------------------- drawing
@@ -384,6 +389,7 @@ function M.setup(opts)
     end
   end
   state.chips = opts.chips ~= false
+  state.align = opts.align == "right" and "right" or "left"
   if type(opts.debounce_ms) == "number" and opts.debounce_ms >= 0 then
     state.debounce_ms = math.floor(opts.debounce_ms)
   end
@@ -579,6 +585,7 @@ function M.status()
     ("global:         %s"):format(state.enable and "on" or "off"),
     ("handlers:       %s"):format(registered and "registered" or "not registered"),
     ("style:          %s"):format(state.chips and "chips" or "flat"),
+    ("align:          %s"):format(state.align),
     ("path:           %s"):format(
       state.show_file and ("file + %d folder(s)"):format(state.folder_level) or "hidden"
     ),
