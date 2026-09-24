@@ -411,8 +411,24 @@ describe("lsp.core.winbar", function()
       assert.is_truthy(table.concat(winbar.status(), "\n"):find("align:%s+right"))
     end)
 
-    it("ignores an align value that is neither left nor right", function()
-      winbar.setup({ align = "center" })
+    it("draws the built-in split-point item on both sides for align = center", function()
+      local client = stub_client()
+      vim.lsp.get_clients = function()
+        return { client }
+      end
+
+      winbar.setup({ chips = false, align = "center" })
+      vim.api.nvim_exec_autocmds("LspAttach", { buffer = bufnr, data = { client_id = 1 } })
+      wait_for(function()
+        return bar():find("Repo", 1, true) ~= nil
+      end)
+      assert.are.equal("%=", bar():sub(1, 2))
+      assert.are.equal("%=", bar():sub(-2))
+      assert.is_truthy(table.concat(winbar.status(), "\n"):find("align:%s+center"))
+    end)
+
+    it("ignores an align value that is none of left, right or center", function()
+      winbar.setup({ align = "middle" })
       assert.is_truthy(table.concat(winbar.status(), "\n"):find("align:%s+left"))
     end)
   end)

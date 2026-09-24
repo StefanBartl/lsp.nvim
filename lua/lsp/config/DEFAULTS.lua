@@ -157,8 +157,9 @@ local DEFAULTS = {
     separator = " › ",
     -- Rounded, coloured chips; false is one flat string.
     chips = true,
-    -- "left" (default) or "right": "right" pushes the breadcrumb to the
-    -- window's right edge via the 'winbar'/'statusline' built-in `%=` item.
+    -- "left" (default), "right" or "center": pushes the breadcrumb to the
+    -- window's right edge, or splits it evenly between both, via the
+    -- 'winbar'/'statusline' built-in `%=` item.
     align = "left",
     -- How many symbols may follow the file, per filetype. Markdown is capped
     -- at one because marksman reports headings as a nested outline: without

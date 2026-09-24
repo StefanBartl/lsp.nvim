@@ -164,6 +164,25 @@ describe("lsp.core.winbar.render", function()
     it("still renders an empty string for no parts, align = right included", function()
       assert.are.equal("", render.render({}, { chips = true, separator = " > ", align = "right" }))
     end)
+
+    it(
+      "wraps the body in the built-in split-point item on both sides for align = center",
+      function()
+        local left = render.render(parts, { chips = false, separator = " > " })
+        local center = render.render(parts, { chips = false, separator = " > ", align = "center" })
+        assert.are.equal("%=" .. left .. "%=", center)
+      end
+    )
+
+    it("wraps in center mode too, ahead of the squared-off leftmost chip", function()
+      local left = render.render(parts, { chips = true, separator = " > " })
+      local center = render.render(parts, { chips = true, separator = " > ", align = "center" })
+      assert.are.equal("%=" .. left .. "%=", center)
+    end)
+
+    it("still renders an empty string for no parts, align = center included", function()
+      assert.are.equal("", render.render({}, { chips = true, separator = " > ", align = "center" }))
+    end)
   end)
 
   describe("escaping", function()
@@ -220,6 +239,20 @@ describe("lsp.core.winbar.render as Neovim evaluates it", function()
       { role = "file", icon = "f", text = "a.lua" },
       { role = "symbol", icon = "S", text = "50%off" },
     }, { chips = false, separator = " > ", align = "right" })
+
+    local result = vim.api.nvim_eval_statusline(out, { use_winbar = true })
+    for _, want in ipairs({ "src", "a.lua", "50%off" }) do
+      assert.is_truthy(result.str:find(want, 1, true), want .. " in " .. result.str)
+    end
+    assert.is_false(result.truncated == true)
+  end)
+
+  it("keeps every part's text intact when centered, percent signs included", function()
+    local out = render.render({
+      { role = "folder", icon = "F", text = "src" },
+      { role = "file", icon = "f", text = "a.lua" },
+      { role = "symbol", icon = "S", text = "50%off" },
+    }, { chips = false, separator = " > ", align = "center" })
 
     local result = vim.api.nvim_eval_statusline(out, { use_winbar = true })
     for _, want in ipairs({ "src", "a.lua", "50%off" }) do

@@ -159,7 +159,7 @@ Defaults (excerpt -- the full table is `lua/lsp/config/DEFAULTS.lua`): >lua
       winbar = {   -- the LSP breadcrumb: folder > file > Class > method
         enable = true, filetypes = {},
         show_file = true, folder_level = 1, separator = " › ",
-        chips = true, align = "left",  -- "right" = window's right edge
+        chips = true, align = "left",  -- "right"/"center" = right edge/centred
         max_symbols = { markdown = 1 },  -- symbols allowed after the file
         debounce_ms = 60, refresh_ms = 300,
       },
@@ -381,11 +381,12 @@ winbar.folder_level   (integer)   Directories shown before the file name.
 winbar.separator      (string)    Between parts.
 winbar.chips          (boolean)   Rounded, coloured chips; false is one flat
                                   string coloured by linked highlight groups.
-winbar.align          ("left"|"right")
-                                  "left" (default) or "right": "right"
-                                  prepends the 'statusline'/'winbar' built-in
-                                  `%=` right-align item, pushing the
-                                  breadcrumb to the window's right edge. No
+winbar.align          ("left"|"right"|"center")
+                                  "left" (default), "right" or "center": the
+                                  latter two wrap the breadcrumb in the
+                                  'statusline'/'winbar' built-in `%=` item,
+                                  pushing it to the window's right edge or
+                                  splitting it evenly between both. No
                                   padding is computed -- `%=` does that.
                                   A colorscheme's own `WinBar` underline is
                                   unaffected by this option; `:hi WinBar

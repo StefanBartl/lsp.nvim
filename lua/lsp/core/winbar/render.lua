@@ -52,7 +52,7 @@ local RIGHT_CAP = vim.fn.nr2char(0xE0B4)
 ---@class LspWinbar.RenderOpts
 ---@field chips boolean # Rounded chips, or the flat string.
 ---@field separator string # Between parts.
----@field align? "left"|"right" # `"right"` pushes the breadcrumb to the right edge; default is `"left"`.
+---@field align? "left"|"right"|"center" # `"right"` pushes the breadcrumb to the right edge, `"center"` splits it evenly between both; default is `"left"`.
 
 --- Groups that appear in the strings this module writes. Every one of them
 --- starts with this, and the winbar owner check in `lsp.core.winbar` relies on
@@ -288,6 +288,13 @@ function M.render(parts, opts)
     -- a literal format item, not user text, so it is prepended after
     -- `escape()` has already run on every part, icon and separator above.
     return "%=" .. body
+  end
+  if opts.align == "center" then
+    -- Two split points instead of one: 'statusline' spaces the section
+    -- between them evenly from both sides, which centres it. Nothing before
+    -- the first `%=` and nothing after the second, so the body is the whole
+    -- middle section.
+    return "%=" .. body .. "%="
   end
   return body
 end
