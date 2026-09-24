@@ -109,11 +109,13 @@ highlight groups that are *linked* (`LspNvimWinbarFolder`, `…File`, `…Symbol
 group; the derived chip groups are redefined under the same names, because the
 strings already in a window's `'winbar'` keep naming them.
 
-**Alignment.** `align = "right"` (default `"left"`) pushes the whole
-breadcrumb to the window's right edge. It is not a padding calculation: Neovim's
-`'statusline'` format, which `'winbar'` inherits, has `%=` as a built-in
-right-align item, and this is just prepended to the string `render.lua` already
-built. Whatever a symbol's own text contains is escaped before that (a literal
+**Alignment.** `align = "right"` or `"center"` (default `"left"`) push the
+whole breadcrumb to the window's right edge, or split it evenly between both.
+Neither is a padding calculation: Neovim's `'statusline'` format, which
+`'winbar'` inherits, has `%=` as a built-in split-point item -- text after
+one is right-aligned, text between two is centred -- and `render.lua` just
+wraps the string it already built in the number of `%=` each value needs.
+Whatever a symbol's own text contains is escaped before that (a literal
 `%` doubled) exactly as it always was — `%=` is a format item this module
 writes, not user text, so it needs no escaping of its own.
 

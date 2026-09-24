@@ -381,18 +381,19 @@ winbar = {
   folder_level = 1,          -- directories shown before the file name
   separator = " › ",
   chips = true,              -- rounded, coloured chips; false = one flat string
-  align = "left",            -- "right" pushes the breadcrumb to the window's right edge
+  align = "left",            -- "right"/"center" push the breadcrumb to the window's right edge, or split it evenly between both
   max_symbols = { markdown = 1 },
   debounce_ms = 60,          -- cursor movement -> repaint
   refresh_ms = 300,          -- last edit -> next documentSymbol request
 },
 ```
 
-**`align = "right"` is a `'winbar'` built-in, not a padding calculation.**
-Neovim's `'statusline'` format (which `'winbar'` inherits) has `%=` as a
-right-align item: everything after it is pushed to the window's right edge.
-This module prepends it to the string it already built, so the chips or the
-flat text render exactly as before, just anchored to the other side.
+**`align = "right"`/`"center"` are `'winbar'` built-ins, not a padding
+calculation.** Neovim's `'statusline'` format (which `'winbar'` inherits) has
+`%=` as a split-point item: text after one `%=` is pushed to the window's
+right edge, text between two is centred. This module wraps the string it
+already built in the number of `%=` each value needs, so the chips or the
+flat text render exactly as before, just anchored differently.
 
 **On the underline some colorschemes draw under `'winbar'`:** that line is the
 colorscheme's own `WinBar` highlight group, not something this module sets —

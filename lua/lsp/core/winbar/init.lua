@@ -69,7 +69,7 @@ M.DEFAULT_MAX_SYMBOLS = { markdown = 1 }
 ---@field separator string
 ---@field max_symbols table<string, integer>
 ---@field chips boolean
----@field align "left"|"right"
+---@field align "left"|"right"|"center"
 ---@field debounce_ms integer
 ---@field refresh_ms integer
 
@@ -389,7 +389,7 @@ function M.setup(opts)
     end
   end
   state.chips = opts.chips ~= false
-  state.align = opts.align == "right" and "right" or "left"
+  state.align = (opts.align == "right" or opts.align == "center") and opts.align or "left"
   if type(opts.debounce_ms) == "number" and opts.debounce_ms >= 0 then
     state.debounce_ms = math.floor(opts.debounce_ms)
   end
