@@ -12,6 +12,6 @@
 
 ---@type string[]
 return {
-  -- "REPOS_DIR",
+  "REPOS_DIR",
   -- "nvim-treesitter",
 }
