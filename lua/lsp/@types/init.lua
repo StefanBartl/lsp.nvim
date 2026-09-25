@@ -65,6 +65,9 @@ require("lsp.@types.subsystem")
 ---@class LspNvim.MenuOpts
 ---@field enable? boolean # Provide nvzone/menu entries via `lsp.integrations.menu`. No nvzone/menu dependency itself; this only gates whether `M.items()`/`M.submenu()` return entries.
 
+---@class LspNvim.IntegrationsOpts
+---@field ui_menu? boolean # Let ui.nvim's right-click menu (`ui.menu`) compose the LSP fly-outs. `false` hides them there only; `items()` still serves any other host. Default true.
+
 ---@class LspNvim.FormatterOpts
 ---@field on_save? boolean # Format on write at startup; the runtime toggle owns it afterwards.
 ---@field timeout_ms? integer # Upper bound for one format request.
@@ -247,6 +250,7 @@ require("lsp.@types.subsystem")
 ---@field usrcmds LspNvim.UsrcmdsOpts
 ---@field which_key LspNvim.WhichKeyOpts
 ---@field menu LspNvim.MenuOpts
+---@field integrations LspNvim.IntegrationsOpts
 ---@field completion LspNvim.CompletionOpts # Hand-written completion sources.
 
 --- What `lsp.setup()` / `config.setup()` accept: any subset of the above.
@@ -275,6 +279,7 @@ require("lsp.@types.subsystem")
 ---@field usrcmds? LspNvim.UsrcmdsOpts
 ---@field which_key? LspNvim.WhichKeyOpts
 ---@field menu? LspNvim.MenuOpts
+---@field integrations? LspNvim.IntegrationsOpts
 ---@field completion? LspNvim.CompletionOpts
 
 -- #####################################################################
