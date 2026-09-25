@@ -165,6 +165,27 @@ local function normalize_switch(cfg, key)
 end
 
 ---@internal
+--- Force `integrations` into `{ ui_menu = boolean }`.
+---@param cfg LspNvim.Config
+---@return nil
+local function normalize_integrations(cfg)
+  local sub = cfg.integrations
+  if type(sub) ~= "table" then
+    if sub ~= nil then
+      warn("integrations: expected a table, using defaults", "integrations")
+    end
+    cfg.integrations = vim.deepcopy(DEFAULTS.integrations)
+    return
+  end
+  if type(sub.ui_menu) ~= "boolean" then
+    if sub.ui_menu ~= nil then
+      warn("integrations.ui_menu: expected a boolean, using the default", "integrations", "ui_menu")
+    end
+    sub.ui_menu = DEFAULTS.integrations.ui_menu
+  end
+end
+
+---@internal
 --- Force `project` into shape. Runs in stage one, before the file is looked
 --- for -- these are the options that decide whether there is a fourth layer at
 --- all, so they can only come from the three below it.
@@ -712,6 +733,7 @@ function M.setup(user_opts)
   -- surfacing as a stack trace in an unrelated module, which is the shape this
   -- whole normalization step exists to prevent.
   normalize_switch(cfg, "menu")
+  normalize_integrations(cfg)
   normalize_servers(cfg)
   for _, key in ipairs({
     "rename",

@@ -5,10 +5,10 @@
 --- deep-merges the user's options over a copy of this table; the table itself
 --- is never mutated at runtime.
 ---
---- Every key here is read by code. Options that nothing consumes yet
---- (`integrations`) are deliberately absent -- a default nothing reads is a
---- promise the plugin does not keep. They arrive with the layer that honors
---- them.
+--- Every key here is read by code. Options that nothing consumes yet are
+--- deliberately absent -- a default nothing reads is a promise the plugin does
+--- not keep. They arrive with the layer that honors them (`integrations` holds
+--- only `ui_menu` so far, which `integrations/menu.lua`'s `enabled()` reads).
 ---
 ---@see lsp.config
 ---@see lsp.config.KEYMAPS
@@ -445,6 +445,13 @@ local DEFAULTS = {
   -- return entries at all.
   menu = {
     enable = true,
+  },
+
+  -- Which hosts may drive this plugin. `ui_menu = false` keeps ui.nvim's
+  -- right-click menu (ui.menu) from composing the LSP fly-outs; the entries
+  -- stay available to any other host through `menu`/`items()`.
+  integrations = {
+    ui_menu = true,
   },
 }
 

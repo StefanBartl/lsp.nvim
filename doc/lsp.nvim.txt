@@ -199,6 +199,7 @@ Defaults (excerpt -- the full table is `lua/lsp/config/DEFAULTS.lua`): >lua
       usrcmds = { enable = true, legacy_aliases = true },
       which_key = { enable = true },
       menu = { enable = true },
+      integrations = { ui_menu = true },
     }
 <
 `diagnostics` really is those two keys and nothing else. The look --
@@ -582,6 +583,10 @@ which_key.enable      (boolean)   Label the bound key prefixes as which-key
                                   groups. which-key is a soft dependency: when
                                   it is absent this does nothing and no mapping
                                   is affected.
+integrations.ui_menu  (boolean)   Let ui.nvim's right-click menu (`ui.menu`)
+                                  compose this plugin's fly-outs. `false`
+                                  hides them there only; `items()` still
+                                  serves any other host. Default true.
 menu.enable           (boolean)   Contribute this plugin's entries to the
                                   right-click context menu (nvzone/menu, a
                                   soft dependency). The entries mirror the

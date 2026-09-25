@@ -161,7 +161,11 @@ local items = require("lsp.integrations.menu").items()  -- one entry per group, 
 local sub = require("lsp.integrations.menu").submenu()  -- { name = "  LSP", items = {…} } | nil
 ```
 
-`opts.menu.enable = false` opts out entirely.
+`opts.menu.enable = false` opts out entirely. `opts.integrations.ui_menu = false`
+keeps only ui.nvim's right-click menu (`ui.menu`) from composing the fly-outs;
+`items()`/`submenu()` keep working for any other host. The module also answers
+`enabled()` (`false` when either switch is off), which is what `ui.menu` asks
+first.
 
 ## User Commands
 

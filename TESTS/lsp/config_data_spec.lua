@@ -241,7 +241,7 @@ describe("lsp.config.project", function()
     -- "The omissions are the point, so they are named rather than left
     -- implicit." `auto_restart` was refused and named nowhere, which left the
     -- single option about relaunching processes as the one a reader had to
-    -- infer. Nine allowed plus sixteen named omissions is all twenty-five
+    -- infer. Nine allowed plus seventeen named omissions is all twenty-six
     -- top-level keys, and this case is what keeps it that way when the next one
     -- lands.
     local src = source_of("lua/lsp/config/project.lua")

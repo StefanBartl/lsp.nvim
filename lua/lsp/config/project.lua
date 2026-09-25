@@ -51,15 +51,18 @@ local M = {}
 --- * `languages`    -- the per-filetype setup this tree wants.
 ---
 --- The omissions are the point, so they are named rather than left implicit.
---- All sixteen of them. `auto_restart` was once refused by the allowlist and
+--- All seventeen of them. `auto_restart` was once refused by the allowlist and
 --- mentioned nowhere, so the one option whose omission a reader had to infer
 --- was the one about restarting processes. Counted rather than eyeballed --
---- nine allowed plus the sixteen below is every top-level key in `DEFAULTS`.
+--- nine allowed plus the seventeen below is every top-level key in `DEFAULTS`.
 ---
 --- * `preset`                -- a property of the machine, not the repository.
 --- * `keymaps`, `usrcmds`,
 ---   `which_key`, `menu`     -- your bindings. Opening a repository must not
 ---                              move a key or drop a command.
+--- * `integrations`          -- which of your other plugins may drive this one
+---                              (`ui_menu`). A host-side switch, not a fact
+---                              about the tree.
 --- * `mason`                 -- installs software. Never from a checkout.
 --- * `auto_restart`          -- how many times this editor relaunches a crashed
 ---                              process, and how fast. A supervision policy
