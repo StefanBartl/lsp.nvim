@@ -133,7 +133,7 @@ one.
 `inlay_hints`, `lightbulb`, `attach`, `workspace`, `tools`, `languages` are
 accepted; everything else is dropped with a warning. The line is not "what
 could break" but *whose question is this*. Those nine describe the codebase, so
-the codebase may answer them. The other sixteen top-level keys do not, and the
+the codebase may answer them. The other seventeen top-level keys do not, and the
 omissions are named rather than left to be inferred. `keymaps`, `usrcmds`,
 `which_key` and `menu` describe you — opening a repository must not move a key
 or drop a command. `mason` installs software. `preset` is a property of the

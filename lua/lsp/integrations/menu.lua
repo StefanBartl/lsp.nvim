@@ -87,6 +87,22 @@ local function to_fn(rhs)
   end
 end
 
+--- Whether a host that asks first (ui.nvim's `ui.menu`) may show this
+--- plugin's fly-outs: `integrations.ui_menu` is not false and the `menu` group
+--- is not switched off (`menu = false` and `menu.enable = false` both count).
+--- `items()`/`submenu()` themselves stay governed by `menu` alone, so other
+--- hosts are unaffected by `ui_menu`.
+---@return boolean
+function M.enabled()
+  local cfg = require("lsp.config").get() or {}
+  local integrations = cfg.integrations
+  if type(integrations) == "table" and integrations.ui_menu == false then
+    return false
+  end
+  local mcfg = cfg.menu
+  return not (mcfg == false or (type(mcfg) == "table" and mcfg.enable == false))
+end
+
 --- Build the lsp.nvim menu entries, grouped by fly-out.
 --- Returns `{}` when the integration is disabled or nothing is registered
 --- yet (`require("lsp").setup()` hasn't run), so a host can safely

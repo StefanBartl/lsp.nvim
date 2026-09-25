@@ -260,6 +260,23 @@ describe("lsp.integrations.menu", function()
     assert.are.same({}, menu.items())
   end)
 
+  it("enabled() is what ui.menu asks: true by default, off with either switch", function()
+    local menu = stub({ enable = true }, { "goto_definition" })
+    assert.is_true(menu.enabled())
+
+    package.loaded["lsp.config"] = {
+      get = function()
+        return { menu = { enable = true }, integrations = { ui_menu = false } }
+      end,
+    }
+    assert.is_false(menu.enabled())
+    -- ...while items() stays for other hosts.
+    assert.is_true(#menu.items() > 0)
+
+    assert.is_false(stub({ enable = false }, {}).enabled())
+    assert.is_false(stub(false, {}).enabled())
+  end)
+
   it("still builds entries when the menu is enabled", function()
     local menu = stub({ enable = true }, { "goto_definition", "rename" })
     assert.is_true(#menu.items() > 0)

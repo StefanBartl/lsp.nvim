@@ -225,6 +225,7 @@ describe("lsp.config", function()
       -- The one this hand-written list was missing for as long as it existed,
       -- which is why the case below now derives it from `DEFAULTS` instead.
       "menu",
+      "integrations",
     }
 
     -- Derived, not trusted. `menu` was the only top-level option nothing
