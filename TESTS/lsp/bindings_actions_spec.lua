@@ -296,17 +296,22 @@ end)
 
 describe("lsp.bindings.which_key", function()
   local which_key, cfg, registered
-  local saved
+  local saved, saved_preload
 
   before_each(function()
     cfg = require("lsp.config").setup({})
     which_key = require("lsp.bindings.which_key")
     registered = require("lsp.bindings.keymaps").setup(cfg)
     saved = package.loaded["which-key"]
+    -- Snapshotted here (not restored inline in the one test that patches it):
+    -- an assertion failure between patch and inline restore would otherwise
+    -- leak the stub loader into every later spec in this shared run.
+    saved_preload = package.preload["which-key"]
   end)
 
   after_each(function()
     package.loaded["which-key"] = saved
+    package.preload["which-key"] = saved_preload
   end)
 
   it("counts nothing when the registration call raised", function()
@@ -362,7 +367,6 @@ describe("lsp.bindings.which_key", function()
   it("does not require which-key, and delivers the labels when it loads", function()
     package.loaded["which-key"] = nil
     local loads = 0
-    local real_preload = package.preload["which-key"]
     package.preload["which-key"] = function()
       loads = loads + 1
       return { add = function() end }
@@ -383,7 +387,6 @@ describe("lsp.bindings.which_key", function()
 
     assert.is_table(got)
     assert.is_true(#got > 0)
-    package.preload["which-key"] = real_preload
   end)
 
   it("uses which-key v2's `register` when `add` is absent", function()
