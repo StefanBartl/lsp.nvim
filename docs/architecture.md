@@ -69,7 +69,16 @@ The rule that came out of it:
 The same reasoning applies to work a server config does at registration time:
 `servers/bashls.lua` resolves the shellcheck path in `before_init`, not while
 registering, because a failing `vim.fn.exepath()` on Windows walks every PATH
-entry against every PATHEXT suffix and caches nothing.
+entry against every PATHEXT suffix and caches nothing. Measured at ~40 ms per
+name that is not installed, and it is the reason `formatter/conform.lua` hands
+conform a `command` *function* per formatter and `servers/webdev/html.lua` a
+`cmd` *function* that starts the client: both used to resolve every candidate
+in the synchronous `lsp` startup phase (390 ms of it, now ~70 ms). A tool that is
+not installed answers with an absolute Mason path, never the bare name -- conform
+runs `vim.fn.executable(command)` on every format call, and for a bare name that
+is the full PATH walk again, per missing formatter in the chain, on every save.
+`integrations/nvchad.lua` remembers a failed `require` for the same reason: Lua
+does not cache it and it walks the whole runtimepath each time (12-14 ms).
 
 ## And it must not configure it either
 

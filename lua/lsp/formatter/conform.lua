@@ -9,6 +9,7 @@
 
 local notify = require("lib.nvim.notify").create("[lsp.formatter.conform]")
 local sys_env = require("lib.nvim.system.env")
+local executable = require("lib.nvim.cross.executable")
 
 local api = vim.api
 local fn = vim.fn
@@ -31,10 +32,16 @@ end
 
 -- Resolve an executable across common install locations (pipx, mason, pyenv, Windows)
 -- Keeps the original behavior; prefer linux/macOS paths but does not break on Windows.
+--
+-- Called by conform when a formatter is first used, not at setup(): a tool that
+-- is NOT installed costs a full $PATH x $PATHEXT walk (~40 ms on Windows), and
+-- setup() used to pay that for every formatter in the table at startup.
 ---@param cmd string
 ---@return string
 local function resolve(cmd)
-  local exepath = fn.exepath(cmd)
+  -- Memoized per name, and answered from a $PATH index on Windows once several
+  -- names were asked for (lib.nvim.cross.executable).
+  local exepath = executable.path(cmd)
   if exepath ~= nil and exepath ~= "" then
     return exepath
   end
@@ -59,7 +66,13 @@ local function resolve(cmd)
       return p
     end
   end
-  return cmd -- fallback; conform/exepath will try again
+  -- Not installed anywhere we know. Hand conform an ABSOLUTE path -- the Mason
+  -- location, which is also where a later Mason install would land -- and not
+  -- the bare name: conform runs `vim.fn.executable(command)` on every format
+  -- call, and for a bare name that is the full $PATH walk each time (~40 ms per
+  -- missing formatter in the chain, on every save); for an absolute path it is
+  -- one stat. `candidates[1]` is that Mason path.
+  return candidates[1]
 end
 
 -- Collect per-window views for all windows currently showing bufnr.
@@ -161,30 +174,41 @@ function M.setup()
       -- ksh = { "shfmt" },
     },
 
-    -- Explicit commands so Conform can find the executables reliably
+    -- Explicit commands so Conform can find the executables reliably. Functions,
+    -- resolved when the formatter is used: see `resolve`.
     formatters = {
       mdformat = {
-        command = resolve("mdformat"),
+        command = function()
+          return resolve("mdformat")
+        end,
         args = { "-" },
         stdin = true,
         env = { PYTHONIOENCODING = "utf-8", PYTHONUTF8 = "1" },
       },
       prettierd = {
-        command = resolve("prettierd"),
+        command = function()
+          return resolve("prettierd")
+        end,
       },
       prettier = {
-        command = resolve("prettier"),
+        command = function()
+          return resolve("prettier")
+        end,
         prepend_args = { "--stdin-filepath", "$FILENAME" },
       },
 
       shfmt = {
-        command = resolve("shfmt"),
+        command = function()
+          return resolve("shfmt")
+        end,
         -- -i 2 (indent=2), -ci (switch-case indent), -sr (space redirect), -bn (binary ops on new line)
         args = { "-i", "2", "-ci", "-sr", "-bn" },
         stdin = true,
       },
       shellharden = {
-        command = resolve("shellharden"),
+        command = function()
+          return resolve("shellharden")
+        end,
         -- Reads stdin and writes stdout; acts as a safe rewriter/formatter
         args = { "--transform", "-" },
         stdin = true,

@@ -25,14 +25,38 @@ M.hard = false
 ---@type string
 M.note = "on_attach/on_init/capabilities bridge"
 
+local MODULE = "nvchad.configs.lspconfig"
+
+---Set once a probe found no NvChad. A failed `require` is not cached by Lua and
+---walks the whole runtimepath every time (12-14 ms measured, and this is asked
+---for by `available()`, `capabilities()`, `on_init()` and `on_attach()`), so a
+---negative answer is remembered. NvChad turning up later means a restart; a
+---module that got loaded by someone else is still picked up (`package.loaded`).
+---@type boolean
+local absent = false
+
 ---@internal
 ---@return table|nil
 local function nvlsp()
-  local ok, mod = pcall(require, "nvchad.configs.lspconfig")
+  local loaded = package.loaded[MODULE]
+  if type(loaded) == "table" then
+    return loaded
+  end
+  if absent then
+    return nil
+  end
+  local ok, mod = pcall(require, MODULE)
   if ok and type(mod) == "table" then
     return mod
   end
+  absent = true
   return nil
+end
+
+---Forget a negative probe (tests, and a host that installs NvChad mid-session).
+---@return nil
+function M.reset()
+  absent = false
 end
 
 ---@return boolean
