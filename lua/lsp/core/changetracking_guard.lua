@@ -24,6 +24,16 @@
 --- detach+reattach only resets LSP bookkeeping and leaves buffer content and
 --- undo history untouched.
 ---
+--- **Every client on the buffer is resynced, not just the one whose group
+--- desynced.** `vim.lsp._changetracking` groups clients by sync kind and
+--- position encoding, and this wrapper only sees "the call failed", not which
+--- group -- telling them apart would mean reaching into that private
+--- grouping, the exact coupling this module avoids everywhere else. The cost
+--- is a spurious didClose/didOpen (and a diagnostics reset) for a client that
+--- was never actually desynced, on the rare edit that trips this at all. That
+--- is judged cheaper than the alternative of tracking private state to avoid
+--- it.
+---
 --- Wrapping `send_changes` rather than `pcall`-ing its call site
 --- (`vim/lsp.lua`'s `on_lines`) is not a style choice: that callback runs
 --- through `nvim_buf_attach`, which catches a Lua error itself and reports it
@@ -39,8 +49,18 @@ local notify = require("lib.nvim.notify").create("[lsp.core.changetracking_guard
 
 local M = {}
 
----@type boolean
-local installed = false
+--- Per-buffer count of consecutive resyncs that did not clear the desync.
+--- Cleared on the next successful call, so a buffer that recovers is not
+--- penalized by an earlier, unrelated run of failures.
+---@type table<integer, integer>
+local attempts = {}
+
+--- Give up resyncing a buffer after this many consecutive failures, rather
+--- than resync (and warn) on every single keystroke forever if a desync
+--- turns out not to be one `resync()` clears -- not every upstream cause
+--- listed above is necessarily fixed by a detach+reattach.
+---@type integer
+local MAX_ATTEMPTS = 3
 
 --- Re-run the real attach/detach pair for every client on `bufnr`, forcing
 --- `vim.lsp._changetracking` to re-seed its state for each of them.
@@ -56,14 +76,18 @@ local function resync(bufnr)
   end
 end
 
---- Install the guard. Idempotent: a second call (a config reload) is a
---- no-op, so the wrapper never stacks a second `pcall` layer around itself.
+--- Install the guard. Idempotent: a second call is a no-op, so the wrapper
+--- never stacks a second `pcall` layer around itself.
+---
+--- The idempotency marker lives on `changetracking` itself, not a module
+--- local: `:Lazy reload lsp.nvim` clears every `lsp.*` module (see
+--- `lsp.completion.register`) but never touches Neovim's own core modules, so
+--- a module-local flag would reset to `false` on reload while
+--- `vim.lsp._changetracking.send_changes` was still last setup()'s wrapper --
+--- reading that as `original` and wrapping it again on every reload, stacking
+--- one dead, never-erroring `pcall` layer per reload forever.
 ---@return nil
 function M.setup()
-  if installed then
-    return
-  end
-
   local ok, changetracking = pcall(require, "vim.lsp._changetracking")
   if
     not ok
@@ -73,12 +97,30 @@ function M.setup()
     return
   end
 
+  if changetracking._lsp_nvim_guard_installed then
+    return
+  end
+
   local original = changetracking.send_changes
 
   ---@diagnostic disable-next-line: duplicate-set-field
   changetracking.send_changes = function(bufnr, firstline, lastline, new_lastline)
     local call_ok = pcall(original, bufnr, firstline, lastline, new_lastline)
     if call_ok then
+      attempts[bufnr] = nil
+      return
+    end
+
+    local n = (attempts[bufnr] or 0) + 1
+    attempts[bufnr] = n
+    if n > MAX_ATTEMPTS then
+      if n == MAX_ATTEMPTS + 1 then
+        notify.warn(
+          ("LSP change-tracking for this buffer would not stay resynced after %d attempt(s);"):format(
+            MAX_ATTEMPTS
+          ) .. " giving up -- run :edit to recover"
+        )
+      end
       return
     end
 
@@ -89,7 +131,7 @@ function M.setup()
     resync(bufnr)
   end
 
-  installed = true
+  changetracking._lsp_nvim_guard_installed = true
 end
 
 --- Exposed for the spec suite.
