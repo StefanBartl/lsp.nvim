@@ -95,16 +95,24 @@ describe("lsp.bindings.actions", function()
       vim.api.nvim_feedkeys = function() end
       local said, restore = capture_notify()
 
-      for _, case in ipairs({
-        { name = "blank line", lines = { "", "local myvar = 1" }, pos = { 1, 0 } },
-        { name = "whitespace only", lines = { "    ", "local myvar = 1" }, pos = { 1, 2 } },
-      }) do
-        scratch(case.lines, case.pos)
-        local ok, err = pcall(actions.rename)
-        assert.is_true(ok, case.name .. ": " .. tostring(err))
+      -- `restore()` must run even if an assertion inside the loop fails --
+      -- otherwise the capturing stub leaks into every later spec of this
+      -- shared plenary run (TESTS/lsp is one process).
+      local body_ok, body_err = pcall(function()
+        for _, case in ipairs({
+          { name = "blank line", lines = { "", "local myvar = 1" }, pos = { 1, 0 } },
+          { name = "whitespace only", lines = { "    ", "local myvar = 1" }, pos = { 1, 2 } },
+        }) do
+          scratch(case.lines, case.pos)
+          local ok, err = pcall(actions.rename)
+          assert.is_true(ok, case.name .. ": " .. tostring(err))
+        end
+      end)
+      restore()
+      if not body_ok then
+        error(body_err, 0)
       end
 
-      restore()
       assert.are.same({
         "warn: no symbol under the cursor",
         "warn: no symbol under the cursor",
