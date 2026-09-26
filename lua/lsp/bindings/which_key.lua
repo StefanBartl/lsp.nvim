@@ -21,17 +21,44 @@ local KEYMAPS = require("lsp.config.KEYMAPS")
 
 local M = {}
 
---- Register a group label per owned prefix that actually has a binding under it.
----@param cfg LspNvim.Config
----@param registered LspNvim.KeymapSpec[]
----@return integer count # Groups registered.
-function M.setup(cfg, registered)
-  if not cfg.which_key.enable then
+---Send the groups to a loaded which-key.
+---
+---which-key v3 takes a flat list of specs; v2 wants a keyed table passed to
+---`register`. Try v3 first, since `add` does not exist on v2.
+---@param wk table
+---@param groups table[]
+---@return integer count # `#groups` when which-key took them, else 0.
+local function deliver(wk, groups)
+  local accepted
+  if type(wk.add) == "function" then
+    accepted = pcall(wk.add, groups)
+  ---@diagnostic disable-next-line: deprecated
+  elseif type(wk.register) == "function" then
+    ---@type table<string, table>
+    local v2 = {}
+    for _, g in ipairs(groups) do
+      v2[g[1]] = { name = g.group }
+    end
+    ---@diagnostic disable-next-line: deprecated
+    accepted = pcall(wk.register, v2)
+  else
     return 0
   end
 
-  local ok, wk = pcall(require, "which-key")
-  if not ok then
+  -- The `pcall` result is what the count reports, rather than `#groups`
+  -- unconditionally. Measured against a which-key whose `add` raises: this
+  -- returned 2 while nothing had been registered, and a count that cannot be
+  -- wrong is the only reason to return one.
+  return accepted and #groups or 0
+end
+
+--- Register a group label per owned prefix that actually has a binding under it.
+---@param cfg LspNvim.Config
+---@param registered LspNvim.KeymapSpec[]
+---@return integer count # Groups registered now; 0 while which-key is not loaded yet
+---   (they are delivered when it loads).
+function M.setup(cfg, registered)
+  if not cfg.which_key.enable then
     return 0
   end
 
@@ -64,29 +91,18 @@ function M.setup(cfg, registered)
     return a[1] < b[1]
   end)
 
-  -- which-key v3 takes a flat list of specs; v2 wants a keyed table passed to
-  -- `register`. Try v3 first, since `add` does not exist on v2.
-  local accepted
-  if type(wk.add) == "function" then
-    accepted = pcall(wk.add, groups)
-  ---@diagnostic disable-next-line: deprecated
-  elseif type(wk.register) == "function" then
-    ---@type table<string, table>
-    local v2 = {}
-    for _, g in ipairs(groups) do
-      v2[g[1]] = { name = g.group }
-    end
-    ---@diagnostic disable-next-line: deprecated
-    accepted = pcall(wk.register, v2)
-  else
-    return 0
-  end
+  -- Hand the labels over when which-key is there: now if it is loaded, else when
+  -- it loads. Never `require` it here -- under a lazy manager that is the load
+  -- trigger, and this runs in the synchronous startup phase for a popup nobody
+  -- has opened (which-key is meant to load on the first `<leader>`).
+  local counted = 0
+  local ran_now = require("lib.nvim.bindings.keymap.which_key").when_loaded(function(wk)
+    counted = deliver(wk, groups)
+  end)
 
-  -- The `pcall` result is what the count reports, rather than `#groups`
-  -- unconditionally. Measured against a which-key whose `add` raises: this
-  -- returned 2 while nothing had been registered, and a count that cannot be
-  -- wrong is the only reason to return one.
-  return accepted and #groups or 0
+  -- Groups registered so far: what the call reported when which-key was
+  -- loaded, nothing yet when the labels are waiting for it.
+  return ran_now and counted or 0
 end
 
 return M
