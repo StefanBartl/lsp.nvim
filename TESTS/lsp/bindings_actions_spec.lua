@@ -359,6 +359,33 @@ describe("lsp.bindings.which_key", function()
     assert.are.same(sorted, prefixes)
   end)
 
+  it("does not require which-key, and delivers the labels when it loads", function()
+    package.loaded["which-key"] = nil
+    local loads = 0
+    local real_preload = package.preload["which-key"]
+    package.preload["which-key"] = function()
+      loads = loads + 1
+      return { add = function() end }
+    end
+    package.loaded["lib.nvim.bindings.keymap.which_key"] = nil
+
+    local count = which_key.setup(cfg, registered)
+    assert.are.equal(0, count) -- nothing registered yet
+    assert.are.equal(0, loads) -- and the plugin was not loaded for it
+
+    local got
+    package.loaded["which-key"] = {
+      add = function(groups)
+        got = groups
+      end,
+    }
+    vim.api.nvim_exec_autocmds("User", { pattern = "LazyLoad", data = "which-key.nvim" })
+
+    assert.is_table(got)
+    assert.is_true(#got > 0)
+    package.preload["which-key"] = real_preload
+  end)
+
   it("uses which-key v2's `register` when `add` is absent", function()
     local got
     package.loaded["which-key"] = {
