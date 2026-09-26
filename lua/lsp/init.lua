@@ -347,6 +347,12 @@ local function bootstrap(cfg)
   step("auto-restart supervisor", function()
     require("lsp.core.supervisor").setup(cfg.auto_restart)
   end)
+  -- Also early, for the same reason: it patches `vim.lsp._changetracking`
+  -- before the first `on_lines` callback can hit the desync it guards
+  -- against.
+  step("changetracking guard", function()
+    require("lsp.core.changetracking_guard").setup()
+  end)
 
   local caps = build_capabilities()
   local attach = build_attach(cfg)
