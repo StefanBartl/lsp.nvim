@@ -32,21 +32,36 @@ function M.setup(shared, opts)
     return executable.path(name) or executable.mason_bin(name)
   end
 
-  local exe = nil
-  for i = 1, #candidates do
-    local p = resolve_exec(candidates[i])
-    if p then
-      exe = p
-      break
+  ---The argv to start: the first candidate that resolves, else the candidate
+  ---list itself, to surface a meaningful error if nothing is installed.
+  ---@return string[]
+  local function resolve_cmd()
+    for i = 1, #candidates do
+      local p = resolve_exec(candidates[i])
+      if p then
+        return { p, "--stdio" }
+      end
     end
+    return candidates
   end
 
+  -- Resolved when the server is started (first html buffer), not here: with
+  -- three candidate names of which none is installed, resolving in setup() cost
+  -- ~130 ms of $PATH walks in the synchronous startup phase. `cmd` may be a
+  -- function that starts the RPC client itself (Neovim >= 0.11); an older
+  -- Neovim without it keeps the eager resolution.
+  ---@type string[]|fun(dispatchers: table, config: table): table
   local cmd
-  if exe then
-    cmd = { exe, "--stdio" }
+  if type(lsp.rpc) == "table" and type(lsp.rpc.start) == "function" then
+    cmd = function(dispatchers, config)
+      return lsp.rpc.start(resolve_cmd(), dispatchers, {
+        cwd = config.cmd_cwd,
+        env = config.cmd_env,
+        detached = config.detached,
+      })
+    end
   else
-    -- keep candidate list to surface meaningful error if nothing found
-    cmd = candidates
+    cmd = resolve_cmd()
   end
 
   if type(lsp.config) ~= "table" then
