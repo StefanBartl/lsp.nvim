@@ -25,6 +25,17 @@
 
 local pack = require("lsp.config.pack")
 
+-- `<CR>`/`<C-y>`, from `completion_accept`, plus `<Right>` when a config opts
+-- into `completion_arrow_accept` -- see that option's doc comment for why it
+-- defaults off. Built as a local rather than inline in `opts` so the
+-- conditional key is legible instead of a ternary-into-nil.
+local keymap = {
+  preset = pack.completion_accept() == "cr" and "enter" or "default",
+}
+if pack.completion_arrow_accept() then
+  keymap["<Right>"] = { "select_and_accept", "fallback" }
+end
+
 ---@type table[]
 return {
   {
@@ -43,13 +54,13 @@ return {
     -- default in 1.x and InsertEnter never fires for `:`.
     event = { "InsertEnter", "CmdlineEnter" },
     opts = {
-      -- `<CR>` or `<C-y>`, from the pack option. Set as a whole preset rather
-      -- than a single binding: the two differ in more than the key, and a
-      -- `keymap` table without a `preset` assigns nothing else at all, so a
-      -- config that overrides one key would otherwise lose the rest.
-      keymap = {
-        preset = pack.completion_accept() == "cr" and "enter" or "default",
-      },
+      -- `<CR>` or `<C-y>`, from the pack option, plus `<Right>` when
+      -- `completion_arrow_accept` opts into it -- see the `keymap` local
+      -- above. Set as a whole preset rather than a single binding: the two
+      -- differ in more than the key, and a `keymap` table without a `preset`
+      -- assigns nothing else at all, so a config that overrides one key would
+      -- otherwise lose the rest.
+      keymap = keymap,
       -- Another bug fix, not a preference (same standing as the buftype
       -- guard below): blink's default `auto_insert = true` writes the
       -- preselected item's text into the buffer the moment it is

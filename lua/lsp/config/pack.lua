@@ -100,6 +100,25 @@ function M.completion_accept()
   return "cr"
 end
 
+--- Whether `<Right>` also accepts the highlighted completion, on top of
+--- whatever `completion_accept` picked.
+---
+--- Defaults to `false`. Arrow keys are plain cursor movement in every blink
+--- preset; that default is the point, not an omission. Confusing "moved the
+--- cursor" with "accepted the completion" is exactly what `auto_insert = false`
+--- (see `lsp.pack.completion_blink`) already fixed for the *unbound* case, and
+--- binding `<Right>` to `select_and_accept` by default would reopen the same
+--- confusion on purpose. A config that wants the faster habit back can opt in
+--- explicitly.
+---
+--- blink only, same reason as `completion_accept`: nvim-cmp gets an `opts`
+--- fragment merged into a config's own cmp spec, never a keymap of its own, so
+--- there is no key here to bind on that side.
+---@return boolean
+function M.completion_arrow_accept()
+  return M.opts().completion_arrow_accept == true
+end
+
 --- Should this plugin be installed?
 ---
 --- Returns a value rather than a closure: lazy reads `enabled` when it resolves

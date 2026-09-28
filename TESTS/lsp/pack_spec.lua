@@ -131,6 +131,18 @@ describe("lsp.config.pack", function()
       assert.is_false(opts.completion.list.selection.auto_insert)
     end)
 
+    it("leaves <Right> as plain cursor movement by default", function()
+      with(nil)
+      local keymap = require("lsp.pack.completion_blink")[1].opts.keymap
+      assert.is_nil(keymap["<Right>"])
+    end)
+
+    it("binds <Right> to select_and_accept when completion_arrow_accept is on", function()
+      with({ completion_arrow_accept = true })
+      local keymap = require("lsp.pack.completion_blink")[1].opts.keymap
+      assert.are.same({ "select_and_accept", "fallback" }, keymap["<Right>"])
+    end)
+
     it("keeps completion out of nofile buffers", function()
       -- ui.kit's floats are buftype=nofile, and blink's own guard
       -- only covers buftype=prompt. With <CR> bound to accept, a rename
