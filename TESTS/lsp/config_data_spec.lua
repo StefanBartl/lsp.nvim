@@ -401,6 +401,7 @@ describe("lsp.config.pack", function()
       assert.is_true(choice == "cmp" or choice == "blink" or choice == false, label)
       local accept = pack.completion_accept()
       assert.is_true(accept == "cr" or accept == "ctrl_y", label)
+      assert.is_boolean(pack.completion_arrow_accept(), label)
     end
   end)
 end)
