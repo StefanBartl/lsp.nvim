@@ -56,6 +56,7 @@ vim.g.lsp_nvim = {
     ui = true,            -- trouble, lensline, inc-rename
     completion = "blink", -- "cmp" | "blink" | false (default: blink)
     completion_accept = "cr", -- "cr" | "ctrl_y" (default: cr) -- blink only
+    completion_arrow_accept = false, -- also bind <Right> to accept (default: false) -- blink only
     disable = { "lensline.nvim" },
   },
 }
@@ -71,6 +72,13 @@ selected and still inserts a newline when nothing is, while `default` binds
 `select_and_accept`. It has no effect under nvim-cmp, where this pack
 contributes an `opts` fragment to a config's own cmp spec rather than owning
 the keymap.
+
+`completion_arrow_accept` defaults to `false` on purpose: arrow keys are plain
+cursor movement in every blink preset, and binding `<Right>` to
+`select_and_accept` makes moving the cursor through an open completion menu
+indistinguishable from accepting it — the same confusion `auto_insert = false`
+already rules out for the unbound case. Set it to `true` to get that faster
+habit back. blink only, same reason as `completion_accept`.
 
 ## Two things that will bite you
 
