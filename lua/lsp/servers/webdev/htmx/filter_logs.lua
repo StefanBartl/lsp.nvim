@@ -55,8 +55,9 @@ function M.create_handler(opts)
       -- Log to LSP log file (appears in :lua vim.cmd('e ' .. vim.lsp.get_log_path()))
       vim.schedule(function()
         local msg = string.format("[%s] %s", server_name, chunk:gsub("\\n", " "))
-        -- Write to vim messages (accessible via :messages)
-        vim.api.nvim_echo({ { msg, "WarningMsg" } }, false, {})
+        -- Transient cmdline line, not :messages -- a noisy server can push
+        -- many of these, and each would otherwise pile up in history.
+        require("lib.nvim.echo").write(msg, { level = vim.log.levels.WARN })
       end)
     end
   end
