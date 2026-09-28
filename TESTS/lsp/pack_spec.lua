@@ -120,6 +120,17 @@ describe("lsp.config.pack", function()
       assert.are.equal("default", require("lsp.pack.completion_blink")[1].opts.keymap.preset)
     end)
 
+    it("does not auto-insert the preselected item into the buffer", function()
+      -- blink's default `auto_insert = true` writes the highlighted item's
+      -- text into the buffer before any accept key fires, and only `<C-e>`
+      -- undoes it -- not cursor movement. Left on, pressing `<Right>` while
+      -- the menu is open (an ordinary, unbound cursor key) leaves that
+      -- preview text behind, indistinguishable from having accepted it.
+      with(nil)
+      local opts = require("lsp.pack.completion_blink")[1].opts
+      assert.is_false(opts.completion.list.selection.auto_insert)
+    end)
+
     it("keeps completion out of nofile buffers", function()
       -- ui.kit's floats are buftype=nofile, and blink's own guard
       -- only covers buftype=prompt. With <CR> bound to accept, a rename
