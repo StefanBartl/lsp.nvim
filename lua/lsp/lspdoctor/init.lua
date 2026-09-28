@@ -33,7 +33,7 @@
 ---   :LspDoctor buffer        -> what is going on in this buffer
 ---   :LspDoctor capabilities  -> per-client capabilities and workspace
 ---   :LspDoctor probe         -> whether diagnostics come back at all
----   :LspDoctor! [mode]       -> open in scratch buffer instead of printing
+---   :LspDoctor! [mode]       -> open in scratch buffer instead of a viewer panel
 ---
 --- `probe` stays out of `all` on purpose. The other four read state and are
 --- instant; `probe` creates a buffer, talks to the servers and waits up to
@@ -186,20 +186,19 @@ end
 
 ---@param lines string[]
 ---@param use_scratch boolean
+---@param title string Viewer panel title when neither scratch nor notify apply
 ---@return nil
-local function render_output(lines, use_scratch)
+local function render_output(lines, use_scratch, title)
   -- Auto-open scratch if output is long
   if use_scratch or (Opts.auto_open_scratch and #lines > Opts.scratch_threshold) then
     render_to_scratch(lines)
     return
   end
 
-  -- Otherwise print/notify
-  local text = table.concat(lines, "\n")
   if Opts.use_notify then
-    notify.info(text)
+    notify.info(table.concat(lines, "\n"))
   else
-    print(text)
+    require("lib.nvim.output.viewer").show_lines(title, lines)
   end
 end
 
@@ -230,7 +229,7 @@ end
 function M.startup(bufnr, use_scratch)
   bufnr = bufnr or 0
   local lines, results = health.check(bufnr)
-  render_output(lines, use_scratch or false)
+  render_output(lines, use_scratch or false, "LSP Doctor: startup")
   return results
 end
 
@@ -241,7 +240,7 @@ end
 function M.resolve(bufnr, use_scratch)
   bufnr = bufnr or 0
   local lines, info = debug.info(bufnr)
-  render_output(lines, use_scratch or false)
+  render_output(lines, use_scratch or false, "LSP Doctor: resolve")
   return info
 end
 
@@ -252,7 +251,7 @@ end
 function M.buffer(bufnr, use_scratch)
   bufnr = bufnr or 0
   local lines, report = inspect.buffer(bufnr)
-  render_output(lines, use_scratch or false)
+  render_output(lines, use_scratch or false, "LSP Doctor: buffer")
   return report
 end
 
@@ -263,7 +262,7 @@ end
 function M.capabilities(bufnr, use_scratch)
   bufnr = bufnr or 0
   local lines, report = inspect.capabilities(bufnr)
-  render_output(lines, use_scratch or false)
+  render_output(lines, use_scratch or false, "LSP Doctor: capabilities")
   return report
 end
 
@@ -278,7 +277,7 @@ end
 function M.probe(bufnr, use_scratch)
   bufnr = bufnr or 0
   local lines, report = probe.run(bufnr)
-  render_output(lines, use_scratch or false)
+  render_output(lines, use_scratch or false, "LSP Doctor: probe")
   return report
 end
 
@@ -329,7 +328,7 @@ function M.all(bufnr, use_scratch)
   table.insert(all_lines, "")
   vim.list_extend(all_lines, inspect_lines)
 
-  render_output(all_lines, use_scratch or false)
+  render_output(all_lines, use_scratch or false, "LSP Doctor: all")
 
   return {
     startup = health_results,
