@@ -50,6 +50,20 @@ return {
       keymap = {
         preset = pack.completion_accept() == "cr" and "enter" or "default",
       },
+      -- Another bug fix, not a preference (same standing as the buftype
+      -- guard below): blink's default `auto_insert = true` writes the
+      -- preselected item's text into the buffer the moment it is
+      -- highlighted, before any accept key is pressed. Neither `<Right>` nor
+      -- any other cursor-movement key is bound by blink to *cancel* that
+      -- preview -- only `<C-e>` is -- so moving the cursor with an arrow key
+      -- while the menu is open just leaves the preview text sitting in the
+      -- buffer, indistinguishable from having accepted it. Disabling
+      -- `auto_insert` keeps the item highlighted (`preselect` is unaffected)
+      -- but stops it from touching the buffer until the accept key fires, so
+      -- arrow keys go back to being plain cursor movement.
+      completion = {
+        list = { selection = { auto_insert = false } },
+      },
       -- Suppress completion in utility buffers -- the same fix the nvim-cmp
       -- fragment carries, and what makes `<CR>` safe to default to. blink's
       -- own guard stops at `buftype = "prompt"`, but `ui.kit`'s
