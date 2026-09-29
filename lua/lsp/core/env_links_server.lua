@@ -93,7 +93,16 @@ end
 local function link_at(params)
   local uri = params and params.textDocument and params.textDocument.uri
   local pos = params and params.position
-  if type(uri) ~= "string" or type(pos) ~= "table" then
+  -- A negative line would not be refused by `nvim_buf_get_lines`: -1 is the
+  -- last line of the buffer.
+  if
+    type(uri) ~= "string"
+    or type(pos) ~= "table"
+    or type(pos.line) ~= "number"
+    or pos.line < 0
+    or type(pos.character) ~= "number"
+    or pos.character < 0
+  then
     return nil, nil
   end
 
@@ -192,15 +201,24 @@ function M.server(dispatchers)
   ---@return integer id
   function server.request(method, params, callback, notify_reply_callback)
     request_id = request_id + 1
+    -- A handler that raises would surface as a Lua error in whichever feature
+    -- asked -- every `K` and `gd` on that link. Answer it as the LSP error it
+    -- is instead.
+    local answer = method == "textDocument/definition" and M.definition
+      or method == "textDocument/hover" and M.hover
+      or nil
     if method == "initialize" then
       callback(nil, {
         capabilities = { definitionProvider = true, hoverProvider = true },
         serverInfo = { name = M.NAME },
       })
-    elseif method == "textDocument/definition" then
-      callback(nil, M.definition(params))
-    elseif method == "textDocument/hover" then
-      callback(nil, M.hover(params))
+    elseif answer then
+      local ok, result = pcall(answer, params)
+      if ok then
+        callback(nil, result)
+      else
+        callback({ code = -32603, message = tostring(result) }, nil)
+      end
     elseif method == "shutdown" then
       callback(nil, nil)
     else

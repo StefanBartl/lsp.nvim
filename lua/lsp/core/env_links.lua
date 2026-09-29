@@ -110,12 +110,15 @@ end
 ---@param path string
 ---@return string|nil
 local function resolve_builtin(path)
-  local name, rest = path:match("^%${([%w_]+)}[/\\]?(.*)$")
+  -- `${VAR}` and `$VAR` are followed by a separator or by nothing. `${VAR}foo`
+  -- is the variable's value with `foo` glued on in a shell, not a folder
+  -- below it: not something to guess at.
+  local name, rest = path:match("^%${([%w_]+)}[/\\](.*)$")
   if not name then
     name, rest = path:match("^%$([%w_]+)[/\\](.*)$")
   end
   if not name then
-    name = path:match("^%$([%w_]+)$")
+    name = path:match("^%${([%w_]+)}$") or path:match("^%$([%w_]+)$")
     rest = ""
   end
   if not name then
@@ -229,16 +232,39 @@ end
 -- Link under the cursor
 -- ----------------------------------------------------------------------------
 
+--- Longest line `target_at` will scan, in bytes. No hand-written Markdown link
+--- sits on a line this long.
+---@type integer
+M.MAX_LINE_BYTES = 20000
+
+--- Longest link target `target_at` will follow, in bytes: `PATH_MAX`, and far
+--- beyond anything a person types.
+---@type integer
+M.MAX_TARGET_BYTES = 4096
+
+---@internal
+--- Whether byte `b` is what Lua's `%s` matches.
+---@param b integer|nil
+---@return boolean
+local function is_space(b)
+  return b == 32 or (b ~= nil and b >= 9 and b <= 13)
+end
+
 ---@internal
 --- Parse the target that starts at byte `i` of an inline link's `(`...`)`.
 --- A `<...>` target may hold spaces; a bare one ends at whitespace or at the
 --- unmatched `)`, and may be followed by a title.
+---
+--- Bounded by `MAX_TARGET_BYTES`, and hops from one byte that matters to the
+--- next with `find` instead of looking at every byte: `[a]($X/[a]($X/...`
+--- makes every link's target run to the end of the line, and a scan per link
+--- over the rest of the line is quadratic.
 ---@param line string
 ---@param i integer # First byte after `(`.
 ---@return string|nil target
 ---@return integer|nil close # Byte of the closing `)`, or the last byte seen.
 local function parse_target(line, i)
-  if line:sub(i, i) == "<" then
+  if line:byte(i) == 60 then -- "<"
     local gt = line:find(">", i + 1, true)
     if not gt then
       return nil, nil
@@ -247,21 +273,31 @@ local function parse_target(line, i)
   end
 
   local depth, j = 0, i
-  while j <= #line do
-    local c = line:sub(j, j)
-    if c == "(" then
+  while true do
+    local k = line:find("[%s()]", j)
+    if not k then
+      j = #line + 1 -- runs to the end of the line: a link still being typed
+      break
+    end
+    if k - i > M.MAX_TARGET_BYTES then
+      return nil, nil -- longer than any real target: not cut short, refused
+    end
+    local c = line:byte(k)
+    if c == 40 then -- "("
       depth = depth + 1
-    elseif c == ")" then
+    elseif c == 41 then -- ")"
       if depth == 0 then
+        j = k
         break
       end
       depth = depth - 1
-    elseif c:match("%s") then
+    else -- whitespace
+      j = k
       break
     end
-    j = j + 1
+    j = k + 1
   end
-  if j == i then
+  if j == i or j - i > M.MAX_TARGET_BYTES then
     return nil, nil
   end
   return line:sub(i, j - 1), line:find(")", j, true) or (j - 1)
@@ -277,23 +313,43 @@ end
 ---@param col integer
 ---@return string|nil target # As written, `<>` and `#fragment` included.
 function M.target_at(line, col)
-  -- The scan below is quadratic in the worst case (`[[[[[[...`); a hover or a
-  -- `gd` on a minified or generated line must not be able to stall the editor.
-  -- No hand-written Markdown link sits on a line this long.
+  -- A hover or a `gd` on a minified or generated line must not be able to
+  -- stall the editor. The scan below is linear in the line (measured before
+  -- it was: 1.2 s on 20000 `[`), this cap only keeps it short.
   if #line > M.MAX_LINE_BYTES then
     return nil
   end
-  local init = 1
+
+  -- One pass over the brackets. `open` is the last `[` not yet closed; a `](`
+  -- after it is an inline link, whose text starts there. (`%[[^%]]*%]%(` did
+  -- the same job, but re-scanned to the end of the line from every `[`.)
+  local open ---@type integer|nil
+  local pos = 1
   while true do
-    local s, _, after_paren = line:find("%[[^%]]*%]%(()", init)
-    if not s then
+    local i = line:find("[%[%]]", pos)
+    if not i then
       break
     end
-    local target, close = parse_target(line, after_paren)
-    if target and close and col >= s and col <= close then
-      return target
+    if line:byte(i) == 91 then -- "["
+      open = i
+    else
+      if open and line:byte(i + 1) == 40 then -- "]("
+        -- Links come left to right: once one starts past `col`, none further
+        -- right can hold it. And one whose target starts more than a target's
+        -- length before `col` cannot reach it.
+        if open > col then
+          break
+        end
+        if i + 2 + M.MAX_TARGET_BYTES >= col then
+          local target, close = parse_target(line, i + 2)
+          if target and close and col >= open and col <= close then
+            return target
+          end
+        end
+      end
+      open = nil
     end
-    init = s + 1
+    pos = i + 1
   end
 
   local ref = line:match("^%s*%[[^%]]+%]:%s*(%S+)")
@@ -344,13 +400,15 @@ end
 -- Target content
 -- ----------------------------------------------------------------------------
 
---- Longest line `target_at` will scan, in bytes.
----@type integer
-M.MAX_LINE_BYTES = 20000
-
 --- Largest file the content helpers (`heading_line`, `preview`) will read.
 ---@type integer
 M.MAX_READ_BYTES = 2 * 1024 * 1024
+
+--- Longest line `heading_line` will take for a heading, in bytes. Not a limit
+--- on the file: a longer line is simply not one. (It is a limit on work, too --
+--- see `heading_title`.)
+---@type integer
+M.MAX_HEADING_BYTES = 2000
 
 --- Longest preview line, in characters.
 ---@type integer
@@ -390,6 +448,36 @@ local function slug(title)
   return (s:gsub("%s", "-"))
 end
 
+---@internal
+--- The title of an ATX heading line (`## Title ##`), nil for any other line.
+---
+--- The trailing spaces and closing `#`s are stripped by walking back from the
+--- end. The obvious `^#+%s+(.-)%s*#*%s*$` is cubic on a line with a long run
+--- of spaces inside it (measured: 0.5 s at 1000 bytes, 4.3 s at 2000), and the
+--- line comes from a file this module does not control.
+---@param line string
+---@return string|nil
+local function heading_title(line)
+  if #line > M.MAX_HEADING_BYTES then
+    return nil
+  end
+  local rest = line:match("^#+%s+(.*)$")
+  if not rest then
+    return nil
+  end
+  local e = #rest
+  while is_space(rest:byte(e)) do
+    e = e - 1
+  end
+  while e > 0 and rest:byte(e) == 35 do -- "#"
+    e = e - 1
+  end
+  while is_space(rest:byte(e)) do
+    e = e - 1
+  end
+  return rest:sub(1, e)
+end
+
 --- The 0-based line of the heading whose anchor is `fragment` in the file at
 --- `path`; nil when there is none or the file cannot be read. Headings inside
 --- fenced code blocks are not headings.
@@ -411,7 +499,7 @@ function M.heading_line(path, fragment)
     if line:match("^%s*```") or line:match("^%s*~~~") then
       in_fence = not in_fence
     elseif not in_fence then
-      local title = line:match("^#+%s+(.-)%s*#*%s*$")
+      local title = heading_title(line)
       if title and slug(title) == want then
         return n
       end
