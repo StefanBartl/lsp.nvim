@@ -136,6 +136,14 @@ describe("lsp.core.env_links", function()
 
     it("resolves a bare $VAR to the directory itself", function()
       assert.are.equal(root, links.resolve("$LSPTEST_ENV_ROOT").path)
+      assert.are.equal(root, links.resolve("${LSPTEST_ENV_ROOT}").path)
+    end)
+
+    -- In a shell `${VAR}foo` is the value with `foo` glued on; nothing below
+    -- the folder. Guessing a separator would resolve it to a file it never named.
+    it("does not guess at `${VAR}` with text glued to it", function()
+      assert.is_nil(links.resolve("${LSPTEST_ENV_ROOT}notes/a.md"))
+      assert.is_nil(links.resolve("$LSPTEST_ENV_ROOTnotes/a.md"))
     end)
 
     it("keeps the fragment", function()
@@ -315,6 +323,10 @@ describe("lsp.core.env_links", function()
       { "[a](${R}/x.md)", 8, "${R}/x.md" },
       { "[label]: $R/x.md", 3, "$R/x.md" },
       { "[label]: <$R/x.md>", 12, "$R/x.md" },
+      -- A stray `]` before the link, a link still being typed, nested parens.
+      { "x](y) [a]($R/x.md)", 15, "$R/x.md" },
+      { "[a]($R/x.md", 5, "$R/x.md" },
+      { "[a]($R/x(1).md)", 8, "$R/x(1).md" },
       -- Outside every link.
       { "see [a]($R/x.md) and more", 2, nil },
       { "see [a]($R/x.md) and more", 22, nil },
@@ -339,6 +351,42 @@ describe("lsp.core.env_links", function()
     it("finds the right link when the line has several", function()
       local line = "[one]($A/1.md) [two]($B/2.md) [three]($C/3.md)"
       assert.are.equal("$B/2.md", links.target_at(line, line:find("two", 1, true)))
+    end)
+
+    it("refuses a target longer than any real one instead of cutting it short", function()
+      local at_cap = ("x"):rep(links.MAX_TARGET_BYTES)
+      assert.are.equal(at_cap, links.target_at("[a](" .. at_cap .. ")", 3))
+      -- One byte more, terminated or not: nil, never a truncated path.
+      local over = at_cap .. "x"
+      assert.is_nil(links.target_at("[a](" .. over .. ")", 3))
+      assert.is_nil(links.target_at("[a](" .. over, 3))
+    end)
+
+    -- What the linear scan replaced was quadratic, and each of these took
+    -- about a second at the 20000-byte cap (measured: 1.2 s and 0.8 s) -- on a
+    -- hover or a `gd`, on a line the user did not write. The bound is generous
+    -- (the scan takes about a millisecond); it only has to tell the two apart.
+    ---@param line string
+    ---@param col integer
+    ---@return number ms
+    local function time_target_at(line, col)
+      local t0 = uv.hrtime()
+      links.target_at(line, col)
+      return (uv.hrtime() - t0) / 1e6
+    end
+
+    it("stays fast on a line of nothing but `[`", function()
+      local line = ("["):rep(links.MAX_LINE_BYTES)
+      assert.is_true(time_target_at(line, #line) < 300)
+      assert.is_true(time_target_at(line, 1) < 300)
+    end)
+
+    it("stays fast on links whose targets never end", function()
+      local line = ("[a]($X/"):rep(math.floor(links.MAX_LINE_BYTES / 7))
+      -- One past the end: no link holds that column, so nothing stops the scan
+      -- early (at the last byte the first link, whose target runs to the end
+      -- of the line, would answer at once and hide the cost).
+      assert.is_true(time_target_at(line, #line + 1) < 300)
     end)
   end)
 
@@ -431,6 +479,37 @@ describe("lsp.core.env_links", function()
       local got = links.heading_line(root .. "/h.md", "title")
       links.MAX_READ_BYTES = saved
       assert.is_nil(got)
+    end)
+
+    it("strips closing hashes and trailing whitespace from the title", function()
+      write_file(root .. "/c.md", "## Closed ##   \n### Bare ###\n#### Plain\t\n# C#\n")
+      assert.are.equal(0, links.heading_line(root .. "/c.md", "closed"))
+      assert.are.equal(1, links.heading_line(root .. "/c.md", "bare"))
+      assert.are.equal(2, links.heading_line(root .. "/c.md", "plain"))
+      assert.are.equal(3, links.heading_line(root .. "/c.md", "c"))
+    end)
+
+    it("does not take `#tag` or a hash-only line for a heading", function()
+      write_file(root .. "/n.md", "#tag\n#\n## \n")
+      assert.is_nil(links.heading_line(root .. "/n.md", "tag"))
+      -- `## ` is a heading with an empty title, which no fragment names.
+      assert.is_nil(links.heading_line(root .. "/n.md", "x"))
+    end)
+
+    -- The pattern this replaced, `^#+%s+(.-)%s*#*%s*$`, is cubic on a long run
+    -- of spaces inside the line: 0.5 s at 1000 bytes, 4.3 s at 2000, and the
+    -- file is whatever the link points at (2 MB allowed).
+    it("stays fast on a heading line full of spaces", function()
+      local within_cap = "# a" .. (" "):rep(links.MAX_HEADING_BYTES - 10) .. "x"
+      local over_cap = "# a" .. (" "):rep(links.MAX_HEADING_BYTES * 10) .. "x"
+      write_file(root .. "/s.md", table.concat({ within_cap, over_cap, "## Real" }, "\n"))
+
+      local t0 = uv.hrtime()
+      local line = links.heading_line(root .. "/s.md", "real")
+      local ms = (uv.hrtime() - t0) / 1e6
+
+      assert.are.equal(2, line)
+      assert.is_true(ms < 300, ("took %.0f ms"):format(ms))
     end)
   end)
 
@@ -696,6 +775,56 @@ describe("lsp.core.env_links_server", function()
       assert.is_nil(server.definition(nil))
       assert.is_nil(server.definition({}))
       assert.is_nil(server.definition({ textDocument = { uri = "file:///x" } }))
+    end)
+
+    -- `nvim_buf_get_lines` takes -1 for the last line, so a negative line must
+    -- be refused here rather than answered for the wrong line.
+    it("refuses a position that is not a place in the document", function()
+      local buf = doc(root .. "/doc.md", "[t]($LSPTEST_ENV_ROOT/target.md)\n")
+      local uri = vim.uri_from_bufnr(buf)
+      for _, position in ipairs({
+        { line = -1, character = 3 },
+        { line = 0, character = -1 },
+        { line = "0", character = 3 },
+        { line = 0 },
+      }) do
+        local res = server.definition({ textDocument = { uri = uri }, position = position })
+        assert.is_nil(res, vim.inspect(position))
+      end
+      -- The same request with a real position does answer.
+      assert.is_truthy(server.definition(params(buf, 0, 8)))
+    end)
+  end)
+
+  describe("as an in-process server", function()
+    -- A handler that raises must not surface as a Lua error in whichever
+    -- feature asked -- every `K` and `gd` on that link -- but as the LSP error
+    -- it is.
+    it("answers a handler that raises with an LSP error", function()
+      local real_definition, real_hover = server.definition, server.hover
+      server.definition = function()
+        error("boom")
+      end
+      server.hover = function()
+        error("bang")
+      end
+      local srv = server.server({ on_exit = function() end })
+      local got = {}
+      for _, method in ipairs({ "textDocument/definition", "textDocument/hover" }) do
+        srv.request(method, {}, function(err, res)
+          got[method] = { err = err, res = res }
+        end)
+      end
+      server.definition, server.hover = real_definition, real_hover
+
+      for method, want in pairs({
+        ["textDocument/definition"] = "boom",
+        ["textDocument/hover"] = "bang",
+      }) do
+        assert.is_nil(got[method].res, method)
+        assert.are.equal(-32603, got[method].err.code, method)
+        assert.is_truthy(got[method].err.message:find(want, 1, true), method)
+      end
     end)
   end)
 
