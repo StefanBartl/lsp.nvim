@@ -65,6 +65,24 @@ local function opened_by(sink, name)
   return out
 end
 
+---@param sink table[]
+---@param name string
+---@param path string # Forward slashes.
+---@return integer
+local function open_count(sink, name, path)
+  local n = 0
+  for _, entry in ipairs(sink) do
+    if
+      entry.client == name
+      and entry.method == "textDocument/didOpen"
+      and vim.fs.normalize(vim.uri_to_fname(entry.params.textDocument.uri)) == path
+    then
+      n = n + 1
+    end
+  end
+  return n
+end
+
 ---@param path string
 ---@return integer bufnr
 local function open_buf(path)
@@ -72,6 +90,29 @@ local function open_buf(path)
   vim.fn.bufload(bufnr)
   vim.api.nvim_set_current_buf(bufnr)
   return bufnr
+end
+
+--- Collect what the module notifies, without touching the real notifier.
+---@return string[] said # "<level>: <message>", in order.
+---@return function restore
+local function capture_notify()
+  ---@type string[]
+  local said = {}
+  local real = package.loaded["lib.nvim.notify"]
+  package.loaded["lib.nvim.notify"] = {
+    create = function()
+      return setmetatable({}, {
+        __index = function(_, level)
+          return function(msg)
+            said[#said + 1] = level .. ": " .. tostring(msg)
+          end
+        end,
+      })
+    end,
+  }
+  return said, function()
+    package.loaded["lib.nvim.notify"] = real
+  end
 end
 
 describe("lsp.core.workspace_projects", function()
@@ -160,6 +201,27 @@ describe("lsp.core.workspace_projects", function()
       ---@diagnostic disable-next-line: assign-type-mismatch
       projects.seed({ [vault] = "off", [""] = false })
       assert.are.same({}, projects.list())
+    end)
+
+    -- An entry that is not a place once expanded would sit in the store and
+    -- match no file: the override that was meant to keep a project quiet,
+    -- doing nothing, and saying nothing.
+    it("ignores, and says so, an entry that is not an absolute path once expanded", function()
+      vim.env.LSPTEST_PROJ_UNSET = nil
+      local said, restore = capture_notify()
+      projects.seed({
+        ["$LSPTEST_PROJ_UNSET/vault"] = false,
+        ["relative/dir"] = false,
+        [vault] = false,
+      })
+      restore()
+
+      assert.are.equal(1, #projects.list(), vim.inspect(projects.list()))
+      assert.is_false((projects.state_of(vault .. "/a.md")))
+      table.sort(said)
+      assert.are.equal(2, #said, vim.inspect(said))
+      assert.is_truthy(said[1]:find("$LSPTEST_PROJ_UNSET/vault", 1, true), said[1])
+      assert.is_truthy(said[2]:find("relative/dir", 1, true), said[2])
     end)
 
     it("falls back to the global switch and says so", function()
@@ -359,6 +421,70 @@ describe("lsp.core.workspace_projects", function()
       assert.is_false(projects.hold_push(nil, nil, { client_id = 1 }, nil))
       assert.is_false(projects.hold_push(nil, { diagnostics = {} }, nil, nil))
       assert.is_false(projects.hold_push(nil, { uri = 1, diagnostics = {} }, {}, nil))
+    end)
+
+    -- The store is keyed by client id, and `t[nil] = x` raises. A push whose
+    -- context lacks one passes through instead.
+    it("does not raise on a push without a client id, and lets it through", function()
+      projects.seed({ [vault] = false })
+      assert.is_false(projects.hold_push(nil, push(vault .. "/a.md"), {}, nil))
+      assert.is_false(projects.hold_push(nil, push(vault .. "/a.md"), { client_id = "1" }, nil))
+      assert.are.equal(0, projects.held_count())
+    end)
+
+    -- A server and Neovim spell one file differently -- measured on Windows,
+    -- `file:///E:/x` from a server against `file:///e:/x` from
+    -- `vim.uri_from_bufnr`. A percent-encoded letter is a spelling that differs
+    -- on every platform.
+    ---@param file string
+    ---@return table result
+    local function push_spelled_oddly(file)
+      local result = push(file)
+      result.uri = result.uri:gsub("/([^/])([^/]*)$", function(first, rest)
+        return ("/%%%02X%s"):format(first:byte(), rest)
+      end)
+      assert.are_not.equal(vim.uri_from_fname(file), result.uri)
+      assert.are.equal(vim.fs.normalize(file), vim.fs.normalize(vim.uri_to_fname(result.uri)))
+      return result
+    end
+
+    it("holds one push per file, however the server spells its URI", function()
+      projects.seed({ [vault] = false })
+      assert.is_true(projects.hold_push(nil, push(vault .. "/a.md"), { client_id = 1 }, nil))
+      assert.is_true(
+        projects.hold_push(nil, push_spelled_oddly(vault .. "/a.md"), { client_id = 1 }, nil)
+      )
+      assert.are.equal(1, projects.held_count())
+    end)
+
+    it("delivers the held push of a buffer whatever way the server spelled its URI", function()
+      local replayed = {}
+      vim.lsp.handlers[KEY] = function(_, result)
+        replayed[#replayed + 1] = result.uri
+      end
+      projects.seed({ [vault] = false })
+      assert.is_true(
+        projects.hold_push(nil, push_spelled_oddly(vault .. "/a.md"), { client_id = 7 }, nil)
+      )
+
+      local bufnr = open_buf(vault .. "/a.md")
+      projects.release_buffer({ id = 7 }, bufnr)
+
+      assert.are.equal(1, #replayed, "the held push was not found for the opened buffer")
+      assert.are.equal(0, projects.held_count())
+    end)
+
+    it("replays a push held under an odd URI spelling when the project is switched ON", function()
+      local replayed = 0
+      vim.lsp.handlers[KEY] = function()
+        replayed = replayed + 1
+      end
+      projects.seed({ [vault] = false })
+      projects.hold_push(nil, push_spelled_oddly(vault .. "/a.md"), { client_id = 1 }, nil)
+
+      projects.set(vault, true)
+
+      assert.are.equal(1, replayed)
     end)
 
     it("replays what was held when the project is switched back ON", function()
@@ -716,6 +842,50 @@ describe("lsp.core.workspace_projects", function()
       attach("srv_plugin", plugin, plugin .. "/x.lua", { "lua" })
 
       assert.are.equal(0, wd.populate_project(vault))
+    end)
+
+    -- The populate sends a `didOpen` with the file as it is on DISK, version 0.
+    -- For a file the client already holds through a buffer that would replace
+    -- what the buffer has -- unsaved edits included -- while the incremental
+    -- changes Neovim sends next are relative to the buffer. Neovim's own
+    -- `didOpen` for each attached buffer is the only one that may exist.
+    it("does not re-open a file a buffer of the client already holds", function()
+      local wd = reload_wd(false)
+      write_file(plugin .. "/z.lua", "-- z\n")
+      local client = attach("srv_plugin", plugin, plugin .. "/x.lua", { "lua" })
+      local other = open_buf(plugin .. "/y.lua")
+      vim.lsp.buf_attach_client(other, client.id)
+      local before_x = open_count(sink, "srv_plugin", plugin .. "/x.lua")
+      local before_y = open_count(sink, "srv_plugin", plugin .. "/y.lua")
+
+      wd.populate_project(plugin)
+
+      assert.is_true(
+        vim.wait(3000, function()
+          return open_count(sink, "srv_plugin", plugin .. "/z.lua") > 0
+        end, 20),
+        "the populate did not run"
+      )
+      assert.are.equal(before_x, open_count(sink, "srv_plugin", plugin .. "/x.lua"))
+      assert.are.equal(before_y, open_count(sink, "srv_plugin", plugin .. "/y.lua"))
+    end)
+
+    -- The walk is async, so the buffer that asked can be wiped before it ends.
+    -- That used to raise "Invalid buffer id" from a `vim.schedule` callback.
+    it("does not raise when the buffer that asked is gone before the walk ends", function()
+      local wd = reload_wd(false)
+      write_file(plugin .. "/z.lua", "-- z\n")
+      local _, bufnr = attach("srv_plugin", plugin, plugin .. "/x.lua", { "lua" })
+      vim.v.errmsg = ""
+
+      assert.are.equal(1, wd.populate_project(plugin))
+      vim.api.nvim_buf_delete(bufnr, { force = true })
+      vim.wait(500, function()
+        return false
+      end)
+
+      assert.are.equal("", vim.v.errmsg)
+      assert.are.equal(0, open_count(sink, "srv_plugin", plugin .. "/z.lua"))
     end)
   end)
 end)
