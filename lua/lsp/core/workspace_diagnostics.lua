@@ -345,9 +345,9 @@ local function collect_files_async(root, ext_set, cb, force)
         gate_warned[root] = true
         notify.warn(
           (
-            "workspace diagnostics skipped: %d files exceed the max_files gate of %d -- "
-            .. "silence it for this project with `:Lsp workspace off .`"
-          ):format(#files, opts.max_files)
+            "workspace diagnostics skipped: %d files exceed the max_files gate of %d in %s -- "
+            .. "silence it for this project with `:Lsp workspace off %s`"
+          ):format(#files, opts.max_files, root, root)
         )
       end
       files_cache.set(key, false)
@@ -571,12 +571,24 @@ function M.populate_project(project)
   local projects = require("lsp.core.workspace_projects")
   local seen = {} ---@type table<string, true>
   local scheduled = 0
+  -- `workspace_root` walks up the tree for a `.git`; a client with a few hundred
+  -- Markdown buffers open would do that few hundred times for a handful of
+  -- distinct directories. The answer depends on the directory (and the client's
+  -- own fallback), not on the buffer, so it is asked once per (client, dir).
+  ---@type table<string, string|false>
+  local roots = {}
 
   for _, client in ipairs(vim.lsp.get_clients()) do
     local ext_set = client_extensions(client)
     if ext_set then
       for bufnr in pairs(client.attached_buffers or {}) do
-        local root = workspace_root(client, bufnr)
+        local dir = vim.fs.dirname(vim.api.nvim_buf_get_name(bufnr)) or ""
+        local memo_key = tostring(client.id) .. "\0" .. dir
+        local root = roots[memo_key]
+        if root == nil then
+          root = workspace_root(client, bufnr) or false
+          roots[memo_key] = root
+        end
         if root and projects.contains(project, root) then
           local key = tostring(client.id) .. "\0" .. root
           if not seen[key] then

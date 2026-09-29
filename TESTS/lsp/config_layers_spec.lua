@@ -230,6 +230,49 @@ describe("lsp.config layers", function()
       assert.is_true(mentions(config.warnings(), "mason"))
     end)
 
+    -- A checkout you cloned is somebody else's file. Without scoping, one
+    -- could switch workspace diagnostics off (or on) for any other project on
+    -- the machine by naming its path, or reach out of itself with `../`, `~`
+    -- or `$VAR`.
+    it("confines workspace_diagnostics_projects to the repository it lives in", function()
+      local config = reload()
+      local dir = project_dir(vim.json.encode({
+        attach = {
+          workspace_diagnostics_projects = {
+            ["."] = false,
+            ["docs"] = false,
+            ["../elsewhere"] = false,
+            ["docs/../../escaped"] = false,
+            ["~/notes"] = false,
+            ["$HOME/notes"] = false,
+            ["/somewhere/else"] = false,
+          },
+        },
+      }))
+      local cfg = config.setup()
+
+      local got = {}
+      for key, value in pairs(cfg.attach.workspace_diagnostics_projects) do
+        got[vim.fs.normalize(key):lower()] = value
+      end
+      local want = {
+        [vim.fs.normalize(dir):lower()] = false,
+        [vim.fs.normalize(dir .. "/docs"):lower()] = false,
+      }
+      assert.are.same(want, got)
+      assert.is_true(mentions(config.warnings(), "inside the repository"))
+    end)
+
+    it("takes a relative key against the project file's directory", function()
+      local config = reload()
+      local dir =
+        project_dir('{ "attach": { "workspace_diagnostics_projects": { "vault": false } } }')
+      local cfg = config.setup()
+      for key in pairs(cfg.attach.workspace_diagnostics_projects) do
+        assert.are.equal(vim.fs.normalize(dir .. "/vault"):lower(), vim.fs.normalize(key):lower())
+      end
+    end)
+
     it("survives invalid JSON and says so", function()
       local config = reload()
       project_dir("{ not json")

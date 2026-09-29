@@ -136,6 +136,73 @@ local function warning_for(reason, detail, label)
   return ("%s: expected a JSON object, ignoring"):format(label)
 end
 
+---@internal
+--- Is `path` the directory `base`, or below it? Both normalized (forward
+--- slashes, no `..`). Case-insensitive on Windows. Kept local instead of
+--- reusing `lsp.core.workspace_projects.contains`: this layer runs while the
+--- config is being built and has no business loading a core module for one
+--- prefix test.
+---@param base string
+---@param path string
+---@return boolean
+local function inside(base, path)
+  if vim.fn.has("win32") == 1 then
+    base, path = base:lower(), path:lower()
+  end
+  local prefix = base:sub(-1) == "/" and base or base .. "/"
+  return path == base or path:sub(1, #prefix) == prefix
+end
+
+---@internal
+--- Confine `attach.workspace_diagnostics_projects` to the repository the file
+--- lives in, and give its keys a meaning there.
+---
+--- A repository may say which of *its own* folders are too big for the
+--- workspace scan; it has no business deciding that for the rest of the
+--- machine. Without this an unknown checkout could switch workspace
+--- diagnostics off (or on) for any other project by naming its path, or reach
+--- outside itself with `../` or `~`. So a key is a folder inside the file's
+--- directory: `.` is the directory itself, a relative key is taken against it,
+--- an absolute one must already lie inside it. `~` and `$VAR` are refused:
+--- they are how a key would point somewhere the repository does not own.
+--- Rewritten in place, so the merge sees absolute paths.
+---@param data table
+---@param dir string # Directory of the project file.
+---@return string[] outside # The keys that were dropped.
+local function scope_workspace_projects(data, dir)
+  local attach = data.attach
+  local map = type(attach) == "table" and attach.workspace_diagnostics_projects or nil
+  if type(map) ~= "table" then
+    return {}
+  end
+
+  local base = vim.fs.normalize(dir, { expand_env = false })
+  ---@type table<string, boolean>
+  local scoped = {}
+  ---@type string[]
+  local outside = {}
+  for key, enabled in pairs(map) do
+    local abs ---@type string|nil
+    if type(key) == "string" and key ~= "" and not key:find("[~$]") then
+      if key == "." then
+        abs = base
+      elseif key:match("^/") or key:match("^%a:[/\\]") then
+        abs = vim.fs.normalize(key, { expand_env = false })
+      else
+        abs = vim.fs.normalize(base .. "/" .. key, { expand_env = false })
+      end
+    end
+    if abs and inside(base, abs) then
+      scoped[abs] = enabled
+    else
+      outside[#outside + 1] = tostring(key)
+    end
+  end
+  table.sort(outside)
+  attach.workspace_diagnostics_projects = scoped
+  return outside
+end
+
 --- Find, read and filter the project file.
 ---
 --- Returns `nil` when there is nothing to merge -- no file, an unreadable or
@@ -188,6 +255,14 @@ function M.read(opts, start)
       label,
       table.concat(result.refused, ", "),
       table.concat(allowed, ", ")
+    )
+  end
+
+  local outside = scope_workspace_projects(result.data, vim.fs.dirname(path))
+  if #outside > 0 then
+    warnings[#warnings + 1] = ("%s: attach.workspace_diagnostics_projects may only name folders inside the repository, ignoring %s"):format(
+      label,
+      table.concat(outside, ", ")
     )
   end
 

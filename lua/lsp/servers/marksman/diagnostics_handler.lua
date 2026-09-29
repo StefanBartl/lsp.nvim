@@ -205,6 +205,10 @@ function M.filter_diagnostics(diagnostics)
     end
   end
 
+  -- Once per push, not per diagnostic: a workspace push carries hundreds, and
+  -- each `env_links_enabled()` is a `require` and a config read.
+  local env_links_on = env_links_enabled()
+
   local out = {}
   for i = 1, #diagnostics do
     local d = diagnostics[i]
@@ -213,7 +217,7 @@ function M.filter_diagnostics(diagnostics)
 
     local suppressed
     local verdict, resolved_env
-    if env_links_enabled() then
+    if env_links_on then
       verdict, resolved_env = env_links.verdict(msg)
     end
     if verdict == "drop" then

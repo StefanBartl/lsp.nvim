@@ -95,6 +95,25 @@ local function close_window(key)
   end)
 end
 
+---@type table|nil
+local projects_module
+
+---@internal
+--- `lsp.core.workspace_projects`, resolved once. The wrapper runs for every
+--- push a server sends -- hundreds in a burst on a large workspace -- and a
+--- `pcall(require, ...)` per push is a table lookup at best and, on a module
+--- that failed to load, a search of the whole `package.path` each time.
+---@return table|nil
+local function workspace_projects()
+  if projects_module == nil then
+    local ok, mod = pcall(require, "lsp.core.workspace_projects")
+    if ok then
+      projects_module = mod
+    end
+  end
+  return projects_module
+end
+
 ---@internal
 --- Open a window that flushes whatever arrived during it, once.
 ---@param key string
@@ -170,8 +189,8 @@ function M.setup(opts)
     -- is OFF. See `lsp.core.workspace_projects` for why the populate switch
     -- alone is not enough -- marksman pushes for files it never got a
     -- `didOpen` for.
-    local ok_projects, projects = pcall(require, "lsp.core.workspace_projects")
-    if ok_projects and projects.hold_push(err, result, ctx, conf) then
+    local projects = workspace_projects()
+    if projects and projects.hold_push(err, result, ctx, conf) then
       return
     end
 

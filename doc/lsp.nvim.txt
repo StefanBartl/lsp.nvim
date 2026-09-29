@@ -503,7 +503,10 @@ attach.workspace_diagnostics_projects (table)
                                   sends for files you have not opened -- marksman
                                   publishes those on its own. Open files are
                                   unaffected. `:Lsp workspace` changes it at
-                                  runtime.
+                                  runtime. A `.nvim-lsp.json` may set it for
+                                  its own folders only (`.`, a relative path,
+                                  or an absolute one inside it); other keys
+                                  are dropped with a warning.
 attach.use_lazydev    (boolean)   Wire lazydev into lua_ls attaches.
 mason.ensure_install  (boolean)   Install missing LSP/linter/formatter
                                   packages on setup. Off by default --

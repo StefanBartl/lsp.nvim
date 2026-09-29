@@ -200,24 +200,65 @@ describe("lsp.core.env_links", function()
     end
 
     it("asks gopath, and uses its answer", function()
+      local backslashed = (root .. "/notes/a.md"):gsub("/", string.char(92))
       local asked = with_gopath(function()
-        return { kind = "file", path = "C:\\somewhere\\else.md", exists = true }
+        return { kind = "file", path = backslashed, exists = false }
       end)
 
       local r = links.resolve("$WHATEVER/x.md#frag")
 
       assert.are.same({ "$WHATEVER/x.md" }, asked, "the fragment is not gopath's business")
-      assert.are.equal("C:/somewhere/else.md", r.path, "separators are normalised")
-      assert.is_true(r.exists)
+      assert.are.equal(root .. "/notes/a.md", r.path, "separators are normalised")
       assert.are.equal("gopath", r.source)
       assert.are.equal("frag", r.fragment)
+      assert.is_true(r.exists, "existence is decided here, not by gopath's flag")
     end)
 
-    it("takes `exists = false` from gopath at its word", function()
+    -- gopath's `exists` means "is a regular file" (measured: a directory
+    -- comes back `exists = false`). Trusting it made a link to a folder look
+    -- broken, so only the path is taken from gopath.
+    it("does not inherit gopath's `regular files only` notion of existing", function()
       with_gopath(function()
-        return { kind = "file", path = root .. "/notes/a.md", exists = false }
+        return { kind = "file", path = root .. "/notes", exists = false }
       end)
-      assert.is_false(links.resolve("$LSPTEST_ENV_ROOT/notes/a.md").exists)
+      assert.is_true(links.resolve("$LSPTEST_ENV_ROOT/notes").exists)
+    end)
+
+    it("does not believe `exists = true` for a path that is not there", function()
+      with_gopath(function()
+        return { kind = "file", path = root .. "/notes/gone.md", exists = true }
+      end)
+      assert.is_false(links.resolve("$LSPTEST_ENV_ROOT/notes/gone.md").exists)
+    end)
+
+    -- A missing module makes `require` search every loader on each call
+    -- (~0.4 ms measured), and this runs per env-link diagnostic on every push.
+    it("stops asking `require` for a gopath that is not installed", function()
+      local attempts = 0
+      package.loaded["gopath"] = nil
+      package.preload["gopath"] = function()
+        attempts = attempts + 1
+        error("gopath is not installed")
+      end
+      for _ = 1, 5 do
+        links.resolve("$LSPTEST_ENV_ROOT/notes/a.md")
+      end
+      assert.are.equal(1, attempts)
+    end)
+
+    it("still finds a gopath that was loaded after a failed attempt", function()
+      package.loaded["gopath"] = nil
+      package.preload["gopath"] = function()
+        error("not yet")
+      end
+      assert.are.equal("builtin", links.resolve("$LSPTEST_ENV_ROOT/notes/a.md").source)
+
+      package.loaded["gopath"] = {
+        resolve_text = function()
+          return { kind = "file", path = root .. "/notes/a.md" }
+        end,
+      }
+      assert.are.equal("gopath", links.resolve("$LSPTEST_ENV_ROOT/notes/a.md").source)
     end)
 
     it("falls back to the built-in resolver when gopath does not recognise it", function()
@@ -286,6 +327,14 @@ describe("lsp.core.env_links", function()
         assert.are.equal(c[3], links.target_at(c[1], c[2]))
       end)
     end
+
+    -- The scan is quadratic in the worst case; a hover on a minified line
+    -- must not be able to stall the editor.
+    it("gives up on a line too long to be hand-written Markdown", function()
+      local line = "[a]($R/x.md)" .. (" "):rep(links.MAX_LINE_BYTES)
+      assert.is_nil(links.target_at(line, 3))
+      assert.are.equal("$R/x.md", links.target_at("[a]($R/x.md)", 3))
+    end)
 
     it("finds the right link when the line has several", function()
       local line = "[one]($A/1.md) [two]($B/2.md) [three]($C/3.md)"
@@ -369,6 +418,60 @@ describe("lsp.core.env_links", function()
     it("is nil for an unknown anchor or an unreadable file", function()
       assert.is_nil(links.heading_line(root .. "/h.md", "nope"))
       assert.is_nil(links.heading_line(root .. "/missing.md", "title"))
+    end)
+
+    it("reads Markdown and text only", function()
+      write_file(root .. "/h.lua", "# Title\n")
+      assert.is_nil(links.heading_line(root .. "/h.lua", "title"))
+    end)
+
+    it("refuses a file above the size cap", function()
+      local saved = links.MAX_READ_BYTES
+      links.MAX_READ_BYTES = 8
+      local got = links.heading_line(root .. "/h.md", "title")
+      links.MAX_READ_BYTES = saved
+      assert.is_nil(got)
+    end)
+  end)
+
+  -- A hover quotes the top of the target. Following a link is the user's
+  -- choice; quoting whatever it points at is not something a document should
+  -- be able to cause: `[x]($HOME/.ssh/id_rsa)` must not put a private key into
+  -- a hover.
+  describe("preview", function()
+    it("quotes a Markdown or text file", function()
+      write_file(root .. "/p.md", "one\ntwo\nthree\n")
+      assert.are.same({ "one", "two" }, links.preview(root .. "/p.md", 2))
+      write_file(root .. "/p.txt", "plain\n")
+      assert.are.same({ "plain" }, links.preview(root .. "/p.txt", 5))
+    end)
+
+    it("never quotes anything else", function()
+      for _, name in ipairs({ "id_rsa", "secret.key", "credentials", "x.lua", "x.json", "x.env" }) do
+        write_file(root .. "/" .. name, "PRIVATE\n")
+        assert.is_nil(links.preview(root .. "/" .. name, 5), name)
+      end
+    end)
+
+    it("refuses a file above the size cap", function()
+      write_file(root .. "/big.md", "content\n")
+      local saved = links.MAX_READ_BYTES
+      links.MAX_READ_BYTES = 3
+      local got = links.preview(root .. "/big.md", 5)
+      links.MAX_READ_BYTES = saved
+      assert.is_nil(got)
+    end)
+
+    it("truncates one very long line", function()
+      write_file(root .. "/long.md", ("x"):rep(5000) .. "\nshort\n")
+      local got = links.preview(root .. "/long.md", 5)
+      assert.is_true(#got[1] < 300, #got[1])
+      assert.are.equal("short", got[2])
+    end)
+
+    it("refuses a directory and a missing file", function()
+      assert.is_nil(links.preview(root .. "/notes", 5))
+      assert.is_nil(links.preview(root .. "/nope.md", 5))
     end)
   end)
 end)
@@ -577,6 +680,18 @@ describe("lsp.core.env_links_server", function()
       assert.is_nil(server.definition(params(buf, 0, 8)))
     end)
 
+    -- `vim.uri_to_bufnr` creates a listed buffer for a name Neovim does not
+    -- have; a request for such a document must leave the buffer list alone.
+    it("does not create a buffer for a document that is not open", function()
+      local before = #vim.api.nvim_list_bufs()
+      local res = server.definition({
+        textDocument = { uri = vim.uri_from_fname(root .. "/never-opened.md") },
+        position = { line = 0, character = 3 },
+      })
+      assert.is_nil(res)
+      assert.are.equal(before, #vim.api.nvim_list_bufs())
+    end)
+
     it("does not raise on a malformed request", function()
       assert.is_nil(server.definition(nil))
       assert.is_nil(server.definition({}))
@@ -601,6 +716,26 @@ describe("lsp.core.env_links_server", function()
       assert.is_truthy(res)
       assert.is_truthy(res.contents.value:find("(missing)", 1, true))
       assert.is_truthy(res.contents.value:find(root .. "/gone.md", 1, true))
+    end)
+
+    it("names a non-document target but never quotes it", function()
+      write_file(root .. "/secret.key", "TOP-SECRET-LINE\n")
+      local buf = doc(root .. "/doc.md", "[t]($LSPTEST_ENV_ROOT/secret.key)\n")
+      local res = server.hover(params(buf, 0, 8))
+      assert.is_truthy(res)
+      assert.is_truthy(res.contents.value:find(root .. "/secret.key", 1, true))
+      assert.is_nil(res.contents.value:find("TOP-SECRET-LINE", 1, true))
+    end)
+
+    -- The target is whatever the document says; a backtick in it must not end
+    -- the code span and let the document format the rest of the hover.
+    it("keeps a backtick in the target from breaking the code span", function()
+      local buf = doc(root .. "/doc.md", "[t]($LSPTEST_ENV_ROOT/a`b.md)\n")
+      local res = server.hover(params(buf, 0, 8))
+      assert.is_truthy(res)
+      local first = res.contents.value:match("^[^\n]*")
+      local _, backticks = first:gsub("`", "")
+      assert.are.equal(2, backticks, first)
     end)
 
     it("marks a directory as one instead of previewing it", function()
@@ -688,6 +823,17 @@ describe("lsp.core.env_links_server", function()
       write_file(root .. "/x.lua", "-- x\n")
       vim.cmd.edit(vim.fn.fnameescape(root .. "/x.lua"))
       local buf = vim.api.nvim_get_current_buf()
+      vim.wait(500, function()
+        return false
+      end)
+      assert.are.equal(0, #vim.lsp.get_clients({ bufnr = buf, name = server.NAME }))
+    end)
+
+    it("does not attach to an unnamed buffer", function()
+      server.setup({ env_links = true })
+      local buf = vim.api.nvim_create_buf(true, false)
+      vim.api.nvim_set_current_buf(buf)
+      vim.bo[buf].filetype = "markdown"
       vim.wait(500, function()
         return false
       end)
