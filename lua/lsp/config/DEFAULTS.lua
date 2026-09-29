@@ -398,7 +398,17 @@ local DEFAULTS = {
 
   -- Filetype-specific quality-of-life setup under `lsp/languages/**`, applied
   -- before the servers are registered.
-  languages = { enable = true },
+  languages = {
+    enable = true,
+    -- `[x]($REPOS_DIR/a/b.md)` is a path the user can follow but marksman
+    -- cannot: it answers no definition or hover for it and reports "Link to
+    -- non-existent document" for a file that exists. On, this resolves such
+    -- targets (gopath.nvim's `resolve_text` when installed, built-in
+    -- otherwise): definition and hover through an in-process client, and the
+    -- diagnostic is dropped when the file is there, kept -- with the path it
+    -- was looked up at -- when it is not. See `lsp.core.env_links`.
+    env_links = true,
+  },
 
   --- Hand-written completion sources.
   ---

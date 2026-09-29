@@ -443,6 +443,14 @@ local function bootstrap(cfg)
     require("lsp.core.gitsigns_actions").setup(cfg.code_actions)
   end)
 
+  -- Definition and hover for `$VAR/...` and `~/...` Markdown links, which
+  -- marksman cannot answer. An in-process client like the one above, attached
+  -- to Markdown buffers only; `languages.env_links = false` switches it (and
+  -- the matching diagnostics filter) off.
+  step("markdown env links", function()
+    require("lsp.core.env_links_server").setup(cfg.languages)
+  end)
+
   step("lspdoctor", function()
     local doctor = require("lsp.lspdoctor")
     doctor.setup(cfg.lspdoctor)

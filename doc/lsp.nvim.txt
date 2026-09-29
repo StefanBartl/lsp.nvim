@@ -194,7 +194,7 @@ Defaults (excerpt -- the full table is `lua/lsp/config/DEFAULTS.lua`): >lua
         ts_type_lookup = { enable = true },
         deprecated_help = { enable = true },
       },
-      languages = { enable = true },
+      languages = { enable = true, env_links = true },
       completion = {
         personal_names = { enable = true, labels = nil },
       },
@@ -540,6 +540,16 @@ tools.eslint_prettier.filetypes (string[])
 languages.enable      (boolean)   Apply the filetype-specific setup under
                                   `lsp/languages/**` before the servers are
                                   registered.
+languages.env_links   (boolean)   Resolve `$VAR/...`, `${VAR}/...` and `~/...`
+                                  Markdown link targets, which marksman cannot:
+                                  definition and hover through an in-process
+                                  `lsp.nvim-envlinks` client, and marksman's
+                                  "Link to non-existent document" checked
+                                  against the disk (dropped when the file
+                                  exists, kept with its resolved path when it
+                                  does not). Resolved through gopath.nvim's
+                                  `resolve_text` when installed, built-in
+                                  otherwise. On by default.
 completion.personal_names.enable (boolean)
                                   Register the hand-written personal-names
                                   completion source. Engine-neutral: it is set

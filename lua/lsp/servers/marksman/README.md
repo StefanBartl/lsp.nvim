@@ -22,3 +22,21 @@ crashes the server on `textDocument/didOpen` ("Invalid URI: The hostname
 could not be parsed."). Not calling the `on_dir` callback for such buffers
 stops the native pipeline from starting a client for them at all, so no
 didOpen is ever sent.
+
+## Env-variable links
+
+marksman resolves a link target relative to the document, so
+`[x]($REPOS_DIR/a/b.md)` is a folder named `$REPOS_DIR` to it: no definition, no
+hover, and "Link to non-existent document" for a file that exists. The blanket
+`suppress_missing_doc_links` below hid the false alarm together with every real
+broken link.
+
+`languages.env_links` (default on) changes that in two places. This module's
+diagnostics filter asks `lsp.core.env_links.verdict` first: an env link whose
+file exists is dropped, one whose file does not is **kept** (annotated with the
+path it was looked up at) even though the blanket rule would hide it, and
+anything the resolver cannot judge -- an undefined variable -- falls through to
+the rules unchanged. Definition and hover come from a separate in-process client
+(`lsp.core.env_links_server`), because a handler in this server's config would
+only reach requests that use client handlers, and `vim.lsp.buf.definition` does
+not. See `docs/configuration.md` (`languages.env_links`).

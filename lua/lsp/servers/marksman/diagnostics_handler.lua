@@ -20,6 +20,7 @@
 --- marksman uses push diagnostics, so there is no "pull current state" LSP
 --- request to fall back on.
 local cfg = require("lsp.servers.marksman.config")
+local env_links = require("lsp.core.env_links")
 
 local M = {}
 
@@ -30,6 +31,19 @@ local HINT_SEVERITY = 4
 local last_raw = {}
 -- uri -> { err, result, ctx, config } from the last publishDiagnostics call
 local last_meta = {}
+
+--- Whether env-link resolution is on (`languages.env_links`, default on). Read
+--- per call rather than captured: the config layers can change after this
+--- module loads, and a failed read must mean "on", the default.
+--- @return boolean
+local function env_links_enabled()
+  local ok, config = pcall(require, "lsp.config")
+  if not ok then
+    return true
+  end
+  local languages = config.get().languages
+  return type(languages) ~= "table" or languages.env_links ~= false
+end
 
 --- Helper: safe conversion of diag.code to string for comparison
 --- @param code any
@@ -118,6 +132,63 @@ local function code_in_list(diag_code, list)
   return false
 end
 
+--- The pre-existing suppression rules (1-5 below), unchanged, as one function
+--- so the env-link verdict can be decided *before* them: a link whose target
+--- is `$VAR/...` is judged by whether the file it names exists, not by a
+--- pattern that would hide the broken ones together with the false alarms.
+--- @param msg string
+--- @param diag_code any
+--- @return boolean suppressed
+local function suppressed_by_rules(msg, diag_code)
+  local suppressed = false
+
+  -- 1) explicit missing-doc-link legacy pattern (kept for backward compat)
+  if
+    cfg.suppress_missing_doc_links
+    and cfg.missing_doc_links_pattern
+    and cfg.missing_doc_links_pattern ~= ""
+  then
+    if pcall(function()
+      return msg:match(cfg.missing_doc_links_pattern)
+    end) then
+      if msg:match(cfg.missing_doc_links_pattern) then
+        suppressed = true
+      end
+    end
+  end
+
+  -- 2) general Lua pattern list
+  if not suppressed and cfg.suppressed_message_patterns then
+    if matches_any_pattern(msg, cfg.suppressed_message_patterns) then
+      suppressed = true
+    end
+  end
+
+  -- 3) plain substring matches (fast, case-sensitive)
+  if not suppressed and cfg.suppressed_message_substrings then
+    if contains_any_substring(msg, cfg.suppressed_message_substrings) then
+      suppressed = true
+    end
+  end
+
+  -- 4) TOC heuristic (case-insensitive match of 'toc' or 'table of contents')
+  if not suppressed and cfg.suppress_toc_checks then
+    local low = msg:lower()
+    if low:find("toc", 1, true) or low:find("table of contents", 1, true) then
+      suppressed = true
+    end
+  end
+
+  -- 5) diagnostic code based suppression
+  if not suppressed and cfg.suppressed_codes then
+    if code_in_list(diag_code, cfg.suppressed_codes) then
+      suppressed = true
+    end
+  end
+
+  return suppressed
+end
+
 --- Main filter function for diagnostics of a single result.
 --- @param diagnostics table[] diagnostics array from server
 --- @return table[] filtered diagnostics
@@ -140,50 +211,22 @@ function M.filter_diagnostics(diagnostics)
     local msg = (type(d) == "table" and type(d.message) == "string") and d.message or ""
     local diag_code = d.code or (d.user_data and d.user_data.lsp and d.user_data.lsp.code) -- try common alternate locations
 
-    local suppressed = false
-
-    -- 1) explicit missing-doc-link legacy pattern (kept for backward compat)
-    if
-      cfg.suppress_missing_doc_links
-      and cfg.missing_doc_links_pattern
-      and cfg.missing_doc_links_pattern ~= ""
-    then
-      if pcall(function()
-        return msg:match(cfg.missing_doc_links_pattern)
-      end) then
-        if msg:match(cfg.missing_doc_links_pattern) then
-          suppressed = true
-        end
-      end
+    local suppressed
+    local verdict, resolved_env
+    if env_links_enabled() then
+      verdict, resolved_env = env_links.verdict(msg)
     end
-
-    -- 2) general Lua pattern list
-    if not suppressed and cfg.suppressed_message_patterns then
-      if matches_any_pattern(msg, cfg.suppressed_message_patterns) then
-        suppressed = true
-      end
-    end
-
-    -- 3) plain substring matches (fast, case-sensitive)
-    if not suppressed and cfg.suppressed_message_substrings then
-      if contains_any_substring(msg, cfg.suppressed_message_substrings) then
-        suppressed = true
-      end
-    end
-
-    -- 4) TOC heuristic (case-insensitive match of 'toc' or 'table of contents')
-    if not suppressed and cfg.suppress_toc_checks then
-      local low = msg:lower()
-      if low:find("toc", 1, true) or low:find("table of contents", 1, true) then
-        suppressed = true
-      end
-    end
-
-    -- 5) diagnostic code based suppression
-    if not suppressed and cfg.suppressed_codes then
-      if code_in_list(diag_code, cfg.suppressed_codes) then
-        suppressed = true
-      end
+    if verdict == "drop" then
+      -- The server says the document does not exist, but the file the env
+      -- reference names does: a false alarm.
+      suppressed = true
+    elseif verdict == "keep" then
+      -- A genuinely broken env link. Shown even though the blanket
+      -- `suppress_missing_doc_links` would hide it, now that it is known to be
+      -- true -- with the path it was looked up at.
+      suppressed = false
+    else
+      suppressed = suppressed_by_rules(msg, diag_code)
     end
 
     -- 6) "lightbulb" toggle: hide Hint-severity suggestions on demand
@@ -193,6 +236,11 @@ function M.filter_diagnostics(diagnostics)
 
     -- If not suppressed, keep diagnostic
     if not suppressed then
+      if verdict == "keep" and resolved_env then
+        d = vim.tbl_extend("force", {}, d, {
+          message = ("%s (resolved to %s)"):format(msg, resolved_env.path),
+        })
+      end
       table.insert(out, d)
     end
   end

@@ -2,6 +2,9 @@
 --- Per-LSP configuration values for marksman diagnostics filtering and optional server init options.
 
 local M = {
+  -- Blanket: hides every "Link to non-existent document". Env links
+  -- (`$VAR/...`, `~/...`) are the one exception -- they are checked against
+  -- the disk first, see `lsp.core.env_links` and `languages.env_links`.
   suppress_missing_doc_links = true,
   missing_doc_links_pattern = "^Link to non%-existent document",
 

@@ -184,6 +184,7 @@ require("lsp.@types.subsystem")
 
 ---@class LspNvim.LanguagesOpts
 ---@field enable? boolean # Apply the filetype-specific setup under `lsp/languages/**`.
+---@field env_links? boolean # Resolve `$VAR/...` and `~/...` Markdown link targets: definition and hover, and no false "non-existent document" diagnostics.
 
 ---@alias LspNvim.RenameProvider
 --- Which backend the rename action uses. Both bound rename keys go through it.
