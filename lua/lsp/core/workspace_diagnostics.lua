@@ -397,6 +397,12 @@ end
 ---@param force boolean|nil  # skip the once-per-client guard (`populate_now`)
 ---@return nil
 local function send_did_open(client, bufnr, files, force)
+  -- The walk that produced `files` is async, so the buffer that asked for it
+  -- can be gone by now. Checked before the once-per-client flag is spent on a
+  -- populate that never happens.
+  if not vim.api.nvim_buf_is_valid(bufnr) then
+    return
+  end
   if not force then
     if populated_clients[client.id] then
       return
@@ -416,12 +422,28 @@ local function send_did_open(client, bufnr, files, force)
     return
   end
 
-  local current = vim.api.nvim_buf_get_name(bufnr)
+  local projects = require("lsp.core.workspace_projects")
   local index = 1
 
   local function send_chunk()
-    if not vim.api.nvim_buf_is_valid(bufnr) then
+    if not vim.api.nvim_buf_is_valid(bufnr) or client:is_stopped() then
       return
+    end
+
+    -- Every file the client already has open through a buffer, asked again per
+    -- chunk: one can be attached while the populate is still running. A
+    -- `didOpen` for one of them would put the file's content on disk -- version
+    -- 0 -- over what the buffer holds, and the incremental edits Neovim sends
+    -- next are relative to the buffer. Compared by `projects.key` because the
+    -- walk spells a path `E:/x/a.md` and a buffer `e:\x\a.md` on Windows.
+    local open = {} ---@type table<string, true>
+    for attached in pairs(client.attached_buffers or {}) do
+      if vim.api.nvim_buf_is_valid(attached) then
+        local name = vim.api.nvim_buf_get_name(attached)
+        if name ~= "" then
+          open[projects.key(name)] = true
+        end
+      end
     end
 
     local budget = opts.chunk_size
@@ -430,7 +452,7 @@ local function send_did_open(client, bufnr, files, force)
       index = index + 1
       budget = budget - 1
 
-      if path ~= current then
+      if not open[projects.key(path)] then
         -- Filename-only matching, with no buffer-loading fallback: the
         -- extension pre-filter in collect_files_async already narrowed this
         -- to the client's own filetypes, and loading a buffer per file is

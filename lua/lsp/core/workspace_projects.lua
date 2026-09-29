@@ -67,10 +67,16 @@ local overrides = {}
 ---@type boolean
 local seeded = false
 
---- Pushes held back for a project that is OFF: `uri -> client id -> push`,
---- newest per (client, file). Keyed by URI first so that a new push can drop
+--- Pushes held back for a project that is OFF: `file key -> client id -> push`,
+--- newest per (client, file). Keyed by file first so that a new push can drop
 --- the entries of clients that are gone (a restarted server gets a new id and
 --- would otherwise leave its old ones behind for the session).
+---
+--- The file key is the normalized, case-folded path (`M.key`), not the URI the
+--- server sent: a server and Neovim spell one file differently -- measured on
+--- Windows, `file:///E:/x` from a server against `file:///e:/x` from
+--- `vim.uri_from_bufnr` -- and `release_buffer` has a buffer, not a URI, to
+--- look the push up by.
 ---@type table<string, table<integer, LspNvim.WorkspaceProjects.Held>>
 local held = {}
 
@@ -120,6 +126,16 @@ function M.contains(dir, path)
   return within(fold(norm(path)), fold(norm(dir)))
 end
 
+--- A key two spellings of one file agree on: separators unified, `.`/`..`
+--- resolved, no trailing slash, case-folded on Windows. Nothing is expanded
+--- (`path` is a file, not something a person typed). For comparing a file to
+--- another file -- `M.contains` is the comparison against a project.
+---@param path string
+---@return string
+function M.key(path)
+  return fold(norm(path))
+end
+
 ---@internal
 ---@return boolean
 local function has_closed()
@@ -147,7 +163,19 @@ function M.seed(map)
   for path, enabled in pairs(map or {}) do
     if type(path) == "string" and path ~= "" and type(enabled) == "boolean" then
       local p = norm(path, true)
-      overrides[fold(p)] = { path = p, enabled = enabled }
+      if p:match("^/") or p:match("^%a:/") then
+        overrides[fold(p)] = { path = p, enabled = enabled }
+      else
+        -- What is left after expansion is not a place: a `$VAR` that is not set
+        -- on this machine, or a relative path. Either would sit in the store
+        -- and match no file, silently -- the override that was meant to keep
+        -- a project quiet, doing nothing.
+        require("lib.nvim.notify").create("[lsp.workspace_projects]").warn(
+          ("workspace_diagnostics_projects: ignoring %q -- not an absolute path once expanded (is the variable set?)"):format(
+            path
+          )
+        )
+      end
     end
   end
 end
@@ -362,6 +390,11 @@ function M.hold_push(err, result, ctx, conf)
   if type(result) ~= "table" or type(result.uri) ~= "string" or type(ctx) ~= "table" then
     return false
   end
+  -- The store is keyed by client id: a push without one cannot be held (and a
+  -- nil key would raise), so it passes.
+  if type(ctx.client_id) ~= "number" then
+    return false
+  end
   if type(result.diagnostics) ~= "table" or #result.diagnostics == 0 then
     return false
   end
@@ -378,10 +411,10 @@ function M.hold_push(err, result, ctx, conf)
     return false
   end
 
-  local by_client = held[result.uri]
+  local by_client = held[folded]
   if by_client == nil then
     by_client = {}
-    held[result.uri] = by_client
+    held[folded] = by_client
   end
   -- A server that was restarted has a new id; its old push for this file can
   -- never be replayed (`replay` needs the client) and would sit here forever.
@@ -433,14 +466,20 @@ end
 function M.release(project, global)
   ---@type LspNvim.WorkspaceProjects.Held[]
   local batch = {}
-  for uri, by_client in pairs(held) do
-    local ok, fname = pcall(vim.uri_to_fname, uri)
-    if ok and M.contains(project, fname) and M.effective(fname, global) then
-      for id, p in pairs(by_client) do
-        batch[#batch + 1] = p
-        by_client[id] = nil
+  local dir = fold(norm(project))
+  for folded, by_client in pairs(held) do
+    if within(folded, dir) then
+      local governing = state_of_folded(folded)
+      if governing == nil then
+        governing = global
       end
-      held[uri] = nil
+      if governing then
+        for id, p in pairs(by_client) do
+          batch[#batch + 1] = p
+          by_client[id] = nil
+        end
+        held[folded] = nil
+      end
     end
   end
   replay_chunked(batch, 1)
@@ -454,19 +493,20 @@ end
 ---@param bufnr integer
 ---@return nil
 function M.release_buffer(client, bufnr)
-  if next(held) == nil then
+  if next(held) == nil or not vim.api.nvim_buf_is_valid(bufnr) then
     return
   end
-  local ok, uri = pcall(vim.uri_from_bufnr, bufnr)
-  if not ok then
+  local name = vim.api.nvim_buf_get_name(bufnr)
+  if name == "" then
     return
   end
-  local by_client = held[uri]
+  local folded = fold(norm(name))
+  local by_client = held[folded]
   local p = by_client and by_client[client.id]
   if p then
     by_client[client.id] = nil
     if next(by_client) == nil then
-      held[uri] = nil
+      held[folded] = nil
     end
     replay(p)
   end
