@@ -61,6 +61,39 @@ own. Its `status` is the one worth reading after something went wrong: it names
 every server with a failed attempt on record, why the last one failed, and how
 far the backoff had got before it gave up.
 
+`:Lsp workspace` is the switch for workspace-wide diagnostics, and it has two
+reaches. Bare, it moves the global switch, as it always did. With a project it
+writes an override for that folder only:
+
+```
+:Lsp workspace off .            -- this checkout (the cwd's project root)
+:Lsp workspace off MyVault      -- a folder under $REPOS_DIR, by name
+:Lsp workspace on  ~/notes      -- any path; ~ and $VAR expand
+:Lsp workspace status .         -- effective state, and whether it is the
+                                --   project's override or the global setting
+:Lsp workspace now .            -- populate once, without changing the setting
+:Lsp workspace clear .          -- drop the override; the global governs again
+:Lsp workspace list             -- every override, plus the global state
+```
+
+The project argument completes `.`, every folder directly under `$REPOS_DIR`
+(dot-directories excluded) and the projects that already carry an override, so
+a stale one can be cleared. A path-like lead (`$REPOS_DIR/x`, `~/x`, `E:/x`)
+goes to Neovim's own directory completion. A value that is not an existing
+directory is refused with a message rather than stored, so a typo cannot create
+an override that matches nothing.
+
+**OFF means two things**, because "workspace diagnostics" is two: this plugin no
+longer sends the workspace to the server (and never starts the walk, so the
+`max_files` warning cannot fire either), *and* a `publishDiagnostics` push for a
+file you have not opened is held back. The second half is what actually quiets a
+server like marksman, which publishes for every file it indexed whether or not
+anything was opened. Files you have open are never held. Switching back ON, or
+`clear`, replays what was held; switching OFF clears what a scan already put on
+screen for files that are not open. Overrides are not persisted — set the
+default in `attach.workspace_diagnostics_projects` (see
+[configuration.md](configuration.md)).
+
 `:Lsp root` carries two mechanisms, deliberately under one word:
 
 ```

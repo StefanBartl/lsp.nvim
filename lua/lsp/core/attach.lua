@@ -25,7 +25,7 @@ end
 --- `pcall(require, ...)` lazydev and NvChad inline; both now live in
 --- `lsp.integrations.*` and are handed over as plain functions by `lsp.init`,
 --- so the core does not know which plugins exist (roadmap section 3).
----@param opts { use_workspace_diagnostics?: boolean, hooks?: { on_attach?: function[], on_init?: function[] } }|nil
+---@param opts { use_workspace_diagnostics?: boolean, workspace_diagnostics_projects?: table<string, boolean>, hooks?: { on_attach?: function[], on_init?: function[] } }|nil
 ---@return { on_attach: fun(client,bufnr), on_init: fun(client,init_result):boolean }
 function M.build(opts)
   opts = opts or {}
@@ -38,6 +38,12 @@ function M.build(opts)
   -- a value captured once here.
   local workspace_diagnostics = require("lsp.core.workspace_diagnostics")
   workspace_diagnostics.seed(opts.use_workspace_diagnostics == true)
+
+  -- Per-project overrides (`attach.workspace_diagnostics_projects`), seeded
+  -- once like the switch above. Runtime changes via `:Lsp workspace <action>
+  -- <project>` win over them from then on.
+  local projects = require("lsp.core.workspace_projects")
+  projects.seed(opts.workspace_diagnostics_projects)
 
   local hooks = opts.hooks or {}
 
@@ -64,9 +70,16 @@ function M.build(opts)
     -- to git and stats the whole repo synchronously. schedule_populate does
     -- the same work off the attach path, without subprocesses, and enforces
     -- a size gate. See lsp.core.workspace_diagnostics' module header.
-    if workspace_diagnostics.enabled() then
+    -- `may_populate`, not `enabled`: a project override can turn one project
+    -- ON while the global switch is off. Which root wins is decided inside
+    -- `schedule_populate`, once the buffer's root is known.
+    if workspace_diagnostics.may_populate() then
       workspace_diagnostics.schedule_populate(client, bufnr)
     end
+
+    -- A buffer opened inside a project whose workspace diagnostics are OFF
+    -- gets the push that was held for it, so an opened file is never blank.
+    projects.release_buffer(client, bufnr)
 
     for _, hook in ipairs(hooks.on_attach or {}) do
       pcall(hook, client, bufnr)

@@ -77,7 +77,26 @@ describe("lsp.bindings.usrcmds", function()
     end)
 
     it("workspace", function()
-      completes("Lsp workspace ", { "on", "off", "toggle", "status", "now" })
+      completes("Lsp workspace ", { "on", "off", "toggle", "status", "now", "clear", "list" })
+    end)
+
+    -- The second argument is the per-project form. It is what makes the switch
+    -- usable without typing a path, so an empty completion here would look like
+    -- a route that takes no argument.
+    it("workspace <action> completes `.`, the $REPOS_DIR folders and existing overrides", function()
+      local saved = vim.env.REPOS_DIR
+      local root = vim.fs.normalize(vim.fn.tempname())
+      vim.fn.mkdir(root .. "/alpha/.git", "p")
+      vim.fn.mkdir(root .. "/.hidden", "p")
+      vim.env.REPOS_DIR = root
+
+      local got = complete("Lsp workspace off ")
+      vim.env.REPOS_DIR = saved
+      vim.fn.delete(root, "rf")
+
+      assert.is_true(has(got, "."), "`.` is the project of the cwd")
+      assert.is_true(has(got, "alpha"), "a folder under $REPOS_DIR completes by name")
+      assert.is_false(has(got, ".hidden"), "dot-directories are not projects")
     end)
 
     it("diag", function()
@@ -263,6 +282,7 @@ describe("usrcmds.legacy_aliases", function()
       "Lsp workspace toggle",
       "Lsp workspace toggle",
       "Lsp workspace now",
+      "Lsp workspace list",
       "Lsp root show",
       "Lsp root list",
       "Lsp root add",

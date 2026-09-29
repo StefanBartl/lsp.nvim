@@ -532,6 +532,39 @@ because each attach would forgive the previous crash.
 no keymap: unlike the hint and indicator toggles this is set once and left, and
 a key for it would be a key you never press.
 
+## attach.workspace_diagnostics_projects
+
+`attach.use_workspace_diagnostics` is one global switch. A repository that is
+*always* too big for the scan -- a documentation vault of 900 Markdown files
+that only grows -- needs its own answer, and raising `max_files` only postpones
+the warning. This map is that answer: `project folder -> boolean`.
+
+```lua
+attach = {
+  workspace_diagnostics_projects = {
+    ["$REPOS_DIR/MyVault"] = false,     -- never scan, never show unopened files
+    ["~/notes"] = false,
+    ["$REPOS_DIR/small-plugin"] = true, -- scan even if the global switch is off
+  },
+}
+```
+
+- `~` and `$VAR` expand, so one entry serves every machine. On Windows the
+  comparison ignores case and separator style.
+- The most specific folder wins, and a file is governed by the folder that
+  contains it (the folder itself included). `/x/vault` does not cover
+  `/x/vault-old`.
+- `false` does two things: the workspace is not populated -- the walk never
+  starts, so the `max_files` warning cannot fire for it -- and a
+  `publishDiagnostics` push for a file that is not open is held back. The second
+  half matters because marksman publishes for every file it indexed on its own;
+  the populate alone was never the source. Files you have open are unaffected.
+- The entry is a startup default. `:Lsp workspace on|off|clear <project>` changes
+  it at runtime, wins over it, and is not persisted.
+- A non-string key or non-boolean value is dropped with a warning naming the
+  layer it came from. A project file (`.nvim-lsp.json`) may set the option too:
+  it lives under `attach`, which a repository may answer.
+
 ## workspace.markers and workspace.containers
 
 Which directories `:Lsp root add` / `<leader>lsw` offer as workspace folders:

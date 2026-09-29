@@ -151,6 +151,7 @@ require("lsp.@types.subsystem")
 
 ---@class LspNvim.AttachOpts
 ---@field use_workspace_diagnostics? boolean # Populate workspace diagnostics on attach (the module's own size gate still applies).
+---@field workspace_diagnostics_projects? table<string, boolean> # Per-project override of the switch above: project folder (`~` and `$VAR` expand) -> on/off. Off also holds back the pushes a server sends for files you have not opened.
 ---@field use_lazydev? boolean # Wire lazydev into lua_ls attaches.
 
 ---@class LspNvim.MasonOpts

@@ -930,6 +930,19 @@ function M.setup(user_opts)
 
   normalize_ui_features(cfg)
 
+  -- `project folder -> boolean`. A non-string key or non-boolean value is
+  -- dropped here with the layer named, rather than reaching the override store
+  -- where it would silently match nothing.
+  normalize_map(
+    cfg,
+    "attach",
+    "workspace_diagnostics_projects",
+    "project folder -> boolean",
+    function(name, value)
+      return type(name) == "string" and name ~= "" and type(value) == "boolean"
+    end
+  )
+
   _active = cfg
   return cfg
 end

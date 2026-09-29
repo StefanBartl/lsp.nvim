@@ -30,6 +30,11 @@ describe("lsp.core.attach", function()
     function wd.enabled()
       return wd.enabled_value
     end
+    -- `attach` gates the deferred populate on `may_populate` (the global switch
+    -- OR a project override), which for this stub is the same one flag.
+    function wd.may_populate()
+      return wd.enabled_value
+    end
     function wd.schedule_populate(client, bufnr)
       wd.schedule_calls[#wd.schedule_calls + 1] = { client = client, bufnr = bufnr }
     end

@@ -209,6 +209,93 @@ function M.workspace_now()
   notify.info(("populated workspace diagnostics for %d client(s)"):format(count_or_err))
 end
 
+--- The per-project form of `:Lsp workspace`: `<action> <project>`, plus `list`.
+---
+--- `project` is `.` (the cwd's project root), a folder name under
+--- `$REPOS_DIR`, or a path -- see `lsp.core.workspace_projects.resolve`. The
+--- global form above is untouched by this: it answers when no project is given.
+---
+--- Actions: `on`/`off`/`toggle` set an override, `clear` drops it (the global
+--- switch governs again), `status` says which of the two applies, `now`
+--- populates the project's attached clients once, and `list` shows every
+--- override. `list` is the only action that needs no project.
+---@param action string|nil
+---@param arg string|nil
+---@return nil
+function M.workspace_project(action, arg)
+  local notify = require("lib.nvim.notify").create("[lsp.nvim]")
+  local wd = workspace()
+  if wd == nil then
+    notify.warn("workspace diagnostics module unavailable")
+    return
+  end
+  local projects = require("lsp.core.workspace_projects")
+  action = action or "status"
+
+  if action == "list" then
+    local lines = { "workspace diagnostics: global " .. (wd.enabled() and "ON" or "OFF") }
+    local list = projects.list()
+    if #list == 0 then
+      lines[#lines + 1] = "  (no project overrides)"
+    end
+    for _, o in ipairs(list) do
+      lines[#lines + 1] = ("  %-3s %s"):format(o.enabled and "ON" or "OFF", o.path)
+    end
+    notify.info(table.concat(lines, "\n"))
+    return
+  end
+
+  local path, err = projects.resolve(arg)
+  if not path then
+    notify.warn(("`:Lsp workspace %s` needs a project: %s"):format(action, err or "?"))
+    return
+  end
+
+  local global = wd.enabled()
+  local effective, source = projects.effective(path, global)
+
+  if action == "status" then
+    notify.info(
+      ("workspace diagnostics for %s: %s (%s)"):format(
+        path,
+        effective and "ON" or "OFF",
+        source == "project" and "project override" or "global setting"
+      )
+    )
+  elseif action == "now" then
+    local n = wd.populate_project(path)
+    if n == 0 then
+      notify.warn(("no attached client has a workspace inside %s"):format(path))
+    else
+      notify.info(("populating workspace diagnostics for %d client(s) in %s"):format(n, path))
+    end
+  elseif action == "clear" then
+    if projects.clear(path, global) then
+      notify.info(
+        ("workspace diagnostics for %s: override cleared (global %s)"):format(
+          path,
+          global and "ON" or "OFF"
+        )
+      )
+    else
+      notify.info(("no override for %s"):format(path))
+    end
+  elseif action == "on" or action == "off" or action == "toggle" then
+    local want = action == "on" or (action == "toggle" and not effective)
+    projects.set(path, want)
+    if want then
+      -- A runtime switch reattaches nothing, so populate what is attached now;
+      -- the held pushes were already replayed by `set`.
+      local n = wd.populate_project(path)
+      notify.info(("workspace diagnostics for %s: ON (populating %d client(s))"):format(path, n))
+    else
+      notify.info(("workspace diagnostics for %s: OFF"):format(path))
+    end
+  else
+    notify.warn(("unknown workspace action %q"):format(action))
+  end
+end
+
 -- ---------------------------------------------------------------- inlay hints
 
 ---@internal

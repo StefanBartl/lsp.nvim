@@ -38,5 +38,14 @@ A runtime toggle for populating diagnostics workspace-wide on every attach,
 with its own size gate — it walks the workspace asynchronously and refuses
 above `max_files` rather than freezing the editor on a large repository.
 
-- **Module:** `core/workspace_diagnostics.lua`
-- **Commands:** `:Lsp workspace [on|off|toggle|status|now]`
+- **Module:** `core/workspace_diagnostics.lua`, `core/workspace_projects.lua`
+- **Commands:** `:Lsp workspace [on|off|toggle|status|now|clear|list] [project]`
+- **Config:** `attach.use_workspace_diagnostics`, `attach.workspace_diagnostics_projects`
+
+The switch is global *and* per project. A project override turns the workspace
+scan off (or on) for one folder while the global switch says otherwise -- the
+answer for a Markdown vault of 900 files that only grows, where raising
+`max_files` is a postponement. Off also holds back the pushes a server sends for
+files you have not opened, because marksman publishes those on its own: the scan
+alone was never the source. See [commands.md](../commands.md) for the argument
+forms.
