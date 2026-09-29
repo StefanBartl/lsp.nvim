@@ -112,6 +112,16 @@ return {
             name = "personal_names",
             module = "lsp.completion.blink",
             opts = { source = "personal_names" },
+            -- The source's own `keyword_pattern` (cmp-only) has no blink
+            -- equivalent -- blink derives keyword length from its own
+            -- regex, which does not count "-" or "." as keyword characters.
+            -- On a Markdown thematic break (`---`) or frontmatter fence,
+            -- that leaves the current keyword empty, so without a floor
+            -- this provider showed its full ~30-item list instead of
+            -- staying out of the way. `1` is the least that still blocks an
+            -- empty keyword while leaving normal single-letter typing (e.g.
+            -- "d") untouched.
+            min_keyword_length = 1,
           },
           md_words = {
             name = "md_words",
