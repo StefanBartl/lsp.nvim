@@ -930,6 +930,8 @@ function M.setup(user_opts)
 
   normalize_ui_features(cfg)
 
+  normalize_boolean(cfg, "languages", "env_links")
+
   -- `project folder -> boolean`. A non-string key or non-boolean value is
   -- dropped here with the layer named, rather than reaching the override store
   -- where it would silently match nothing.

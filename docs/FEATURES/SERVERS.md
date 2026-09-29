@@ -76,4 +76,12 @@ Filetype-specific quality-of-life applied before the servers are registered
 table (`servers/`) — lua_ls's library resolver and reload, marksman's own
 handlers, and so on.
 
-- **Config:** `languages.enable`
+- **Config:** `languages.enable`, `languages.env_links`
+
+Markdown links whose target starts with `$VAR`, `${VAR}` or `~` are resolved
+(`core/env_links.lua`, `core/env_links_server.lua`), which marksman itself does
+not do: definition and hover come from an in-process `lsp.nvim-envlinks` client,
+and marksman's "Link to non-existent document" is checked against the disk
+instead of being hidden wholesale. gopath.nvim's `resolve_text` does the
+resolving when it is installed. Details in
+[configuration.md](../configuration.md#languagesenv_links).

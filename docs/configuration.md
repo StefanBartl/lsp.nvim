@@ -565,6 +565,46 @@ attach = {
   layer it came from. A project file (`.nvim-lsp.json`) may set the option too:
   it lives under `attach`, which a repository may answer.
 
+## languages.env_links
+
+`[notes]($REPOS_DIR/WKDBook/Notes/Links.md)` is a path you can follow -- with
+gopath.nvim's `gP`, or by hand -- but marksman cannot: it resolves a link target
+relative to the document, so it looks for a folder literally named
+`$REPOS_DIR`. Measured against real marksman, such a link gets **no definition
+and no hover**, and is reported as "Link to non-existent document" although the
+file exists. `suppress_missing_doc_links` (in `lsp.servers.marksman.config`)
+hid that, and every genuinely broken link along with it.
+
+`languages.env_links` (default `true`) resolves `$VAR/...`, `${VAR}/...` and
+`~/...` targets and fixes both halves:
+
+- **Diagnostics.** "Link to non-existent document" about an env link is
+  *checked*: dropped when the file it names exists, **kept** when it does not --
+  with the path it was looked up at (`... (resolved to E:/repos/x/gone.md)`),
+  even though the blanket rule would have hidden it. Ordinary links keep the
+  blanket rule exactly as before. A link whose variable is not defined is left
+  to the old rules: "cannot tell" is not "broken".
+- **Definition and hover.** A small in-process client, `lsp.nvim-envlinks`
+  (the same shape as the gitsigns one, attached to Markdown buffers), answers
+  `textDocument/definition` -- the file, at the heading when the target carries
+  a `#fragment` -- and `textDocument/hover`: where the link leads, whether it is
+  there, and the top of the file. Every feature that asks the language servers
+  about a position (`gd`, the peek float, `K`) merges the answers of all
+  clients, so all of them work with no per-feature wiring. It answers `nil`
+  everywhere else, so for ordinary links marksman's answer stands alone.
+
+Resolution goes to **gopath.nvim first** when it is installed and has
+`resolve_text` (its public text API): it owns the variable rules -- `$VAR`,
+`${VAR}`, both separators, and "well-known" directories such as
+`$NVIM_CONFIG_DIR` that resolve with no real environment variable -- so a link
+resolves in the editor exactly as `gP` resolves it. Without gopath, a built-in
+resolver covers the real environment, `$NVIM_CONFIG_DIR` (from
+`stdpath("config")`) and `~`, and deliberately no more.
+
+`languages.env_links = false` switches the client and the diagnostics filter off
+together. It may also be set from `.nvim-lsp.json`, since `languages` is one of
+the keys a repository may answer.
+
 ## workspace.markers and workspace.containers
 
 Which directories `:Lsp root add` / `<leader>lsw` offer as workspace folders:
