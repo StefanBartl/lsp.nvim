@@ -563,6 +563,10 @@ attach = {
   it at runtime, wins over it, and is not persisted.
 - A non-string key or non-boolean value is dropped with a warning naming the
   layer it came from.
+- A key that is not an absolute path once expanded -- a `$VAR` that is not set on
+  this machine, or a relative path -- is ignored with a warning: it could never
+  match a file, and a silent no-op is the wrong way to fail for a setting that
+  exists to keep a project quiet.
 - A project file (`.nvim-lsp.json`) may set the option too, **for its own
   folders only**: a key is `.` (the file's directory), a path relative to it, or
   an absolute path inside it. Anything else -- `../x`, `~`, `$VAR`, a path
@@ -611,6 +615,16 @@ Resolution goes to **gopath.nvim first** when it is installed and has
 resolves in the editor exactly as `gP` resolves it. Without gopath, a built-in
 resolver covers the real environment, `$NVIM_CONFIG_DIR` (from
 `stdpath("config")`) and `~`, and deliberately no more.
+
+A variable is followed by a separator or by nothing: `${VAR}foo` is the value
+with `foo` glued on in a shell, not a folder below it, so it is left alone
+rather than guessed at.
+
+The scans are bounded, because the text they read is whatever the document (or
+the file a link points at) says: a line above 20000 bytes is not searched for a
+link, a link target above 4096 bytes is refused rather than cut short, and a
+`#fragment` is only looked for on heading lines up to 2000 bytes. None of
+these is a length a hand-written Markdown line reaches.
 
 `languages.env_links = false` switches the client and the diagnostics filter off
 together. It may also be set from `.nvim-lsp.json`, since `languages` is one of
