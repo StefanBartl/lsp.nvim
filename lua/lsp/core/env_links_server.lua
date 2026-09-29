@@ -53,6 +53,35 @@ M.PREVIEW_LINES = 12
 local registered = false
 
 ---@internal
+--- The loaded buffer holding `uri`, or nil. Looked up by comparing URIs rather
+--- than through `vim.uri_to_bufnr`, which *creates* a listed buffer for a name
+--- that has none -- a request for a document Neovim does not have open must
+--- not make one appear.
+---@param uri string
+---@return integer|nil
+local function loaded_buffer(uri)
+  for _, bufnr in ipairs(api.nvim_list_bufs()) do
+    if api.nvim_buf_is_loaded(bufnr) then
+      local ok, buf_uri = pcall(vim.uri_from_bufnr, bufnr)
+      if ok and buf_uri == uri then
+        return bufnr
+      end
+    end
+  end
+  return nil
+end
+
+---@internal
+--- Make text safe to place inside a Markdown code span: a backtick in a link
+--- target (which is whatever the document says) would end the span early and
+--- let the rest of the hover be formatted by the document's author.
+---@param text string
+---@return string
+local function code_safe(text)
+  return (text:gsub("`", "'"))
+end
+
+---@internal
 --- The env link at an LSP position, resolved.
 ---
 --- LSP columns are UTF-16 code units and `target_at` works in bytes; a German
@@ -68,8 +97,8 @@ local function link_at(params)
     return nil, nil
   end
 
-  local bufnr = vim.uri_to_bufnr(uri)
-  if not api.nvim_buf_is_loaded(bufnr) then
+  local bufnr = loaded_buffer(uri)
+  if not bufnr then
     return nil, nil
   end
   local line = api.nvim_buf_get_lines(bufnr, pos.line, pos.line + 1, false)[1]
@@ -116,9 +145,9 @@ function M.hover(params)
   end
 
   local lines = {
-    ("**`%s`**"):format(target),
+    ("**`%s`**"):format(code_safe(target)),
     "",
-    ("%s `%s`"):format(resolved.exists and "->" or "-> (missing)", resolved.path),
+    ("%s `%s`"):format(resolved.exists and "->" or "-> (missing)", code_safe(resolved.path)),
   }
   if resolved.exists and vim.fn.isdirectory(resolved.path) == 1 then
     lines[#lines + 1] = ""
@@ -216,7 +245,7 @@ local function attach(bufnr)
   end
   -- A scratch/preview buffer has no file whose links could be relative to
   -- anything, and it is the same kind of buffer marksman itself refuses.
-  if vim.bo[bufnr].buftype ~= "" then
+  if vim.bo[bufnr].buftype ~= "" or api.nvim_buf_get_name(bufnr) == "" then
     return
   end
   local ft = vim.bo[bufnr].filetype

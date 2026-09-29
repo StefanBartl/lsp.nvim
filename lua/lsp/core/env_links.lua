@@ -133,21 +133,51 @@ local function resolve_builtin(path)
   return join(base, rest or "")
 end
 
+--- Set once `require("gopath")` has failed: a missing module makes `require`
+--- search every loader on every call (~0.4 ms measured), and this runs per
+--- env-link diagnostic on every push and per hover. An already loaded gopath
+--- is still found first, so installing one mid-session costs a restart at most.
+---@type boolean
+local gopath_absent = false
+
 ---@internal
---- gopath.nvim's answer for an env reference, or nil when gopath is absent,
---- predates `resolve_text`, does not recognise the text, or raised.
+---@return table|nil
+local function gopath_module()
+  local loaded = package.loaded["gopath"]
+  if type(loaded) == "table" then
+    return loaded
+  end
+  if gopath_absent then
+    return nil
+  end
+  local ok, mod = pcall(require, "gopath")
+  if ok and type(mod) == "table" then
+    return mod
+  end
+  gopath_absent = true
+  return nil
+end
+
+---@internal
+--- The path gopath.nvim resolves an env reference to, or nil when gopath is
+--- absent, predates `resolve_text`, does not recognise the text, or raised.
+---
+--- Only the *path* is taken from gopath. Its `exists` means "is a regular
+--- file" (`gopath.util.path.exists`), so a link to a directory would come back
+--- `exists = false` -- measured -- and be reported missing. Whether something
+--- is on disk, of whatever type, is decided by the caller with `fs_stat`.
 ---@param path string
----@return { path: string, exists: boolean }|nil
+---@return string|nil
 local function resolve_gopath(path)
-  local ok, gopath = pcall(require, "gopath")
-  if not ok or type(gopath) ~= "table" or type(gopath.resolve_text) ~= "function" then
+  local gopath = gopath_module()
+  if not gopath or type(gopath.resolve_text) ~= "function" then
     return nil
   end
   local called, res = pcall(gopath.resolve_text, path)
   if not called or type(res) ~= "table" or type(res.path) ~= "string" or res.kind == "url" then
     return nil
   end
-  return { path = (res.path:gsub("\\", "/")), exists = res.exists == true }
+  return (res.path:gsub("\\", "/"))
 end
 
 --- Resolve a link target.
@@ -175,7 +205,12 @@ function M.resolve(target)
 
   local via = resolve_gopath(path)
   if via then
-    return { path = via.path, exists = via.exists, fragment = fragment, source = "gopath" }
+    return {
+      path = via,
+      exists = vim.uv.fs_stat(via) ~= nil,
+      fragment = fragment,
+      source = "gopath",
+    }
   end
 
   local resolved = resolve_builtin(path)
@@ -242,6 +277,12 @@ end
 ---@param col integer
 ---@return string|nil target # As written, `<>` and `#fragment` included.
 function M.target_at(line, col)
+  -- The scan below is quadratic in the worst case (`[[[[[[...`); a hover or a
+  -- `gd` on a minified or generated line must not be able to stall the editor.
+  -- No hand-written Markdown link sits on a line this long.
+  if #line > M.MAX_LINE_BYTES then
+    return nil
+  end
   local init = 1
   while true do
     local s, _, after_paren = line:find("%[[^%]]*%]%(()", init)
@@ -303,6 +344,40 @@ end
 -- Target content
 -- ----------------------------------------------------------------------------
 
+--- Longest line `target_at` will scan, in bytes.
+---@type integer
+M.MAX_LINE_BYTES = 20000
+
+--- Largest file the content helpers (`heading_line`, `preview`) will read.
+---@type integer
+M.MAX_READ_BYTES = 2 * 1024 * 1024
+
+--- Longest preview line, in characters.
+---@type integer
+M.MAX_PREVIEW_LINE_BYTES = 200
+
+--- Extensions of the files whose content is ever read on the strength of a
+--- link. A hover previews the top of the target; without this, a document
+--- linking `[x]($HOME/.ssh/id_rsa)` or `~/.aws/credentials` would put the first
+--- lines of a secret into a hover the moment someone looks at the link. Only
+--- documents are read; everything else is still *resolved* and jumped to, just
+--- never quoted.
+---@type table<string, true>
+local TEXT_DOC_EXT = { md = true, markdown = true, mdx = true, txt = true }
+
+---@internal
+--- Is `path` a small regular Markdown/text file -- one it is fine to read?
+---@param path string
+---@return boolean
+local function is_text_doc(path)
+  local ext = path:match("%.(%w+)$")
+  if not ext or not TEXT_DOC_EXT[ext:lower()] then
+    return false
+  end
+  local st = vim.uv.fs_stat(path)
+  return st ~= nil and st.type == "file" and st.size <= M.MAX_READ_BYTES
+end
+
 ---@internal
 --- The GitHub-style anchor of a heading: lowercase, punctuation dropped, spaces
 --- to hyphens. Lowercasing is multibyte-aware (`Ü` -> `ü`, which `string.lower`
@@ -322,6 +397,9 @@ end
 ---@param fragment string
 ---@return integer|nil
 function M.heading_line(path, fragment)
+  if not is_text_doc(path) then
+    return nil
+  end
   local content = require("lib.nvim.fs.read")(path)
   if not content then
     return nil
@@ -348,11 +426,20 @@ end
 ---@param max_lines integer
 ---@return string[]|nil
 function M.preview(path, max_lines)
-  if vim.fn.filereadable(path) ~= 1 then
+  if not is_text_doc(path) then
     return nil
   end
   local ok, lines = pcall(vim.fn.readfile, path, "", max_lines)
-  return ok and lines or nil
+  if not ok then
+    return nil
+  end
+  -- One very long line would otherwise become one very long hover.
+  for i, line in ipairs(lines) do
+    if #line > M.MAX_PREVIEW_LINE_BYTES then
+      lines[i] = vim.fn.strcharpart(line, 0, M.MAX_PREVIEW_LINE_BYTES) .. "..."
+    end
+  end
+  return lines
 end
 
 return M

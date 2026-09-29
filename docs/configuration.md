@@ -562,8 +562,16 @@ attach = {
 - The entry is a startup default. `:Lsp workspace on|off|clear <project>` changes
   it at runtime, wins over it, and is not persisted.
 - A non-string key or non-boolean value is dropped with a warning naming the
-  layer it came from. A project file (`.nvim-lsp.json`) may set the option too:
-  it lives under `attach`, which a repository may answer.
+  layer it came from.
+- A project file (`.nvim-lsp.json`) may set the option too, **for its own
+  folders only**: a key is `.` (the file's directory), a path relative to it, or
+  an absolute path inside it. Anything else -- `../x`, `~`, `$VAR`, a path
+  elsewhere on the machine -- is dropped with a warning. A checkout you cloned
+  is somebody else's file; it may say which of its own folders are too big for
+  the scan, and must not switch workspace diagnostics off or on for any other
+  project. Relative keys are turned into absolute paths before the merge, so
+  `{ "attach": { "workspace_diagnostics_projects": { ".": false } } }` in a
+  vault's own `.nvim-lsp.json` is the per-repository form of the setting.
 
 ## languages.env_links
 
@@ -588,7 +596,10 @@ hid that, and every genuinely broken link along with it.
   (the same shape as the gitsigns one, attached to Markdown buffers), answers
   `textDocument/definition` -- the file, at the heading when the target carries
   a `#fragment` -- and `textDocument/hover`: where the link leads, whether it is
-  there, and the top of the file. Every feature that asks the language servers
+  there, and -- for Markdown and text files up to 2 MB only -- the top of the
+  file. Nothing else is ever quoted: `[x]($HOME/.ssh/id_rsa)` in a document
+  resolves and jumps, but the hover shows the path, never the content. Every
+  feature that asks the language servers
   about a position (`gd`, the peek float, `K`) merges the answers of all
   clients, so all of them work with no per-feature wiring. It answers `nil`
   everywhere else, so for ordinary links marksman's answer stands alone.

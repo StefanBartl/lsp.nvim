@@ -15,6 +15,7 @@ local uv = vim.uv or vim.loop
 ---@param path string
 ---@param text string
 local function write_file(path, text)
+  vim.fn.mkdir(vim.fs.dirname(path), "p")
   local fd = assert(uv.fs_open(path, "w", 420))
   uv.fs_write(fd, text)
   uv.fs_close(fd)
@@ -172,6 +173,26 @@ describe("lsp.core.workspace_projects", function()
       assert.are.equal("project", source)
     end)
 
+    -- `vim.fs.normalize` expands `$VAR` in whatever it is given. A file that
+    -- lives under a folder literally named `$LSPTEST_X` must not be moved into
+    -- another project by that.
+    it("takes a file path literally: `$VAR` in it is not expanded", function()
+      vim.env.LSPTEST_X = "vault"
+      projects.seed({ [tmp .. "/vault"] = false })
+      assert.is_nil((projects.state_of(tmp .. "/$LSPTEST_X/a.md")))
+      assert.is_false((projects.state_of(tmp .. "/vault/a.md")))
+      assert.is_true(projects.contains(tmp .. "/vault", tmp .. "/vault/a.md"))
+      assert.is_false(projects.contains(tmp .. "/vault", tmp .. "/$LSPTEST_X/a.md"))
+      vim.env.LSPTEST_X = nil
+    end)
+
+    it("treats a filesystem root as containing everything below it", function()
+      local rootdir = tmp:match("^%a:/") or "/"
+      assert.is_true(projects.contains(rootdir, tmp .. "/vault/a.md"))
+      projects.seed({ [rootdir] = false })
+      assert.is_false((projects.state_of(tmp .. "/vault/a.md")))
+    end)
+
     it("reports whether any project is switched ON", function()
       projects.seed({ [vault] = false })
       assert.is_false(projects.any_enabled())
@@ -221,6 +242,27 @@ describe("lsp.core.workspace_projects", function()
       path, err = projects.resolve(vault .. "/a.md")
       assert.is_nil(path)
       assert.is_truthy(err)
+    end)
+
+    -- A relative key never equals a buffer's absolute name, so the override
+    -- would have been stored, reported as set, and done nothing.
+    it("always answers with an absolute path", function()
+      local prev = vim.fn.getcwd()
+      vim.env.REPOS_DIR = tmp .. "/nowhere"
+      vim.fn.mkdir(tmp .. "/reldir", "p")
+      vim.cmd.cd(vim.fn.fnameescape(tmp))
+      local got = projects.resolve("reldir")
+      vim.cmd.cd(vim.fn.fnameescape(prev))
+      assert.are.equal(tmp .. "/reldir", got)
+    end)
+
+    it("lists a symlinked or junctioned folder under $REPOS_DIR too", function()
+      local ok = uv.fs_symlink(vault, tmp .. "/linked", { dir = true, junction = true })
+      if not ok then
+        return -- no permission to link here: nothing to assert
+      end
+      local names = projects.repo_names()
+      assert.is_true(vim.tbl_contains(names, "linked"), vim.inspect(names))
     end)
 
     it("refuses an empty argument", function()
@@ -369,6 +411,75 @@ describe("lsp.core.workspace_projects", function()
       -- The project is still OFF, but the file is open now: not gated.
       assert.are.equal(1, #replayed)
       assert.are.equal(0, projects.held_count())
+    end)
+
+    it("drops the held push of a client that no longer exists", function()
+      projects.seed({ [vault] = false })
+      projects.hold_push(nil, push(vault .. "/a.md"), { client_id = 1 }, nil)
+      assert.are.equal(1, projects.held_count())
+
+      -- Client 1 is gone (a restarted server gets a new id); client 2 pushes
+      -- for the same file.
+      vim.lsp.get_client_by_id = function(id)
+        return id == 2 and { id = id } or nil
+      end
+      projects.hold_push(nil, push(vault .. "/a.md"), { client_id = 2 }, nil)
+
+      assert.are.equal(1, projects.held_count(), "the dead client's push must not pile up")
+    end)
+
+    it("replays in chunks, the first one at once", function()
+      local replayed = 0
+      vim.lsp.handlers[KEY] = function()
+        replayed = replayed + 1
+      end
+      projects.REPLAY_CHUNK = 2
+      projects.seed({ [vault] = false })
+      for i = 1, 5 do
+        local file = vault .. "/f" .. i .. ".md"
+        write_file(file, "# " .. i .. "\n")
+        projects.hold_push(nil, push(file), { client_id = 1 }, nil)
+      end
+
+      projects.set(vault, true)
+      assert.are.equal(2, replayed, "a small first chunk is delivered before set() returns")
+
+      assert.is_true(vim.wait(2000, function()
+        return replayed == 5
+      end, 10))
+      projects.REPLAY_CHUNK = 100
+    end)
+
+    it("clear purges what a broader override now gates", function()
+      local ns = vim.api.nvim_create_namespace("workspace_projects_spec_clear")
+      local diag = { { lnum = 0, col = 0, message = "x" } }
+      write_file(vault .. "/keep/k.md", "# k\n")
+
+      -- Parent OFF, child ON: the child's unopened file shows diagnostics.
+      projects.seed({ [vault] = false, [vault .. "/keep"] = true })
+      local child_buf = vim.fn.bufadd(vault .. "/keep/k.md")
+      vim.diagnostic.set(ns, child_buf, diag)
+
+      -- Dropping the child override puts its file back under the parent's OFF:
+      -- what is showing there has to go, even though the global switch is on.
+      projects.clear(vault .. "/keep", true)
+      assert.are.equal(0, #vim.diagnostic.get(child_buf))
+    end)
+
+    it("does not purge a more specific project that is still ON", function()
+      local ns = vim.api.nvim_create_namespace("workspace_projects_spec_child")
+      local diag = { { lnum = 0, col = 0, message = "x" } }
+      write_file(vault .. "/keep/k.md", "# k\n")
+      projects.seed({ [vault .. "/keep"] = true })
+      local child_buf = vim.fn.bufadd(vault .. "/keep/k.md")
+      local sibling_buf = vim.fn.bufadd(vault .. "/a.md")
+      vim.diagnostic.set(ns, child_buf, diag)
+      vim.diagnostic.set(ns, sibling_buf, diag)
+
+      projects.set(vault, false)
+
+      assert.are.equal(1, #vim.diagnostic.get(child_buf), "the ON child keeps its diagnostics")
+      assert.are.equal(0, #vim.diagnostic.get(sibling_buf), "the rest of the project is cleared")
     end)
 
     it("purges leftovers of the scan on switching OFF, but not an open file's", function()
