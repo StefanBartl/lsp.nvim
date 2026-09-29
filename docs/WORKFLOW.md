@@ -103,6 +103,14 @@ now, without changing the on-attach setting. That is the right reach for a big
 repo where you want the numbers once for a specific question rather than on
 every attach.
 
+For a repository that is *always* too big -- a documentation vault that only
+grows -- do not raise the gate; switch that project off:
+`:Lsp workspace off .`, or permanently
+`attach = { workspace_diagnostics_projects = { ["$REPOS_DIR/MyVault"] = false } }`.
+The warning then never appears for it, and, for a server that publishes
+diagnostics for unopened files on its own (marksman), those are held back too.
+`:Lsp workspace on .` brings them back.
+
 ## Roots: switch the scope, or add a folder
 
 Per-server roots come from each server's resolver; the *global* scope switch —

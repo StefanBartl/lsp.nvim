@@ -135,6 +135,50 @@ local function register_filetype_argtype()
   })
 end
 
+--- Argument type for a project folder (`:Lsp workspace off <project>`).
+---
+--- Completes what one actually wants to type: `.` for the project of the
+--- current directory, the folders directly under `$REPOS_DIR` by bare name,
+--- and the projects that already carry an override (so a stale one can be
+--- cleared). A lead that looks like a path (`$REPOS_DIR/x`, `~/x`, `E:/x`)
+--- falls through to Neovim's own directory completion instead. Validation is
+--- left to the action, which resolves the value and refuses a non-directory
+--- with a message; failing it here would only say "invalid argument".
+---@return nil
+local function register_project_argtype()
+  argtypes.register("LSP_PROJECT", {
+    validate = function(raw)
+      return true, raw, nil
+    end,
+    complete = function(arg_lead)
+      if arg_lead:find("[/\\$~]") then
+        return vim.fn.getcompletion(arg_lead, "dir")
+      end
+
+      local projects = require("lsp.core.workspace_projects")
+      ---@type table<string, true>
+      local seen = { ["."] = true }
+      ---@type string[]
+      local names = { "." }
+
+      for _, name in ipairs(projects.repo_names()) do
+        if not seen[name] then
+          seen[name] = true
+          names[#names + 1] = name
+        end
+      end
+      for _, o in ipairs(projects.list()) do
+        if not seen[o.path] then
+          seen[o.path] = true
+          names[#names + 1] = o.path
+        end
+      end
+
+      return argtypes.prefix(names, arg_lead)
+    end,
+  })
+end
+
 ---@internal
 --- Show a report in its own scratch split.
 ---@param lines string[]
@@ -295,6 +339,7 @@ end
 function M.setup()
   register_server_argtype()
   register_filetype_argtype()
+  register_project_argtype()
 
   -- The module that owns the reports owns their names, so the `doctor` route
   -- below takes `lspdoctor.MODES` itself instead of repeating the six spellings
@@ -630,12 +675,21 @@ function M.setup()
           {
             name = "action",
             type = "STRING",
-            enum = { "on", "off", "toggle", "status", "now" },
+            enum = { "on", "off", "toggle", "status", "now", "clear", "list" },
             optional = true,
           },
+          { name = "project", type = "LSP_PROJECT", optional = true },
         },
-        desc = "Workspace-wide diagnostics on attach: control or force now",
+        desc = "Workspace-wide diagnostics: control globally, or for one project (path, `.`, or a $REPOS_DIR folder)",
         run = function(ctx)
+          -- With a project, or for the two actions that only make sense per
+          -- project (`clear`) or about projects (`list`), the per-project
+          -- form answers; without, the global switch does, unchanged.
+          local action = ctx.args.action
+          if ctx.args.project or action == "clear" or action == "list" then
+            actions.workspace_project(action, ctx.args.project)
+            return
+          end
           dispatch({
             on = actions.workspace_on,
             off = actions.workspace_off,

@@ -332,6 +332,13 @@ local DEFAULTS = {
     -- machine-role proxy for "big repo" was a worse predictor than the
     -- measurement.
     use_workspace_diagnostics = true,
+    -- Per-project override of the switch above, `project folder -> boolean`.
+    -- `~` and `$VAR` expand (`"$REPOS_DIR/MyVault"`), so the same entry works
+    -- on every machine. A project set to `false` is neither populated nor sent
+    -- workspace-wide pushes by servers that publish them on their own
+    -- (marksman); files you have open are unaffected. Runtime changes via
+    -- `:Lsp workspace <action> <project>` win over these.
+    workspace_diagnostics_projects = {},
     use_lazydev = true,
   },
 

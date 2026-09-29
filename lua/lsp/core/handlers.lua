@@ -164,6 +164,17 @@ function M.setup(opts)
       return orig(err, result, ctx, conf)
     end
 
+    -- First, before dedup and throttle: a push for a file nobody has open, in
+    -- a project whose workspace diagnostics are switched off, is held rather
+    -- than rendered. A no-op (one loop over an empty table) while no project
+    -- is OFF. See `lsp.core.workspace_projects` for why the populate switch
+    -- alone is not enough -- marksman pushes for files it never got a
+    -- `didOpen` for.
+    local ok_projects, projects = pcall(require, "lsp.core.workspace_projects")
+    if ok_projects and projects.hold_push(err, result, ctx, conf) then
+      return
+    end
+
     local cleaned = clean(result)
 
     if ms == 0 or ctx == nil or ctx.client_id == nil or result.uri == nil then

@@ -67,7 +67,17 @@
 --- client now populates from its own list instead of inheriting whichever
 --- one attached first.
 ---
---- User-facing commands live in lsp.usercmds.workspace_diagnostics.
+--- ## Per project
+---
+--- The switch is global. `lsp.core.workspace_projects` adds per-folder
+--- overrides on top of it (`attach.workspace_diagnostics_projects`, or
+--- `:Lsp workspace <action> <project>` at runtime): `schedule_populate` asks it
+--- per root, before the walk, and `lsp.core.handlers` asks it per push -- a
+--- server such as marksman publishes for files it was never sent a `didOpen`
+--- for, so the populate is only half of "workspace diagnostics".
+---
+--- User-facing commands live in lsp.usercmds.workspace_diagnostics (the flat
+--- global ones) and `:Lsp workspace` in lsp.bindings.usrcmds (with a project).
 
 local notify = require("lib.nvim.notify").create("[lsp.workspace_diagnostics]")
 local memory = require("lib.nvim.cache.memory")
@@ -208,6 +218,14 @@ function M.enabled()
   return state
 end
 
+--- Whether an attach could populate anything: the global switch, or a project
+--- override that turns a project ON while the global one is off. Lets
+--- `lsp.core.attach` skip the deferred timer in the common all-off case.
+---@return boolean
+function M.may_populate()
+  return state or require("lsp.core.workspace_projects").any_enabled()
+end
+
 ---@param value boolean
 ---@return boolean
 function M.set(value)
@@ -226,6 +244,10 @@ end
 --- it. See `files_cache` above for the cache this backs.
 ---@type table<string, fun(files: string[])[]>
 local waiters = {}
+
+--- Roots the max_files warning has already been shown for this session.
+---@type table<string, true>
+local gate_warned = {}
 
 ---@param root string
 ---@param ext_set table<string, boolean>
@@ -314,12 +336,20 @@ local function collect_files_async(root, ext_set, cb, force)
     end,
   }, function(files)
     if #files > opts.max_files then
-      notify.warn(
-        ("workspace diagnostics skipped: %d files exceed the max_files gate of %d"):format(
-          #files,
-          opts.max_files
+      -- Once per root and session for the automatic populate: the warning is
+      -- about the workspace, not about the attach, and this branch re-runs
+      -- every `cache_ttl_s` and every new session. A repository that only
+      -- grows would otherwise pop the same message up for good. An explicit
+      -- request (`force`) is answered every time.
+      if force or not gate_warned[root] then
+        gate_warned[root] = true
+        notify.warn(
+          (
+            "workspace diagnostics skipped: %d files exceed the max_files gate of %d -- "
+            .. "silence it for this project with `:Lsp workspace off .`"
+          ):format(#files, opts.max_files)
         )
-      )
+      end
       files_cache.set(key, false)
       files = {}
     else
@@ -445,11 +475,6 @@ function M.schedule_populate(client, bufnr)
     if not vim.api.nvim_buf_is_valid(bufnr) then
       return
     end
-    -- The toggle may have been flipped off during the delay.
-    if not M.enabled() then
-      return
-    end
-
     local ext_set = client_extensions(client)
     if not ext_set then
       return
@@ -460,6 +485,13 @@ function M.schedule_populate(client, bufnr)
     -- one, in a different repo.
     local root = workspace_root(client, bufnr)
     if not root then
+      return
+    end
+
+    -- Decided per root, and before the walk: a project switched OFF must not
+    -- cost a walk (or its max_files warning). Read here rather than at attach
+    -- because the switches may have been flipped during the delay.
+    if not require("lsp.core.workspace_projects").effective(root, state) then
       return
     end
 
@@ -523,6 +555,45 @@ function M.populate_now(bufnr)
     return false, "no workspace root for this buffer (no .git above it, and no client root_dir)"
   end
   return true, scheduled
+end
+
+--- Force-populate every attached client whose workspace lies inside `project`,
+--- regardless of the switches. What `:Lsp workspace on <project>` and
+--- `:Lsp workspace now <project>` run: a runtime switch does not reattach
+--- anything, so without this "on" would wait for the next attach to show a
+--- single diagnostic.
+---
+--- One walk per (client, root), however many of the client's buffers sit in
+--- it. Scheduled, not completed -- the count is clients started.
+---@param project string # A folder from `lsp.core.workspace_projects.resolve`.
+---@return integer scheduled
+function M.populate_project(project)
+  local projects = require("lsp.core.workspace_projects")
+  local seen = {} ---@type table<string, true>
+  local scheduled = 0
+
+  for _, client in ipairs(vim.lsp.get_clients()) do
+    local ext_set = client_extensions(client)
+    if ext_set then
+      for bufnr in pairs(client.attached_buffers or {}) do
+        local root = workspace_root(client, bufnr)
+        if root and projects.contains(project, root) then
+          local key = tostring(client.id) .. "\0" .. root
+          if not seen[key] then
+            seen[key] = true
+            scheduled = scheduled + 1
+            collect_files_async(root, ext_set, function(files)
+              if #files > 0 then
+                send_did_open(client, bufnr, files, true)
+              end
+            end, true)
+          end
+        end
+      end
+    end
+  end
+
+  return scheduled
 end
 
 return M

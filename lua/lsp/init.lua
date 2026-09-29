@@ -136,6 +136,7 @@ end
 local function build_attach(cfg)
   local ok, built = try_module("lsp.core.attach", "build", {
     use_workspace_diagnostics = cfg.attach.use_workspace_diagnostics,
+    workspace_diagnostics_projects = cfg.attach.workspace_diagnostics_projects,
     hooks = integrations.attach_hooks(),
   })
   if ok and type(built) == "table" then

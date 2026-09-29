@@ -181,7 +181,11 @@ Defaults (excerpt -- the full table is `lua/lsp/config/DEFAULTS.lua`): >lua
         initial_delay_ms = 1000, max_delay_ms = 30000,
         reset_after_ms = 60000,
       },
-      attach = { use_workspace_diagnostics = true, use_lazydev = true },
+      attach = {
+        use_workspace_diagnostics = true,
+        workspace_diagnostics_projects = {},
+        use_lazydev = true,
+      },
       mason = { ensure_install = false, overrides = { ... } },
       lspdoctor = { use_notify = false, list_limit = 8, ... },
       tools = {
@@ -490,6 +494,16 @@ attach.use_workspace_diagnostics (boolean)
                                   attach. On by default: the module measures
                                   workspace size itself and refuses above its
                                   own `max_files` gate.
+attach.workspace_diagnostics_projects (table)
+                                  `project folder -> boolean`, a per-project
+                                  override of the switch above. `~` and $VAR
+                                  expand; the most specific folder wins. `false`
+                                  skips the populate (and its max_files
+                                  warning) AND holds back the pushes a server
+                                  sends for files you have not opened -- marksman
+                                  publishes those on its own. Open files are
+                                  unaffected. `:Lsp workspace` changes it at
+                                  runtime.
 attach.use_lazydev    (boolean)   Wire lazydev into lua_ls attaches.
 mason.ensure_install  (boolean)   Install missing LSP/linter/formatter
                                   packages on setup. Off by default --
@@ -761,10 +775,20 @@ closed unless it says otherwise.
                     where `v:count` holds whatever the last keypress left
                     behind.
 
-    :Lsp workspace [action]                               *:Lsp-workspace*
-                    Workspace-wide diagnostics on attach. Actions: `on`,
-                    `off`, `toggle`, `status` (default), `now`. `now`
+    :Lsp workspace [action] [project]                     *:Lsp-workspace*
+                    Workspace-wide diagnostics. Actions: `on`, `off`, `toggle`,
+                    `status` (default), `now`, `clear`, `list`. `now`
                     populates immediately rather than waiting for an attach.
+
+                    Without {project} the global switch moves. With one, only
+                    that folder's override does. {project} is `.` (the cwd's
+                    project root), a folder name under $REPOS_DIR, or a path;
+                    it completes `.`, the $REPOS_DIR folders and existing
+                    overrides. `clear` drops an override, `list` shows them.
+                    Off also holds back pushes for files you have not opened
+                    and clears what a scan already showed; on or `clear`
+                    replays them. Not persisted -- see
+                    attach.workspace_diagnostics_projects.
 
     :Lsp root [action]                                         *:Lsp-root*
                     Roots and workspace folders. Two mechanisms under one

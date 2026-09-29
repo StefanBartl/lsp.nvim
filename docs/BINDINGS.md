@@ -188,7 +188,7 @@ unless `usrcmds.enable = false`.
 | `:Lsp recover` | — | Auto-recover servers that should be running here |
 | `:Lsp format` | `[once\|on\|off\|toggle\|status\|which]` | Format once (default), or control format-on-save |
 | `:Lsp diag` | `{qf\|loc\|next\|prev} [qf\|loc]` | Diagnostics into a list, or move within one |
-| `:Lsp workspace` | `[on\|off\|toggle\|status\|now]` | Workspace-wide diagnostics on attach (default `status`) |
+| `:Lsp workspace` | `[on\|off\|toggle\|status\|now\|clear\|list] [project]` | Workspace-wide diagnostics: global, or for one project (`.`, a `$REPOS_DIR` folder, or a path). Default `status` |
 | `:Lsp root` | `[pick\|show\|add\|remove\|list]` | Roots and workspace folders (default `show`) |
 | `:Lsp hints` | `[toggle\|on\|off\|status\|clear] [filetype]` | Inlay hints, globally or for one filetype (default `toggle`) |
 | `:Lsp lightbulb` | `[toggle\|on\|off\|status\|clear] [filetype]` | Code-action indicator, globally or for one filetype (default `toggle`) |
