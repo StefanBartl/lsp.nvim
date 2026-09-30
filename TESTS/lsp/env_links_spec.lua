@@ -363,6 +363,25 @@ describe("lsp.core.env_links", function()
       -- The same limit for a `<...>` target, which may hold spaces.
       assert.are.equal(at_cap, links.target_at("[a](<" .. at_cap .. ">)", 3))
       assert.is_nil(links.target_at("[a](<" .. over .. ">)", 3))
+      -- ... and for a reference definition, which is a link too: bare and `<>`.
+      assert.are.equal(at_cap, links.target_at("[l]: " .. at_cap, 3))
+      assert.are.equal(at_cap, links.target_at("[l]: <" .. at_cap .. ">", 3))
+      assert.is_nil(links.target_at("[l]: " .. over, 3))
+      assert.is_nil(links.target_at("[l]: <" .. over .. ">", 3))
+    end)
+
+    -- A target at the limit is found from every byte of the link, the closing
+    -- `>` and `)` of a `<...>` form included: the window that decides whether a
+    -- link can reach the column must cover them.
+    it("finds a target at the limit from its closing delimiters, too", function()
+      local at_cap = ("x"):rep(links.MAX_TARGET_BYTES)
+      local angled = "[a](<" .. at_cap .. ">)"
+      local bare = "[a](" .. at_cap .. ")"
+      for _, line in ipairs({ angled, bare }) do
+        for _, col in ipairs({ 3, #line - 2, #line - 1, #line }) do
+          assert.are.equal(at_cap, links.target_at(line, col), ("col %d of %d"):format(col, #line))
+        end
+      end
     end)
 
     -- What the linear scan replaced was quadratic, and each of these took

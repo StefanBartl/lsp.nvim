@@ -238,10 +238,12 @@ end
 ---@type integer
 M.MAX_LINE_BYTES = 20000
 
---- Longest link target `target_at` will follow, in bytes: `PATH_MAX`, and far
---- beyond anything a person types. It caps the per-link scan on lines such as
---- `[a]($X/[a]($X/...`, where every target would otherwise run to the end of
---- the line.
+--- Longest link target `target_at` will return, in bytes: `PATH_MAX`, and far
+--- beyond anything a person types. For a bare inline target it also caps the
+--- scan per link on lines such as `[a]($X/[a]($X/...`, where every target
+--- would otherwise run to the end of the line. (A `<...>` target is found with
+--- one plain `find`, and a reference definition needs no scan: the limit there
+--- is the same rule, not a cost bound.)
 ---@type integer
 M.MAX_TARGET_BYTES = 4096
 
@@ -339,11 +341,12 @@ function M.target_at(line, col)
       if open and line:byte(i + 1) == 40 then -- "]("
         -- Links come left to right: once one starts past `col`, none further
         -- right can hold it. And one whose target starts more than a target's
-        -- length before `col` cannot reach it.
+        -- length before `col` cannot reach it -- counting the `>` and `)` that
+        -- close a `<...>` target as part of the link.
         if open > col then
           break
         end
-        if i + 2 + M.MAX_TARGET_BYTES >= col then
+        if i + 4 + M.MAX_TARGET_BYTES >= col then
           local target, close = parse_target(line, i + 2)
           if target and close and col >= open and col <= close then
             return target
@@ -357,7 +360,12 @@ function M.target_at(line, col)
 
   local ref = line:match("^%s*%[[^%]]+%]:%s*(%S+)")
   if ref then
-    return (ref:gsub("^<(.*)>$", "%1"))
+    ref = ref:gsub("^<(.*)>$", "%1")
+    -- The same limit as an inline target: a reference definition is a link too.
+    if #ref > M.MAX_TARGET_BYTES then
+      return nil
+    end
+    return ref
   end
   return nil
 end
