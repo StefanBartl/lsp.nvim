@@ -21,7 +21,7 @@
 --- request to fall back on.
 local cfg = require("lsp.servers.marksman.config")
 local env_links = require("lsp.core.env_links")
-local key = require("lsp.core.workspace_projects").key
+local file_key = require("lsp.core.workspace_projects").key
 
 local M = {}
 
@@ -268,7 +268,7 @@ local function open_files()
     if vim.api.nvim_buf_is_loaded(bufnr) then
       local name = vim.api.nvim_buf_get_name(bufnr)
       if name ~= "" then
-        open[key(name)] = true
+        open[file_key(name)] = true
       end
     end
   end
@@ -285,7 +285,7 @@ local function still_open(uri, open)
   if not ok or type(fname) ~= "string" then
     return false
   end
-  return open[key(fname)] == true
+  return open[file_key(fname)] == true
 end
 
 --- Re-run M.filter_diagnostics against the last raw diagnostics for every
