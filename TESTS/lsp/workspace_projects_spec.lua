@@ -186,15 +186,43 @@ describe("lsp.core.workspace_projects", function()
     -- caller's job (`lsp.core.attach`, see attach_spec), not this module's.
     it("skips an entry that is not an absolute path once expanded, and returns it", function()
       vim.env.LSPTEST_PROJ_UNSET = nil
-      local ignored = projects.seed({
-        ["$LSPTEST_PROJ_UNSET/vault"] = false,
-        ["relative/dir"] = false,
-        [vault] = false,
-      })
+      -- Enough keys, in no particular order, that `pairs` handing them out in
+      -- sorted order would be luck: the result is documented as sorted.
+      local bad = {
+        "zeta/rel",
+        "$LSPTEST_PROJ_UNSET/b",
+        "mid/rel",
+        "alpha/rel",
+        "$LSPTEST_PROJ_UNSET/a",
+        "rel",
+      }
+      local map = { [vault] = false }
+      for _, key in ipairs(bad) do
+        map[key] = false
+      end
+      local ignored = projects.seed(map)
 
-      assert.are.same({ "$LSPTEST_PROJ_UNSET/vault", "relative/dir" }, ignored)
+      table.sort(bad)
+      assert.are.same(bad, ignored)
       assert.are.equal(1, #projects.list(), vim.inspect(projects.list()))
       assert.is_false((projects.state_of(vault .. "/a.md")))
+    end)
+
+    -- `/vault` is a place on POSIX and not on Windows (relative to the current
+    -- drive, so it never equals the `E:/...` of a buffer name); `C:/vault` is
+    -- the other way round. Each is what a config shared between the two carries.
+    it("skips a path that is absolute only on the other platform", function()
+      local foreign = vim.fn.has("win32") == 1 and "/lsptest-vault" or "C:/lsptest-vault"
+      assert.are.same({ foreign }, projects.seed({ [foreign] = false }))
+      assert.are.same({}, projects.list())
+    end)
+
+    it("does not raise on a map that is not a table", function()
+      for _, bad in ipairs({ "x", true, 42 }) do
+        projects = reload()
+        assert.is_true(pcall(projects.seed, bad), tostring(bad))
+        assert.are.same({}, projects.list())
+      end
     end)
 
     it("returns nothing ignored once it has seeded, and for a clean map", function()

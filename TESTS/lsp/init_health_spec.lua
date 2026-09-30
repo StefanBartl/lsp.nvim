@@ -245,6 +245,50 @@ describe("lsp.init / lsp.health defects", function()
       assert.is_true(said)
     end)
 
+    -- A setup problem `lsp.core.attach.build` hands back (an override that
+    -- matches no file) is kept for `:checkhealth lsp`, not only notified once
+    -- and lost -- the way `lsp.core.capabilities.get`'s warnings already are.
+    it("records the warnings attach.build hands back", function()
+      stub_bootstrap({
+        ["lsp.core.attach"] = {
+          build = function()
+            return { on_attach = function() end, on_init = function() end }, {
+              'attach.workspace_diagnostics_projects: ignoring "rel/x" -- test',
+            }
+          end,
+        },
+      })
+
+      local lsp = require("lsp")
+      assert.is_true(pcall(lsp.setup, {}))
+
+      local said = false
+      for _, w in ipairs(lsp.status().warnings) do
+        if w:find('ignoring "rel/x"', 1, true) then
+          said = true
+        end
+      end
+      assert.is_true(said, vim.inspect(lsp.status().warnings))
+    end)
+
+    it("takes no warnings from an attach.build that returns none, or junk", function()
+      for _, returned in ipairs({ "junk", 42 }) do
+        stub_bootstrap({
+          ["lsp.core.attach"] = {
+            build = function()
+              return { on_attach = function() end, on_init = function() end }, returned
+            end,
+          },
+        })
+        package.loaded["lsp"] = nil
+        local lsp = require("lsp")
+        assert.is_true(pcall(lsp.setup, {}), tostring(returned))
+        for _, w in ipairs(lsp.status().warnings) do
+          assert.is_nil(w:find("junk", 1, true), w)
+        end
+      end
+    end)
+
     -- Same shape, other end of the bootstrap: the registry is the step that
     -- decides whether `setup()` reports success at all.
     it("records the registry's own error instead of propagating it", function()

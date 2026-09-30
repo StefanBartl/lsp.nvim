@@ -127,18 +127,37 @@ function M.contains(dir, path)
 end
 
 --- A key two spellings of one file agree on: separators unified, `.`/`..`
---- resolved, no trailing slash, case-folded on Windows. Nothing is expanded
---- (`path` is a file, not something a person typed). For comparing a file to
---- another file -- `M.contains` is the comparison against a project.
+--- resolved, no trailing slash, case-folded on Windows. `$VAR` is not expanded
+--- (`path` is a file, not something a person typed); a leading `~` still is,
+--- because `vim.fs.normalize` does that regardless, and an absolute buffer name
+--- or URI never starts with one. For comparing a file to another file --
+--- `M.contains` is the comparison against a project.
 ---
---- `lib.nvim.fs.normkey` was checked first and does not fit: it unifies slashes
---- and upper-cases the drive, but neither folds the case of the rest of the
---- path (Windows compares it case-insensitively) nor resolves `..`, and it
---- expands a leading `~`, which a buffer name never means.
+--- `lib.nvim.fs.normkey` was checked first and is not used, for two reasons.
+--- By default it resolves through `uv.fs_realpath`: a syscall per call, and this
+--- runs once per pushed diagnostic; and it resolves symlinks and junctions in
+--- the file's path while the override keys are never resolved, so the two sides
+--- would disagree wherever a junction is involved (a `REPOS_DIR` of junctions is
+--- how this config is tested). With `realpath = false` it does no work of the
+--- kind this needs: it does not fold the case of the path (Windows compares it
+--- case-insensitively) and does not resolve `..`.
 ---@param path string
 ---@return string
 function M.key(path)
   return fold(norm(path))
+end
+
+---@internal
+--- Whether a normalized path is absolute *on this platform*. `/vault` is a place
+--- on POSIX; on Windows it is relative to the current drive and never equals the
+--- `E:/...` a buffer name carries, so an override for it would match no file.
+---@param p string
+---@return boolean
+local function is_absolute(p)
+  if IS_WIN then
+    return p:match("^%a:/") ~= nil or p:match("^//") ~= nil
+  end
+  return p:sub(1, 1) == "/"
 end
 
 ---@internal
@@ -172,10 +191,10 @@ function M.seed(map)
     return ignored
   end
   seeded = true
-  for path, enabled in pairs(map or {}) do
+  for path, enabled in pairs(type(map) == "table" and map or {}) do
     if type(path) == "string" and path ~= "" and type(enabled) == "boolean" then
       local p = norm(path, true)
-      if p:match("^/") or p:match("^%a:/") then
+      if is_absolute(p) then
         overrides[fold(p)] = { path = p, enabled = enabled }
       else
         ignored[#ignored + 1] = path
