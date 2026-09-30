@@ -508,7 +508,9 @@ attach.workspace_diagnostics_projects (table)
                                   or an absolute one inside it); other keys
                                   are dropped with a warning. An entry that is
                                   not absolute once expanded (a $VAR that is
-                                  not set here) is ignored with a warning.
+                                  not set here; on Windows also `/x`) is
+                                  ignored with a warning, also listed in
+                                  `:checkhealth lsp`.
 attach.use_lazydev    (boolean)   Wire lazydev into lua_ls attaches.
 mason.ensure_install  (boolean)   Install missing LSP/linter/formatter
                                   packages on setup. Off by default --
