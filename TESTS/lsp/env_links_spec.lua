@@ -360,6 +360,9 @@ describe("lsp.core.env_links", function()
       local over = at_cap .. "x"
       assert.is_nil(links.target_at("[a](" .. over .. ")", 3))
       assert.is_nil(links.target_at("[a](" .. over, 3))
+      -- The same limit for a `<...>` target, which may hold spaces.
+      assert.are.equal(at_cap, links.target_at("[a](<" .. at_cap .. ">)", 3))
+      assert.is_nil(links.target_at("[a](<" .. over .. ">)", 3))
     end)
 
     -- What the linear scan replaced was quadratic, and each of these took

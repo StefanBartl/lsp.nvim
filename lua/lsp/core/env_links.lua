@@ -233,12 +233,15 @@ end
 -- ----------------------------------------------------------------------------
 
 --- Longest line `target_at` will scan, in bytes. No hand-written Markdown link
---- sits on a line this long.
+--- sits on a line this long; it caps the work a hover or `gd` does on a
+--- minified or generated line of any length.
 ---@type integer
 M.MAX_LINE_BYTES = 20000
 
 --- Longest link target `target_at` will follow, in bytes: `PATH_MAX`, and far
---- beyond anything a person types.
+--- beyond anything a person types. It caps the per-link scan on lines such as
+--- `[a]($X/[a]($X/...`, where every target would otherwise run to the end of
+--- the line.
 ---@type integer
 M.MAX_TARGET_BYTES = 4096
 
@@ -266,7 +269,7 @@ end
 local function parse_target(line, i)
   if line:byte(i) == 60 then -- "<"
     local gt = line:find(">", i + 1, true)
-    if not gt then
+    if not gt or gt - i - 1 > M.MAX_TARGET_BYTES then
       return nil, nil
     end
     return line:sub(i + 1, gt - 1), line:find(")", gt + 1, true) or gt
