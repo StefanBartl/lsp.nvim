@@ -154,6 +154,70 @@ describe("lsp.core.attach", function()
     end)
   end)
 
+  -- The store skips an override that is not a place once expanded (an unset
+  -- `$VAR`, a relative path) and hands it back; this is the layer that says so.
+  -- Silence here would leave the override meant to keep a project quiet doing
+  -- nothing, with no sign of it.
+  describe("build() seeding project overrides", function()
+    local real_notify
+
+    ---@return string[] said
+    local function capture_notify()
+      local said = {}
+      real_notify = package.loaded["lib.nvim.notify"]
+      package.loaded["lib.nvim.notify"] = {
+        create = function()
+          return setmetatable({}, {
+            __index = function(_, level)
+              return function(msg)
+                said[#said + 1] = level .. ": " .. tostring(msg)
+              end
+            end,
+          })
+        end,
+      }
+      return said
+    end
+
+    after_each(function()
+      package.loaded["lib.nvim.notify"] = real_notify
+      package.loaded["lsp.core.workspace_projects"] = nil
+    end)
+
+    it("warns once about the entries that are not absolute once expanded", function()
+      vim.env.LSPTEST_ATTACH_UNSET = nil
+      package.loaded["lsp.core.workspace_projects"] = nil
+      local attach = reload()
+      local said = capture_notify()
+
+      attach.build({
+        workspace_diagnostics_projects = {
+          ["$LSPTEST_ATTACH_UNSET/vault"] = false,
+          ["relative/dir"] = false,
+          [vim.fn.getcwd()] = false,
+        },
+      })
+      -- A second `build` (a second server) must not repeat it: `seed` runs once.
+      attach.build({ workspace_diagnostics_projects = { ["relative/other"] = false } })
+
+      assert.are.equal(1, #said, vim.inspect(said))
+      assert.is_truthy(said[1]:find("^warn: "), said[1])
+      assert.is_truthy(said[1]:find("$LSPTEST_ATTACH_UNSET/vault", 1, true), said[1])
+      assert.is_truthy(said[1]:find("relative/dir", 1, true), said[1])
+      assert.is_nil(said[1]:find(vim.fn.getcwd(), 1, true), "the valid entry was reported")
+    end)
+
+    it("says nothing when every entry is a place", function()
+      package.loaded["lsp.core.workspace_projects"] = nil
+      local attach = reload()
+      local said = capture_notify()
+
+      attach.build({ workspace_diagnostics_projects = { [vim.fn.getcwd()] = false } })
+
+      assert.are.same({}, said)
+    end)
+  end)
+
   describe("build().on_attach guards", function()
     it("does nothing for a nil client", function()
       local attach = reload()

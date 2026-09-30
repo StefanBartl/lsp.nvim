@@ -43,7 +43,14 @@ function M.build(opts)
   -- once like the switch above. Runtime changes via `:Lsp workspace <action>
   -- <project>` win over them from then on.
   local projects = require("lsp.core.workspace_projects")
-  projects.seed(opts.workspace_diagnostics_projects)
+  local ignored = projects.seed(opts.workspace_diagnostics_projects)
+  if #ignored > 0 then
+    require("lib.nvim.notify").create("[lsp.nvim]").warn(
+      ("attach.workspace_diagnostics_projects: ignoring %s -- not an absolute path once expanded (is the variable set on this machine?)"):format(
+        table.concat(ignored, ", ")
+      )
+    )
+  end
 
   local hooks = opts.hooks or {}
 
