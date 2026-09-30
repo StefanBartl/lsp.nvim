@@ -323,6 +323,10 @@ describe("lsp.core.env_links", function()
       { "[a](${R}/x.md)", 8, "${R}/x.md" },
       { "[label]: $R/x.md", 3, "$R/x.md" },
       { "[label]: <$R/x.md>", 12, "$R/x.md" },
+      -- A `<...>` reference target holds spaces, as an inline one does.
+      { "[label]: <$R/my notes.md>", 12, "$R/my notes.md" },
+      { '[label]: <$R/my notes.md> "a title"', 12, "$R/my notes.md" },
+      { "[label]: <$R/x.md", 12, "<$R/x.md" },
       -- A stray `]` before the link, a link still being typed, nested parens.
       { "x](y) [a]($R/x.md)", 15, "$R/x.md" },
       { "[a]($R/x.md", 5, "$R/x.md" },

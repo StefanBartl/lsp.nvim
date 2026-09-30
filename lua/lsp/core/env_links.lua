@@ -358,7 +358,10 @@ function M.target_at(line, col)
     pos = i + 1
   end
 
-  local ref = line:match("^%s*%[[^%]]+%]:%s*(%S+)")
+  -- `<...>` first: like an inline `(<...>)` target it may hold spaces (a path
+  -- under "Program Files"), and `%S+` alone would cut it at the first one and
+  -- return `<$R/my`.
+  local ref = line:match("^%s*%[[^%]]+%]:%s*(<[^>]*>)") or line:match("^%s*%[[^%]]+%]:%s*(%S+)")
   if ref then
     ref = ref:gsub("^<(.*)>$", "%1")
     -- The same limit as an inline target: a reference definition is a link too.
