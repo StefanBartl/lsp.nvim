@@ -323,9 +323,17 @@ describe("lsp.core.env_links", function()
       { "[a](${R}/x.md)", 8, "${R}/x.md" },
       { "[label]: $R/x.md", 3, "$R/x.md" },
       { "[label]: <$R/x.md>", 12, "$R/x.md" },
-      -- A `<...>` reference target holds spaces, as an inline one does.
+      -- A `<...>` reference target holds spaces, as an inline one does; the
+      -- definition answers from any column of the line, the title's included.
       { "[label]: <$R/my notes.md>", 12, "$R/my notes.md" },
+      { "[label]: <$R/my notes.md>", 21, "$R/my notes.md" },
       { '[label]: <$R/my notes.md> "a title"', 12, "$R/my notes.md" },
+      { '[label]: <$R/my notes.md> "a title"', 32, "$R/my notes.md" },
+      -- ... and ends at the FIRST `>`: a `>` in the title is not part of it.
+      { '[label]: <$R/x.md> "a > b"', 12, "$R/x.md" },
+      -- An unterminated `<` is left as written (garbage in, no resolution out:
+      -- `links.resolve("<$R/x.md")` is nil, so nothing is shown). This one is
+      -- also green without the fix; it guards the fallback to the bare form.
       { "[label]: <$R/x.md", 12, "<$R/x.md" },
       -- A stray `]` before the link, a link still being typed, nested parens.
       { "x](y) [a]($R/x.md)", 15, "$R/x.md" },
@@ -344,8 +352,9 @@ describe("lsp.core.env_links", function()
       end)
     end
 
-    -- The scan is quadratic in the worst case; a hover on a minified line
-    -- must not be able to stall the editor.
+    -- A hover on a minified or generated line must not be able to stall the
+    -- editor, whatever its length: the scan is linear, and this cap only keeps
+    -- it short (see the timing cases below).
     it("gives up on a line too long to be hand-written Markdown", function()
       local line = "[a]($R/x.md)" .. (" "):rep(links.MAX_LINE_BYTES)
       assert.is_nil(links.target_at(line, 3))
@@ -413,6 +422,34 @@ describe("lsp.core.env_links", function()
       -- early (at the last byte the first link, whose target runs to the end
       -- of the line, would answer at once and hide the cost).
       assert.is_true(time_target_at(line, #line + 1) < 300)
+    end)
+
+    -- Reference definitions are matched by two anchored patterns, one of which
+    -- (`<[^>]*>`) runs to the end of the line when the `<` is never closed.
+    -- Measured linear and under a millisecond; pinned here so a pattern that
+    -- backtracks quadratically cannot slip in unnoticed.
+    it("stays fast on reference definitions with an unclosed `<` or no target", function()
+      local n = links.MAX_LINE_BYTES
+      for _, line in ipairs({
+        "[a]: <" .. ("x"):rep(n - 6),
+        "[a]: " .. ("<"):rep(n - 5),
+        "[a]: " .. (" "):rep(n - 5) .. "x",
+        "[a]:" .. ("]:"):rep((n - 4) / 2),
+      }) do
+        assert.is_true(time_target_at(line, 1) < 300, line:sub(1, 12))
+        assert.is_true(time_target_at(line, #line) < 300, line:sub(1, 12))
+      end
+    end)
+
+    -- ERR-02: a caller that passes something else than a line and a column gets
+    -- "no link", not an error out of the middle of a hover.
+    it("answers nil instead of raising on a line or column that is not one", function()
+      ---@diagnostic disable: param-type-mismatch
+      assert.is_nil(links.target_at(nil, 1))
+      assert.is_nil(links.target_at(42, 1))
+      assert.is_nil(links.target_at("[a]($R/x.md)", nil))
+      assert.is_nil(links.target_at("[a]($R/x.md)", "3"))
+      ---@diagnostic enable: param-type-mismatch
     end)
   end)
 

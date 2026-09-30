@@ -242,8 +242,9 @@ M.MAX_LINE_BYTES = 20000
 --- beyond anything a person types. For a bare inline target it also caps the
 --- scan per link on lines such as `[a]($X/[a]($X/...`, where every target
 --- would otherwise run to the end of the line. (A `<...>` target is found with
---- one plain `find`, and a reference definition needs no scan: the limit there
---- is the same rule, not a cost bound.)
+--- one plain `find`, and a reference definition with two anchored patterns,
+--- each linear in a line of at most `MAX_LINE_BYTES`: the limit there is the
+--- same rule, not a cost bound.)
 ---@type integer
 M.MAX_TARGET_BYTES = 4096
 
@@ -321,7 +322,7 @@ function M.target_at(line, col)
   -- A hover or a `gd` on a minified or generated line must not be able to
   -- stall the editor. The scan below is linear in the line (measured before
   -- it was: 1.2 s on 20000 `[`), this cap only keeps it short.
-  if #line > M.MAX_LINE_BYTES then
+  if type(line) ~= "string" or type(col) ~= "number" or #line > M.MAX_LINE_BYTES then
     return nil
   end
 
