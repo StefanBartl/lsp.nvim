@@ -130,6 +130,11 @@ end
 --- resolved, no trailing slash, case-folded on Windows. Nothing is expanded
 --- (`path` is a file, not something a person typed). For comparing a file to
 --- another file -- `M.contains` is the comparison against a project.
+---
+--- `lib.nvim.fs.normkey` was checked first and does not fit: it unifies slashes
+--- and upper-cases the drive, but neither folds the case of the rest of the
+--- path (Windows compares it case-insensitively) nor resolves `..`, and it
+--- expands a leading `~`, which a buffer name never means.
 ---@param path string
 ---@return string
 function M.key(path)
@@ -153,11 +158,18 @@ end
 
 --- Seed the overrides from config. Once, like `workspace_diagnostics.seed`: a
 --- runtime change must not be clobbered by a later re-entry into setup.
+---
+--- Entries whose path is not absolute once expanded -- a `$VAR` that is not set
+--- on this machine, or a relative path -- are skipped and handed back, sorted,
+--- for the caller to report. They would sit in the store and match no file,
+--- silently: the override meant to keep a project quiet, doing nothing. This
+--- module does not notify itself; that is the caller's layer.
 ---@param map table<string, boolean>|nil
----@return nil
+---@return string[] ignored # The keys as written; empty on every call after the first.
 function M.seed(map)
+  local ignored = {}
   if seeded then
-    return
+    return ignored
   end
   seeded = true
   for path, enabled in pairs(map or {}) do
@@ -166,18 +178,12 @@ function M.seed(map)
       if p:match("^/") or p:match("^%a:/") then
         overrides[fold(p)] = { path = p, enabled = enabled }
       else
-        -- What is left after expansion is not a place: a `$VAR` that is not set
-        -- on this machine, or a relative path. Either would sit in the store
-        -- and match no file, silently -- the override that was meant to keep
-        -- a project quiet, doing nothing.
-        require("lib.nvim.notify").create("[lsp.workspace_projects]").warn(
-          ("workspace_diagnostics_projects: ignoring %q -- not an absolute path once expanded (is the variable set?)"):format(
-            path
-          )
-        )
+        ignored[#ignored + 1] = path
       end
     end
   end
+  table.sort(ignored)
+  return ignored
 end
 
 ---@internal

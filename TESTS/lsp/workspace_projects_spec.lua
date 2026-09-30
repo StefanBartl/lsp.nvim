@@ -92,29 +92,6 @@ local function open_buf(path)
   return bufnr
 end
 
---- Collect what the module notifies, without touching the real notifier.
----@return string[] said # "<level>: <message>", in order.
----@return function restore
-local function capture_notify()
-  ---@type string[]
-  local said = {}
-  local real = package.loaded["lib.nvim.notify"]
-  package.loaded["lib.nvim.notify"] = {
-    create = function()
-      return setmetatable({}, {
-        __index = function(_, level)
-          return function(msg)
-            said[#said + 1] = level .. ": " .. tostring(msg)
-          end
-        end,
-      })
-    end,
-  }
-  return said, function()
-    package.loaded["lib.nvim.notify"] = real
-  end
-end
-
 describe("lsp.core.workspace_projects", function()
   ---@type string
   local tmp
@@ -205,23 +182,24 @@ describe("lsp.core.workspace_projects", function()
 
     -- An entry that is not a place once expanded would sit in the store and
     -- match no file: the override that was meant to keep a project quiet,
-    -- doing nothing, and saying nothing.
-    it("ignores, and says so, an entry that is not an absolute path once expanded", function()
+    -- doing nothing. The store skips it and hands it back; reporting it is the
+    -- caller's job (`lsp.core.attach`, see attach_spec), not this module's.
+    it("skips an entry that is not an absolute path once expanded, and returns it", function()
       vim.env.LSPTEST_PROJ_UNSET = nil
-      local said, restore = capture_notify()
-      projects.seed({
+      local ignored = projects.seed({
         ["$LSPTEST_PROJ_UNSET/vault"] = false,
         ["relative/dir"] = false,
         [vault] = false,
       })
-      restore()
 
+      assert.are.same({ "$LSPTEST_PROJ_UNSET/vault", "relative/dir" }, ignored)
       assert.are.equal(1, #projects.list(), vim.inspect(projects.list()))
       assert.is_false((projects.state_of(vault .. "/a.md")))
-      table.sort(said)
-      assert.are.equal(2, #said, vim.inspect(said))
-      assert.is_truthy(said[1]:find("$LSPTEST_PROJ_UNSET/vault", 1, true), said[1])
-      assert.is_truthy(said[2]:find("relative/dir", 1, true), said[2])
+    end)
+
+    it("returns nothing ignored once it has seeded, and for a clean map", function()
+      assert.are.same({}, projects.seed({ [vault] = false }))
+      assert.are.same({}, projects.seed({ ["relative/dir"] = false }))
     end)
 
     it("falls back to the global switch and says so", function()
