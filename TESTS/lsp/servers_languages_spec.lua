@@ -73,6 +73,46 @@ describe("lsp.servers.marksman.diagnostics_handler", function()
 
     pcall(vim.fn.delete, dir, "rf")
   end)
+
+  -- The server and Neovim spell one file differently: marksman sends
+  -- `file:///e%3A/repos/x.md` where `vim.uri_from_bufnr` says
+  -- `file:///e:/repos/x.md` (measured on Windows). Comparing raw URIs made
+  -- every open buffer look closed, so `republish_all` dropped it from the cache
+  -- and the hints toggle did nothing until the server's next push. A
+  -- percent-encoded first letter is a spelling that differs on every platform.
+  it("republishes an open file whatever way the server spelled its URI", function()
+    local dir = vim.fn.tempname()
+    vim.fn.mkdir(dir, "p")
+    local path = dir .. "/open.md"
+    vim.fn.writefile({ "# open" }, path)
+
+    local published = {}
+    local key = "textDocument/publishDiagnostics"
+    local real_handler = vim.lsp.handlers[key]
+    vim.lsp.handlers[key] = function(_, result)
+      published[#published + 1] = result.uri
+    end
+
+    vim.cmd.edit(vim.fn.fnameescape(path))
+    local uri = vim.uri_from_bufnr(vim.api.nvim_get_current_buf())
+    local odd = uri:gsub("/([^/])([^/]*)$", function(first, rest)
+      return ("/%%%02X%s"):format(first:byte(), rest)
+    end)
+    assert.are_not.equal(uri, odd)
+
+    local dh = require("lsp.servers.marksman.diagnostics_handler")
+    dh.make_handler()(nil, { uri = odd, diagnostics = one_hint() }, {
+      client_id = 1,
+      method = "textDocument/publishDiagnostics",
+    }, nil)
+    published = {}
+
+    dh.republish_all()
+    vim.lsp.handlers[key] = real_handler
+
+    assert.are.same({ odd }, published, "an open file was taken for a closed one")
+    pcall(vim.fn.delete, dir, "rf")
+  end)
 end)
 
 describe("lsp.languages.documentation.markdown_words", function()

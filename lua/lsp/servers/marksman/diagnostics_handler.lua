@@ -252,23 +252,40 @@ function M.filter_diagnostics(diagnostics)
 end
 
 ---@internal
---- The loaded buffer holding `uri`, if one is still open.
+--- The files of all loaded buffers, as `workspace_projects.key` spells them.
 ---
---- Compared through `vim.uri_from_bufnr` rather than resolved through
+--- Files are compared by path, not by URI, and not resolved through
 --- `vim.uri_to_bufnr`: that one *creates* a buffer when none exists, which is
---- the whole problem below.
----@param uri string
----@return boolean
-local function still_open(uri)
+--- the whole problem below. A raw URI comparison does not work either: marksman
+--- spells `file:///e%3A/repos/x.md` where `vim.uri_from_bufnr` says
+--- `file:///e:/repos/x.md` (measured on Windows), so every open buffer looked
+--- closed.
+---@return table<string, true>
+local function open_files()
+  local key = require("lsp.core.workspace_projects").key
+  local open = {}
   for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
     if vim.api.nvim_buf_is_loaded(bufnr) then
-      local ok, buf_uri = pcall(vim.uri_from_bufnr, bufnr)
-      if ok and buf_uri == uri then
-        return true
+      local name = vim.api.nvim_buf_get_name(bufnr)
+      if name ~= "" then
+        open[key(name)] = true
       end
     end
   end
-  return false
+  return open
+end
+
+---@internal
+--- Whether the file `uri` names is among `open` (see `open_files`).
+---@param uri string
+---@param open table<string, true>
+---@return boolean
+local function still_open(uri, open)
+  local ok, fname = pcall(vim.uri_to_fname, uri)
+  if not ok or type(fname) ~= "string" then
+    return false
+  end
+  return open[require("lsp.core.workspace_projects").key(fname)] == true
 end
 
 --- Re-run M.filter_diagnostics against the last raw diagnostics for every
@@ -288,9 +305,10 @@ end
 ---@return nil
 function M.republish_all()
   local default_handler = vim.lsp.handlers["textDocument/publishDiagnostics"]
+  local open = open_files()
   for uri, diags in pairs(last_raw) do
     local meta = last_meta[uri]
-    if not still_open(uri) then
+    if not still_open(uri, open) then
       last_raw[uri] = nil
       last_meta[uri] = nil
     elseif meta then
