@@ -426,25 +426,41 @@ describe("lsp.core.env_links", function()
 
     -- Reference definitions are matched by two anchored patterns, one of which
     -- (`<[^>]*>`) runs to the end of the line when the `<` is never closed.
-    -- Measured linear and under a millisecond. Every line below is EXACTLY
+    -- Measured linear, 0.3 to 0.9 ms per line. Every line below is EXACTLY
     -- `MAX_LINE_BYTES` long (asserted): one byte more and the length guard
     -- answers before any pattern runs, which measures nothing -- an earlier
-    -- version of this test had exactly that slip. The run of blanks in front of
-    -- `[a]: <` is what an unanchored `%s*` would rescan from every blank.
-    -- This pins the shape of the cost, it is not a proof: the cap keeps the
-    -- input small enough that some quadratic patterns would still pass.
+    -- version of this test had exactly that slip. What each line is for:
+    --   * a run of blanks (with or without an unclosed `[a]: <` behind it): an
+    --     unanchored `%s*` rescans it from every blank (about 1 s);
+    --   * a chain of `]:<` after a `[`: a lazy or greedy label part in the
+    --     `<...>` pattern (`.-`, `.*` instead of `[^%]]+`) backtracks over
+    --     every `]:` (measured 170 to 340 ms depending on the chain). It is
+    --     the one line whose mutant sits near the bound, so this test uses a
+    --     tighter one (100 ms) than its siblings: the real code is about 300
+    --     times below that. (The same change in the bare `%S+` pattern cannot
+    --     be caught by timing: after the first `]:` a target always follows
+    --     and it succeeds at once.)
+    -- This pins the shape of the cost, it is not a proof: the 20000-byte cap
+    -- keeps the input small enough that some quadratic patterns would pass.
     it("stays fast on reference definitions with an unclosed `<` or no target", function()
       local n = links.MAX_LINE_BYTES
-      for _, line in ipairs({
-        "[a]: <" .. ("x"):rep(n - 6),
-        "[a]: " .. ("<"):rep(n - 5),
-        "[a]: " .. (" "):rep(n - 5),
-        (" "):rep(n - 6) .. "[a]: <",
-        "[a]:" .. ("]:"):rep((n - 4) / 2),
-      }) do
-        assert.are.equal(n, #line, line:sub(1, 12))
-        assert.is_true(time_target_at(line, 1) < 300, line:sub(1, 12))
-        assert.is_true(time_target_at(line, #line) < 300, line:sub(1, 12))
+      local lines = {
+        { "unclosed `<`, long tail", "[a]: <" .. ("x"):rep(n - 6) },
+        { "run of `<`", "[a]: " .. ("<"):rep(n - 5) },
+        { "no target, blanks only", "[a]: " .. (" "):rep(n - 5) },
+        { "blanks before `[a]: <`", (" "):rep(n - 6) .. "[a]: <" },
+        {
+          "`]:<` chain after `[`",
+          "[" .. ("]:<"):rep(math.floor((n - 1) / 3)) .. ("x"):rep((n - 1) % 3),
+        },
+      }
+      for _, case in ipairs(lines) do
+        local name, line = case[1], case[2]
+        assert.are.equal(n, #line, name)
+        for _, col in ipairs({ 1, #line }) do
+          local ms = time_target_at(line, col)
+          assert.is_true(ms < 100, ("%s, col %d: %.1f ms"):format(name, col, ms))
+        end
       end
     end)
 
