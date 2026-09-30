@@ -155,66 +155,80 @@ describe("lsp.core.attach", function()
   end)
 
   -- The store skips an override that is not a place once expanded (an unset
-  -- `$VAR`, a relative path) and hands it back; this is the layer that says so.
-  -- Silence here would leave the override meant to keep a project quiet doing
-  -- nothing, with no sign of it.
+  -- `$VAR`, a relative path) and hands it back; this layer turns that into a
+  -- warning and RETURNS it (like `lsp.core.capabilities.get`), and `lsp.init`
+  -- shows it and records it for `:checkhealth lsp`. Silence here would leave the
+  -- override meant to keep a project quiet doing nothing, with no sign of it.
   describe("build() seeding project overrides", function()
-    local real_notify
-
-    ---@return string[] said
-    local function capture_notify()
-      local said = {}
-      real_notify = package.loaded["lib.nvim.notify"]
-      package.loaded["lib.nvim.notify"] = {
-        create = function()
-          return setmetatable({}, {
-            __index = function(_, level)
-              return function(msg)
-                said[#said + 1] = level .. ": " .. tostring(msg)
-              end
-            end,
-          })
-        end,
-      }
-      return said
-    end
-
     after_each(function()
-      package.loaded["lib.nvim.notify"] = real_notify
       package.loaded["lsp.core.workspace_projects"] = nil
     end)
 
-    it("warns once about the entries that are not absolute once expanded", function()
+    it("returns one warning naming the entries that are not absolute once expanded", function()
       vim.env.LSPTEST_ATTACH_UNSET = nil
       package.loaded["lsp.core.workspace_projects"] = nil
       local attach = reload()
-      local said = capture_notify()
 
-      attach.build({
+      local _, warnings = attach.build({
         workspace_diagnostics_projects = {
           ["$LSPTEST_ATTACH_UNSET/vault"] = false,
           ["relative/dir"] = false,
           [vim.fn.getcwd()] = false,
         },
       })
-      -- A second `build` (a second server) must not repeat it: `seed` runs once.
-      attach.build({ workspace_diagnostics_projects = { ["relative/other"] = false } })
 
-      assert.are.equal(1, #said, vim.inspect(said))
-      assert.is_truthy(said[1]:find("^warn: "), said[1])
-      assert.is_truthy(said[1]:find("$LSPTEST_ATTACH_UNSET/vault", 1, true), said[1])
-      assert.is_truthy(said[1]:find("relative/dir", 1, true), said[1])
-      assert.is_nil(said[1]:find(vim.fn.getcwd(), 1, true), "the valid entry was reported")
+      assert.are.equal(1, #warnings, vim.inspect(warnings))
+      assert.is_truthy(warnings[1]:find('"$LSPTEST_ATTACH_UNSET/vault"', 1, true), warnings[1])
+      assert.is_truthy(warnings[1]:find('"relative/dir"', 1, true), warnings[1])
+      -- The valid entry is not among the complaints (its `%q` form would show).
+      assert.is_nil(warnings[1]:find(("%q"):format(vim.fn.getcwd()), 1, true))
     end)
 
-    it("says nothing when every entry is a place", function()
+    it("does not repeat it for a second build, since `seed` runs once", function()
       package.loaded["lsp.core.workspace_projects"] = nil
       local attach = reload()
-      local said = capture_notify()
 
-      attach.build({ workspace_diagnostics_projects = { [vim.fn.getcwd()] = false } })
+      local _, first = attach.build({ workspace_diagnostics_projects = { ["rel/a"] = false } })
+      local _, second = attach.build({ workspace_diagnostics_projects = { ["rel/b"] = false } })
 
-      assert.are.same({}, said)
+      assert.are.equal(1, #first)
+      assert.are.same({}, second)
+    end)
+
+    it("returns no warnings when every entry is a place, or there are none", function()
+      package.loaded["lsp.core.workspace_projects"] = nil
+      local attach = reload()
+      local _, clean = attach.build({
+        workspace_diagnostics_projects = { [vim.fn.getcwd()] = false },
+      })
+      assert.are.same({}, clean)
+
+      package.loaded["lsp.core.workspace_projects"] = nil
+      attach = reload()
+      local _, none = attach.build(nil)
+      assert.are.same({}, none)
+    end)
+
+    it("does not call the notifier itself", function()
+      package.loaded["lsp.core.workspace_projects"] = nil
+      local attach = reload()
+      local real = package.loaded["lib.nvim.notify"]
+      local called = false
+      package.loaded["lib.nvim.notify"] = {
+        create = function()
+          called = true
+          return setmetatable({}, {
+            __index = function()
+              return function() end
+            end,
+          })
+        end,
+      }
+
+      attach.build({ workspace_diagnostics_projects = { ["rel/x"] = false } })
+      package.loaded["lib.nvim.notify"] = real
+
+      assert.is_false(called, "a core module reports by return value, it does not notify")
     end)
   end)
 

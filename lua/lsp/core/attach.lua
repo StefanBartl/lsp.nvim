@@ -26,7 +26,8 @@ end
 --- `lsp.integrations.*` and are handed over as plain functions by `lsp.init`,
 --- so the core does not know which plugins exist (roadmap section 3).
 ---@param opts { use_workspace_diagnostics?: boolean, workspace_diagnostics_projects?: table<string, boolean>, hooks?: { on_attach?: function[], on_init?: function[] } }|nil
----@return { on_attach: fun(client,bufnr), on_init: fun(client,init_result):boolean }
+---@return { on_attach: fun(client,bufnr), on_init: fun(client,init_result):boolean } pair
+---@return string[] warnings # Setup problems worth showing; empty when there are none.
 function M.build(opts)
   opts = opts or {}
 
@@ -44,12 +45,20 @@ function M.build(opts)
   -- <project>` win over them from then on.
   local projects = require("lsp.core.workspace_projects")
   local ignored = projects.seed(opts.workspace_diagnostics_projects)
+  -- Handed back, not notified: this module returns what it found and `lsp.init`
+  -- decides how it is shown (the notification and `:checkhealth lsp`), the
+  -- same way it treats the warnings of `lsp.core.capabilities.get`.
+  ---@type string[]
+  local warnings = {}
   if #ignored > 0 then
-    require("lib.nvim.notify").create("[lsp.nvim]").warn(
-      ("attach.workspace_diagnostics_projects: ignoring %s -- not an absolute path once expanded (is the variable set on this machine?)"):format(
-        table.concat(ignored, ", ")
-      )
-    )
+    local quoted = {}
+    for i, key in ipairs(ignored) do
+      quoted[i] = ("%q"):format(key)
+    end
+    warnings[1] = (
+      "attach.workspace_diagnostics_projects: ignoring %s -- not an absolute path once "
+      .. "expanded (an unset $VAR, or a relative path)"
+    ):format(table.concat(quoted, ", "))
   end
 
   local hooks = opts.hooks or {}
@@ -93,7 +102,7 @@ function M.build(opts)
     end
   end
 
-  return { on_attach = on_attach, on_init = on_init }
+  return { on_attach = on_attach, on_init = on_init }, warnings
 end
 
 return M

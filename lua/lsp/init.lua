@@ -134,12 +134,17 @@ end
 ---@param cfg LspNvim.Config
 ---@return { on_attach: function, on_init: function }
 local function build_attach(cfg)
-  local ok, built = try_module("lsp.core.attach", "build", {
+  local ok, built, warnings = try_module("lsp.core.attach", "build", {
     use_workspace_diagnostics = cfg.attach.use_workspace_diagnostics,
     workspace_diagnostics_projects = cfg.attach.workspace_diagnostics_projects,
     hooks = integrations.attach_hooks(),
   })
   if ok and type(built) == "table" then
+    -- Both: shown now, and kept for `:checkhealth lsp` / `status().warnings`.
+    for _, w in ipairs(type(warnings) == "table" and warnings or {}) do
+      _warnings[#_warnings + 1] = tostring(w)
+      notify.warn(tostring(w))
+    end
     return built
   end
 
