@@ -315,10 +315,14 @@ end
 ---
 --- Works on one line, which is all a link is: this is not a Markdown parser,
 --- and a link broken across lines is not one marksman resolves either.
----@param line string
----@param col integer
+---@param line any # A string; anything else answers nil.
+---@param col any # A number (1-based byte column); anything else answers nil.
 ---@return string|nil target # As written, `<>` and `#fragment` included.
 function M.target_at(line, col)
+  -- Types first (ERR-02): a hover asks this about whatever it was handed, and
+  -- "no link here" is the fail-open answer. The comparison with `#line` comes
+  -- after the type check on purpose.
+  --
   -- A hover or a `gd` on a minified or generated line must not be able to
   -- stall the editor. The scan below is linear in the line (measured before
   -- it was: 1.2 s on 20000 `[`), this cap only keeps it short.

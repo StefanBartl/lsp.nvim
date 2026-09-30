@@ -426,30 +426,40 @@ describe("lsp.core.env_links", function()
 
     -- Reference definitions are matched by two anchored patterns, one of which
     -- (`<[^>]*>`) runs to the end of the line when the `<` is never closed.
-    -- Measured linear and under a millisecond; pinned here so a pattern that
-    -- backtracks quadratically cannot slip in unnoticed.
+    -- Measured linear and under a millisecond. Every line below is EXACTLY
+    -- `MAX_LINE_BYTES` long (asserted): one byte more and the length guard
+    -- answers before any pattern runs, which measures nothing -- an earlier
+    -- version of this test had exactly that slip. The run of blanks in front of
+    -- `[a]: <` is what an unanchored `%s*` would rescan from every blank.
+    -- This pins the shape of the cost, it is not a proof: the cap keeps the
+    -- input small enough that some quadratic patterns would still pass.
     it("stays fast on reference definitions with an unclosed `<` or no target", function()
       local n = links.MAX_LINE_BYTES
       for _, line in ipairs({
         "[a]: <" .. ("x"):rep(n - 6),
         "[a]: " .. ("<"):rep(n - 5),
-        "[a]: " .. (" "):rep(n - 5) .. "x",
+        "[a]: " .. (" "):rep(n - 5),
+        (" "):rep(n - 6) .. "[a]: <",
         "[a]:" .. ("]:"):rep((n - 4) / 2),
       }) do
+        assert.are.equal(n, #line, line:sub(1, 12))
         assert.is_true(time_target_at(line, 1) < 300, line:sub(1, 12))
         assert.is_true(time_target_at(line, #line) < 300, line:sub(1, 12))
       end
     end)
 
     -- ERR-02: a caller that passes something else than a line and a column gets
-    -- "no link", not an error out of the middle of a hover.
+    -- "no link", not an error out of the middle of a hover. (`target_at`'s
+    -- annotations say `any` for that reason.) A reference definition ignores the
+    -- column, so it too answers nil for a column that is not a number: the guard
+    -- is about the call, not about which branch would have used the value.
     it("answers nil instead of raising on a line or column that is not one", function()
-      ---@diagnostic disable: param-type-mismatch
       assert.is_nil(links.target_at(nil, 1))
       assert.is_nil(links.target_at(42, 1))
       assert.is_nil(links.target_at("[a]($R/x.md)", nil))
       assert.is_nil(links.target_at("[a]($R/x.md)", "3"))
-      ---@diagnostic enable: param-type-mismatch
+      assert.is_nil(links.target_at("[l]: $R/x.md", nil))
+      assert.are.equal("$R/x.md", links.target_at("[l]: $R/x.md", 3))
     end)
   end)
 
