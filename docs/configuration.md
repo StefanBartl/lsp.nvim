@@ -564,9 +564,13 @@ attach = {
 - A non-string key or non-boolean value is dropped with a warning naming the
   layer it came from.
 - A key that is not an absolute path once expanded -- a `$VAR` that is not set on
-  this machine, or a relative path -- is ignored with a warning: it could never
-  match a file, and a silent no-op is the wrong way to fail for a setting that
-  exists to keep a project quiet.
+  this machine, or a relative path -- is ignored with a warning (shown once at
+  setup and kept in `:checkhealth lsp`): it could never match a file, and a
+  silent no-op is the wrong way to fail for a setting that exists to keep a
+  project quiet. "Absolute" is meant for the machine it runs on: on Windows a
+  path such as `/vault` is relative to the current drive and never equals the
+  `E:/...` of a buffer name, so it is ignored there, and `C:/vault` is ignored
+  on Linux -- which is what a config shared between the two would carry.
 - A project file (`.nvim-lsp.json`) may set the option too, **for its own
   folders only**: a key is `.` (the file's directory), a path relative to it, or
   an absolute path inside it. Anything else -- `../x`, `~`, `$VAR`, a path
