@@ -646,7 +646,7 @@ hid that, and every genuinely broken link along with it.
   links it did not get to are left alone until the next pull. The heading index
   of a target file is cached (64 files, by real path, validated by size and
   modification time) between pulls.
-- **Definition and hover.** A small in-process client, `lsp.nvim-envlinks`
+- **Definition, hover, completion.** A small in-process client, `lsp.nvim-envlinks`
   (the same shape as the gitsigns one, attached to Markdown buffers), answers
   `textDocument/definition` -- the file, at the heading when the target carries
   a `#fragment` -- and `textDocument/hover`: where the link leads, whether it is
@@ -657,20 +657,32 @@ hid that, and every genuinely broken link along with it.
   about a position (`gd`, the peek float, `K`) merges the answers of all
   clients, so all of them work with no per-feature wiring. It answers `nil`
   everywhere else, so for ordinary links marksman's answer stands alone.
-- **Completion.** marksman completes relative paths only. While a target is
-  typed -- `[x]($REPOS_DIR/no`, `[x](${VAR}/`, `[x](~/`, an image, or a
-  `[label]: ` definition -- the client offers the entries of the directory
-  typed so far: folders first (with their slash), dotfiles only once a dot is
-  typed, a blank or a parenthesis percent-encoded in a bare target and left as
-  it is inside `<...>`. After a `$` or `${` it offers the variables that name a
-  directory (a secret in the environment is not one), and `$NVIM_CONFIG_DIR`,
+- **Completion.** marksman completes workspace documents as whole
+  root-relative links (`/docs/a.md`), never the entries of a directory of an env
+  target; at a bare `~/` or `$` it still answers with its document list, next to
+  this client's items. While a target is typed -- `[x]($REPOS_DIR/no`,
+  `[x](${VAR}/`, `[x](~/`, an image, or a `[label]: ` definition -- the client
+  offers the entries of the directory typed so far (a backslash separates like a
+  slash): folders first (with their slash), dotfiles only once a dot is typed,
+  `#` and `%` percent-encoded (the resolver reads them as a fragment and an
+  escape, `<...>` or not), and in a bare target a blank and a parenthesis too.
+  An item replaces the `}` that an auto-pairing plugin closed a `${` with, and
+  the slash the target goes on with. After a `$` or `${` it offers the variables
+  that name an existing directory by an absolute path and a name `$NAME` can be
+  written with (a secret in the environment is not one), and `$NVIM_CONFIG_DIR`,
   which has no real variable behind it. The trigger characters are `/`, `$` and
-  `{`. Nothing is offered in code blocks, code spans or a front matter, for a
-  network path, for a variable nothing defines, or after a `#fragment` (the
-  headings of the target are not completed). One answer holds at most 300
-  entries (`isIncomplete` past that) and looks at no more than 5000. Any
-  completion engine that asks the language servers (blink, cmp, `omnifunc`)
-  gets it with no wiring.
+  `{`. Nothing is offered in code blocks, code spans (also ones that wrap over a
+  line break) or a front matter, for a network path or a link that leads to one
+  (such a link is listed as a plain file and never stat-ed), for a variable
+  nothing defines, or after a `#fragment` (the headings of the target are not
+  completed). One answer holds at most 300 entries (`isIncomplete` past that;
+  folders are kept first) and looks at no more than 50000 directory entries.
+  Any engine that asks the language servers (blink, cmp, `omnifunc`) gets the
+  answer. blink's and cmp's own path sources expand `$VAR/` and `~/` as well and
+  would list every entry a second time, raw: lsp.nvim's blink pack mutes blink's
+  path source exactly where this client answers; with a hand-written source list
+  (or nvim-cmp's `path` source) add the same guard, `lsp.core.env_links_server`'s
+  `answers_at_cursor()`, to its `enabled` / `entry_filter`.
 
 Resolution goes to **gopath.nvim first** when it is installed and has
 `resolve_text` (its public text API): it owns the variable rules -- `$VAR`,

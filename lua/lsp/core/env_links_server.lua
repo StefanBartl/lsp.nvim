@@ -28,15 +28,20 @@
 --- and the client answers from the buffer. Documentation that shows a link in a
 --- code block or code span is not reported (`lsp.core.env_links.scan`).
 ---
---- **Completion.** marksman completes relative paths in a link, never an env
---- one. While a target is typed -- `[x]($REPOS_DIR/no`, `[x](${VAR}/`,
---- `[x](~/`, `![i](...`, `[l]: ...` -- the client answers `textDocument/completion`
---- with the entries of the directory typed so far (folders first, dotfiles only
---- when a dot is typed, a blank or parenthesis percent-encoded in a bare target
---- and left alone inside `<...>`), and for a `$` or `${` with the variables that
---- name a directory (never a secret, never a network share). Everywhere else it
---- answers `nil`, in code blocks and code spans too. Any completion engine that
---- asks the LSP clients (blink, cmp, `omnifunc`) gets it with no wiring.
+--- **Completion.** marksman completes workspace documents as whole root-relative
+--- links, never the entries of a directory of an env target (at a bare `~/` or `$`
+--- it still answers with its document list, next to this client's items). While a
+--- target is typed -- `[x]($REPOS_DIR/no`, `[x](${VAR}/`, `[x](~/`, `![i](...`,
+--- `[l]: ...` -- the client answers `textDocument/completion` with the entries of
+--- the directory typed so far (folders first, dotfiles only when a dot is typed;
+--- `#` and `%` percent-encoded, and in a bare target a blank and a parenthesis
+--- too), and for a `$` or `${` with the variables that name an existing directory
+--- (never a secret, never a network share). Everywhere else it answers `nil`, in
+--- code blocks and code spans too. Any engine that asks the LSP clients (blink,
+--- cmp, `omnifunc`) gets the answer; blink's and cmp's own path sources expand
+--- `$VAR/` and `~/` as well and would list every entry a second time, so
+--- `answers_at_cursor` lets lsp.nvim's blink pack mute blink's path source exactly
+--- where this client answers (a hand-written source list needs the same guard).
 ---
 --- **What it costs.** One more client in `vim.lsp.get_clients()` and in
 --- `:Lsp servers`, named `lsp.nvim-envlinks` like the gitsigns one and looked
@@ -431,36 +436,54 @@ end
 ---@type integer
 M.MAX_COMPLETION_ITEMS = 300
 
---- Most directory entries one completion looks at.
+--- Most directory entries one completion looks at. A cap on position, not on
+--- matches: typing more cannot reach past it.
 ---@type integer
-M.MAX_COMPLETION_SCAN = 5000
+M.MAX_COMPLETION_SCAN = 50000
 
 ---@type integer
 local KIND_VARIABLE, KIND_FILE, KIND_FOLDER = 6, 17, 19
 
 ---@internal
---- `name` as it goes into a link target: a bare target ends at a blank or an
---- unbalanced parenthesis and `#` starts a fragment, so those are
---- percent-encoded (the resolver decodes them). In `<...>` nothing is.
+--- `s` lowercased for a comparison, multibyte-aware where it has to be (`Ü` is
+--- not `ü` to `string.lower`), and without the NUL that `vim.fn.tolower`
+--- raises on.
+---@param s string
+---@return string
+local function fold(s)
+  if s:find("[\128-\255]") then
+    return vim.fn.tolower((s:gsub("%z", "")))
+  end
+  return s:lower()
+end
+
+---@internal
+---@param c string
+---@return string
+local function percent(c)
+  return ("%%%02X"):format(c:byte())
+end
+
+---@internal
+--- `name` as it goes into a link target. The resolver splits a target at `#` and
+--- decodes `%XX` wherever they are, `<...>` included, and `>` ends a `<...>`
+--- target: those are encoded in both forms. A bare target also ends at a blank
+--- or an unbalanced parenthesis, and `<` opens an angled one: those too, there.
 ---@param name string
 ---@param angled boolean
 ---@return string
 local function target_text(name, angled)
-  if angled then
-    return name
-  end
-  return (name:gsub("[%s()#%%<>]", function(c)
-    return ("%%%02X"):format(c:byte())
-  end))
+  return (name:gsub(angled and "[#%%>]" or "[%s()#%%<>]", percent))
 end
 
 ---@internal
---- Is `path` a directory that may be looked at: not a network path (a stat on
---- one that does not answer blocks Neovim), and there.
+--- Is `path` a directory that may be looked at: not a network path, and not a
+--- link that leads to one (a stat on one that does not answer blocks Neovim),
+--- and there.
 ---@param path string
 ---@return boolean
 local function is_directory(path)
-  if links.is_network_path(path) then
+  if links.is_network_path(path) or links.leads_to_network(path) then
     return false
   end
   local st = vim.uv.fs_stat(path)
@@ -468,10 +491,41 @@ local function is_directory(path)
 end
 
 ---@internal
+--- Is `value` an absolute path (`/x`, `C:/x`, `C:\x`)? `C:` alone is the
+--- current directory of a drive, and a relative value depends on where Neovim
+--- was started: neither names a directory the way `$VAR/` means it.
+---@param value string
+---@return boolean
+local function is_absolute(value)
+  return value:find("^/") ~= nil or value:find("^%a:[/\\]") ~= nil
+end
+
+---@internal
+--- How far the text edit reaches past the cursor: over the `}` an auto-pairing
+--- plugin has closed a braced variable with (the new text brings its own), and
+--- over a `/` the target goes on with (the new text ends in one).
+---@param line string
+---@param col integer
+---@param closing_brace boolean
+---@return integer bytes
+local function tail_after_cursor(line, col, closing_brace)
+  local rest = line:sub(col, col + 1)
+  local tail = 0
+  if closing_brace and rest:sub(1, 1) == "}" then
+    tail = 1
+  end
+  if rest:sub(tail + 1, tail + 1) == "/" then
+    tail = tail + 1
+  end
+  return tail
+end
+
+---@internal
 --- The environment variables that name a directory, as completion items, for a
---- `$` or `${` and the letters typed after it. Only names whose value is an
---- existing directory are offered (a secret in the environment is not one), and
---- `$NVIM_CONFIG_DIR`, which has no real variable behind it.
+--- `$` or `${` and the letters typed after it. Only names the resolver reads
+--- (`[%a_][%w_]*`: `PROGRAMFILES(X86)` is not one) whose value is an absolute
+--- path to an existing directory are offered -- a secret in the environment is
+--- not one -- and `$NVIM_CONFIG_DIR`, which has no real variable behind it.
 ---@param typing LspNvim.EnvLink.Typing
 ---@param lnum integer
 ---@param line string
@@ -479,11 +533,15 @@ end
 ---@return table[]|nil
 local function variable_items(typing, lnum, line, col)
   local braced = typing.text:sub(2, 2) == "{"
-  local prefix = (braced and typing.text:sub(3) or typing.text:sub(2)):lower()
+  local prefix = fold(braced and typing.text:sub(3) or typing.text:sub(2))
 
   local names = {} ---@type table<string, string>
   for name, value in pairs(vim.fn.environ()) do
-    if name:lower():find(prefix, 1, true) == 1 then
+    if
+      name:find("^[%a_][%w_]*$")
+      and fold(name):find(prefix, 1, true) == 1
+      and is_absolute(value)
+    then
       names[name] = value
     end
   end
@@ -493,7 +551,10 @@ local function variable_items(typing, lnum, line, col)
 
   local range = {
     start = { line = lnum, character = lsp_column(line, typing.start - 1) },
-    ["end"] = { line = lnum, character = lsp_column(line, col - 1) },
+    ["end"] = {
+      line = lnum,
+      character = lsp_column(line, col - 1 + tail_after_cursor(line, col, braced)),
+    },
   }
   local items = {}
   for name, value in pairs(names) do
@@ -517,7 +578,11 @@ end
 
 ---@internal
 --- The entries of the directory a `$VAR/dir/` target names, as completion items,
---- for what is typed after its last slash.
+--- for what is typed after its last separator.
+---
+--- Folders first: the entries are kept in a bucket per kind, so a late folder is
+--- not crowded out by many files, and what is cut at `MAX_COMPLETION_ITEMS` is
+--- the end of the list.
 ---@param typing LspNvim.EnvLink.Typing
 ---@param lnum integer
 ---@param line string
@@ -525,9 +590,10 @@ end
 ---@return table[]|nil items
 ---@return boolean|nil incomplete
 local function path_items(typing, lnum, line, col)
-  local dir, partial = typing.text:match("^(.*/)([^/]*)$")
+  -- Either separator ends the directory part, as it does in `links.resolve`.
+  local dir, partial = typing.text:match("^(.*[/\\])([^/\\]*)$")
   if not dir or typing.text:find("#", 1, true) then
-    return nil, nil -- no slash yet, or a fragment: headings are not completed here
+    return nil, nil -- no separator yet, or a fragment: headings are not completed here
   end
   local resolved = links.resolve(dir)
   if not resolved or not resolved.exists or not is_directory(resolved.path) then
@@ -538,40 +604,79 @@ local function path_items(typing, lnum, line, col)
   if not handle then
     return nil, nil
   end
-  local want = vim.uri_decode(partial):lower()
+  local decoded_ok, decoded = pcall(vim.uri_decode, partial)
+  local want = fold(decoded_ok and decoded or partial)
+  local typed = fold(partial)
   local show_hidden = want:sub(1, 1) == "."
-  local range = {
-    start = { line = lnum, character = lsp_column(line, typing.start - 1 + #dir) },
-    ["end"] = { line = lnum, character = lsp_column(line, col - 1) },
-  }
+  local start = { line = lnum, character = lsp_column(line, typing.start - 1 + #dir) }
+  local at_cursor = { line = lnum, character = lsp_column(line, col - 1) }
+  -- A folder's text ends in a slash: swallow the one the target goes on with.
+  local past_slash =
+    { line = lnum, character = lsp_column(line, col - 1 + tail_after_cursor(line, col, false)) }
 
-  local items, scanned, incomplete = {}, 0, false
+  local limit = M.MAX_COMPLETION_ITEMS
+  local folders, files, symlinks = {}, {}, {} ---@type string[], string[], string[]
+  local incomplete = false
+  local scanned = 0
   while true do
     local name, kind = vim.uv.fs_scandir_next(handle)
     if not name then
       break
     end
     scanned = scanned + 1
-    if scanned > M.MAX_COMPLETION_SCAN or #items >= M.MAX_COMPLETION_ITEMS then
+    if scanned > M.MAX_COMPLETION_SCAN then
       incomplete = true
       break
     end
     if
       (show_hidden or name:sub(1, 1) ~= ".")
-      and name:lower():find(want, 1, true) == 1
-      and not name:find("[%c]")
+      and not name:find("%c")
+      and (want == "" or fold(name):find(want, 1, true) == 1)
     then
-      local is_dir = kind == "directory"
-      if kind == "link" then
-        is_dir = is_directory(resolved.path .. "/" .. name)
+      local bucket = kind == "directory" and folders or kind == "link" and symlinks or files
+      if #bucket < limit then
+        bucket[#bucket + 1] = name
+      else
+        incomplete = true
       end
-      local text = target_text(name, typing.angled) .. (is_dir and "/" or "")
+    end
+  end
+
+  -- A link is classified last, and only the ones that make it into the answer:
+  -- each is a stat.
+  for _, name in ipairs(symlinks) do
+    if #folders + #files >= limit then
+      incomplete = true
+      break
+    end
+    local bucket = is_directory(resolved.path .. "/" .. name) and folders or files
+    bucket[#bucket + 1] = name
+  end
+
+  local items = {}
+  for _, group in ipairs({ { folders, true }, { files, false } }) do
+    for _, name in ipairs(group[1]) do
+      if #items >= limit then
+        incomplete = true
+        break
+      end
+      local is_dir = group[2]
+      local encoded = target_text(name, typing.angled)
+      -- Engines match what was typed against filterText: use the spelling that
+      -- starts with it (`p(` raw, `p%28` encoded).
+      local filter = encoded
+      if fold(encoded):find(typed, 1, true) ~= 1 and fold(name):find(typed, 1, true) == 1 then
+        filter = name
+      end
       items[#items + 1] = {
         label = name .. (is_dir and "/" or ""),
         kind = is_dir and KIND_FOLDER or KIND_FILE,
         sortText = (is_dir and "0" or "1") .. name:lower(),
-        filterText = target_text(name, typing.angled),
-        textEdit = { newText = text, range = range },
+        filterText = filter,
+        textEdit = {
+          newText = encoded .. (is_dir and "/" or ""),
+          range = { start = start, ["end"] = is_dir and past_slash or at_cursor },
+        },
       }
     end
   end
@@ -583,10 +688,68 @@ local function path_items(typing, lnum, line, col)
   return items, incomplete
 end
 
+---@internal
+--- The env target being typed at a position, and whether it is a variable name
+--- (`$`, `${`, and letters after) rather than a path with a separator: nil when
+--- the position is in no env target at all. Cheap: one line.
+---@param line string
+---@param col integer
+---@return LspNvim.EnvLink.Typing|nil typing
+---@return boolean|nil variable
+local function env_typing(line, col)
+  local typing = links.typing_at(line, col)
+  if not typing then
+    return nil, nil
+  end
+  local variable = typing.text:match("^%$[%w_]*$") ~= nil or typing.text:match("^%${[%w_]*$") ~= nil
+  if not variable and not links.is_env_target(typing.text) then
+    return nil, nil
+  end
+  return typing, variable
+end
+
+---@internal
+--- Is the typed target document text, and not in a code span (also one that wraps
+--- over a line break), a code block or a front matter? Reads the whole buffer:
+--- ask it after `env_typing`.
+---@param bufnr integer
+---@param lnum integer # 0-based
+---@param line string
+---@param col integer
+---@param typing LspNvim.EnvLink.Typing
+---@return boolean
+local function in_text(bufnr, lnum, line, col, typing)
+  local masked = links.masked_line_at(api.nvim_buf_get_lines(bufnr, 0, -1, false), lnum + 1)
+  return masked ~= nil and masked:sub(typing.start, col - 1) == line:sub(typing.start, col - 1)
+end
+
+--- Does this client answer a completion at the cursor of the current buffer? The
+--- engines' own path sources step aside there (lsp.nvim's blink pack does): blink
+--- and cmp expand `$VAR/` and `~/` themselves, and would list every entry a
+--- second time, raw. Cheap for any other cursor position: the line before the
+--- cursor decides, the buffer is read only inside an env target.
+---@return boolean
+function M.answers_at_cursor()
+  local bufnr = api.nvim_get_current_buf()
+  local attached = false
+  for _, client in ipairs(vim.lsp.get_clients({ bufnr = bufnr, name = M.NAME })) do
+    attached = attached or not client:is_stopped()
+  end
+  if not attached then
+    return false -- not attached (languages.env_links = false): leave the engine alone
+  end
+  local row, byte = unpack(api.nvim_win_get_cursor(0))
+  local line = api.nvim_buf_get_lines(bufnr, row - 1, row, false)[1] or ""
+  local col = byte + 1
+  local typing = env_typing(line, col)
+  return typing ~= nil and in_text(bufnr, row - 1, line, col, typing)
+end
+
 --- `textDocument/completion`: the directories a `$VAR/`, `${VAR}/` or `~/` link
---- target names -- marksman completes relative paths only -- and, for a `$` or
---- `${`, the variables that name one. nil everywhere else (in code too), so for
---- an ordinary link marksman's answer stands alone.
+--- target names -- marksman completes workspace documents, never the entries of
+--- a directory of an env target -- and, for a `$` or `${`, the variables that name
+--- one. nil everywhere else (in code too), so for an ordinary link marksman's
+--- answer stands alone.
 ---@param params table
 ---@return table|nil
 function M.completion(params)
@@ -594,22 +757,17 @@ function M.completion(params)
   if not bufnr or not lnum or not line or not col then
     return nil
   end
-  local typing = links.typing_at(line, col)
-  if not typing then
-    return nil
-  end
-  -- Not in a code span or a code block: there it is text.
-  if links.mask_code_spans(line):sub(typing.start, col - 1) ~= line:sub(typing.start, col - 1) then
-    return nil
-  end
-  if links.fenced_at(api.nvim_buf_get_lines(bufnr, 0, -1, false), lnum + 1) then
+  -- Decide on the line whether it is an env target at all: an ordinary link is
+  -- marksman's alone and must not cost a scan of the buffer.
+  local typing, variable = env_typing(line, col)
+  if not typing or not in_text(bufnr, lnum, line, col, typing) then
     return nil
   end
 
   local items, incomplete
-  if typing.text:match("^%$[%w_]*$") or typing.text:match("^%${[%w_]*$") then
+  if variable then
     items = variable_items(typing, lnum, line, col)
-  elseif links.is_env_target(typing.text) then
+  else
     items, incomplete = path_items(typing, lnum, line, col)
   end
   if not items or #items == 0 then
@@ -763,7 +921,7 @@ function M.setup(opts)
   end, {
     group = group,
     pattern = { "markdown", "markdown.mdx", "mdx" },
-    desc = "lsp.nvim: resolve $VAR and ~ Markdown links (definition, hover)",
+    desc = "lsp.nvim: resolve $VAR and ~ Markdown links (definition, hover, diagnostics, completion)",
   })
   -- Neovim pulls after a change only for buffers that are shown (`LspNotify`
   -- -> `_refresh` with `only_visible`), and marksman's own message about a

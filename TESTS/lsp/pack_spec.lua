@@ -151,6 +151,55 @@ describe("lsp.config.pack", function()
     end)
   end)
 
+  -- The envlinks client completes `$VAR/` and `~/` targets itself; blink's path
+  -- source expands the same variables and listed every entry a second time.
+  describe("blink's path source and the envlinks client", function()
+    local saved
+
+    before_each(function()
+      saved = package.loaded["lsp.core.env_links_server"]
+    end)
+
+    after_each(function()
+      package.loaded["lsp.core.env_links_server"] = saved
+    end)
+
+    ---@return fun(): boolean
+    local function path_enabled()
+      with(nil)
+      return require("lsp.pack.completion_blink")[1].opts.sources.providers.path.enabled
+    end
+
+    it("steps aside where the client answers", function()
+      package.loaded["lsp.core.env_links_server"] = {
+        answers_at_cursor = function()
+          return true
+        end,
+      }
+      assert.is_false(path_enabled()())
+    end)
+
+    it("stays on everywhere else", function()
+      package.loaded["lsp.core.env_links_server"] = {
+        answers_at_cursor = function()
+          return false
+        end,
+      }
+      assert.is_true(path_enabled()())
+    end)
+
+    it("stays on when the client module cannot be loaded", function()
+      package.loaded["lsp.core.env_links_server"] = nil
+      package.preload["lsp.core.env_links_server"] = function()
+        error("not available")
+      end
+      local enabled = path_enabled()
+      local result = enabled()
+      package.preload["lsp.core.env_links_server"] = nil
+      assert.is_true(result)
+    end)
+  end)
+
   describe("completion_arrow_accept", function()
     it("leaves <Right> as plain cursor movement by default", function()
       with(nil)
