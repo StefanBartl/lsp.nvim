@@ -729,6 +729,184 @@ describe("lsp.core.env_links", function()
     end)
   end)
 
+  -- What a second review found in the link scanner, fence tracking and code
+  -- span masking. Each case is one that was wrong before and is pinned here.
+  describe("parser: links in links, escapes, blocks", function()
+    ---@param line string
+    ---@return string[]
+    local function link_targets(line)
+      local out = {}
+      for _, l in ipairs(links.links(line)) do
+        out[#out + 1] = l.target
+      end
+      return out
+    end
+
+    ---@param lines string[]
+    ---@return string[]
+    local function scanned(lines)
+      local out = {}
+      for _, l in ipairs(links.scan(lines)) do
+        out[#out + 1] = l.target
+      end
+      return out
+    end
+
+    -- CommonMark: a link cannot contain a link. `[A [B](x) C](y)` is the link
+    -- B between two pieces of text, and `(y)` is text.
+    it("does not make a link out of the text around a link", function()
+      local line = "[A [B]($R/b.md) C]($R/a.md)"
+      assert.are.same({ "$R/b.md" }, link_targets(line))
+      assert.is_nil(links.target_at(line, 2)) -- "A"
+      assert.is_nil(links.target_at(line, 17)) -- " C"
+      assert.is_nil(links.target_at(line, 22)) -- inside the outer `(...)`
+      assert.are.equal("$R/b.md", links.target_at(line, 8))
+      assert.are.equal("$R/b.md", links.target_at(line, 4)) -- "B"
+    end)
+
+    -- ... but an image's description may hold a link.
+    it("keeps the link around an image that holds a link", function()
+      local line = "![A [B]($R/b.md) C]($R/a.md)"
+      assert.are.same({ "$R/b.md", "$R/a.md" }, link_targets(line))
+      assert.are.equal("$R/a.md", links.target_at(line, 24))
+    end)
+
+    it("takes the badge pattern as before, with a link around it", function()
+      local line = "[![alt]($R/i.png)]($R/doc.md) and [![b]($R/j.png)]($R/d2.md)"
+      assert.are.same({ "$R/i.png", "$R/doc.md", "$R/j.png", "$R/d2.md" }, link_targets(line))
+    end)
+
+    it("does not take an escaped `!` for an image", function()
+      local line = [[\![A [B]($R/b.md) C]($R/a.md)]]
+      assert.are.same({ "$R/b.md" }, link_targets(line))
+    end)
+
+    -- A failed parse is charged what it cost: a byte for an empty target. Five
+    -- of them used to exhaust the whole budget of a hover (the limit each).
+    it("finds a link after any number of empty-target links", function()
+      local line = ("[x]() "):rep(50) .. "[a]($R/real.md)"
+      assert.are.same({ "$R/real.md" }, link_targets(line))
+      assert.are.equal("$R/real.md", links.target_at(line, #line - 3))
+      local blank = ("[x]( p) "):rep(50) .. "[a]($R/real.md)"
+      assert.are.same({ "$R/real.md" }, link_targets(blank))
+    end)
+
+    -- A fence line ends a block only with nothing but blanks after the run, and
+    -- a backtick fence's info string holds no backtick.
+    it("ends a block at its own closing fence, not at one with an info string", function()
+      assert.are.same(
+        { "$R/real.md" },
+        scanned({
+          "```md",
+          "[a]($R/e1.md)",
+          "```js",
+          "[b]($R/e2.md)",
+          "```",
+          "[c]($R/real.md)",
+        })
+      )
+    end)
+
+    it("does not open a block at a line that starts with an inline code span", function()
+      assert.are.same({ "$R/real.md" }, scanned({ "```x``` is inline code", "[a]($R/real.md)" }))
+      assert.are.same({ "$R/real.md" }, scanned({ "````x```` is inline", "[a]($R/real.md)" }))
+      -- ... while a tilde fence may carry anything.
+      assert.are.same({}, scanned({ "~~~ `x`", "[a]($R/example.md)", "~~~" }))
+    end)
+
+    it("follows a fence inside a block quote, and ends it with the quote", function()
+      assert.are.same(
+        { "$R/real.md" },
+        scanned({ "> ```md", "> [a]($R/example.md)", "> ```", "[b]($R/real.md)" })
+      )
+      -- The quote ends without the block having been closed.
+      assert.are.same(
+        { "$R/real.md" },
+        scanned({ "> ```md", "> [a]($R/in.md)", "", "[b]($R/real.md)" })
+      )
+      assert.are.same({}, scanned({ ">> ```md", ">> [a]($R/example.md)", ">> ```" }))
+    end)
+
+    it("follows a fence that opens behind a list marker", function()
+      assert.are.same(
+        { "$R/real.md" },
+        scanned({ "- ```md", "  [a]($R/example.md)", "  ```", "[b]($R/real.md)" })
+      )
+      assert.are.same({}, scanned({ "1. ```md", "   [a]($R/example.md)", "   ```" }))
+    end)
+
+    -- A code span may wrap over a line break.
+    it("finds a code span that wraps, whichever line holds its end", function()
+      assert.are.same(
+        { "$R/real.md" },
+        scanned({ "text `a", "b` and [r]($R/real.md) then `[x]($R/ex.md)`" })
+      )
+      assert.are.same({}, scanned({ "see `look at", "[x]($R/ex.md)` now" }))
+    end)
+
+    it("does not let a lone backtick hide a link on the next line", function()
+      assert.are.same({ "$R/real.md" }, scanned({ "a ` lone", "[a]($R/real.md)" }))
+      assert.are.same(
+        { "$R/real.md" },
+        scanned({ "a ` lone", "", "`[x]($R/ex.md)` [a]($R/real.md)" })
+      )
+    end)
+
+    it("does not pair backticks across a list item, a heading or a table row", function()
+      assert.are.same(
+        { "$R/real.md" },
+        scanned({ "- one `x", "- two `[a]($R/ex.md)` [b]($R/real.md)" })
+      )
+      assert.are.same({ "$R/real.md" }, scanned({ "# h `x", "[a]($R/real.md) `y" }))
+      assert.are.same({ "$R/real.md" }, scanned({ "| a `x |", "| [a]($R/real.md) `y |" }))
+    end)
+
+    it("stays fast on a long paragraph of unmatched backticks", function()
+      local lines = {}
+      for i = 1, 20000 do
+        lines[i] = "x `y [a]($R/x" .. i .. ".md)"
+      end
+      local ms = best_ms(function()
+        links.scan(lines)
+      end, 3)
+      assert.is_true(ms < 800, ("%.0f ms"):format(ms))
+    end)
+
+    local bs = string.char(92)
+    local mask_cases = {
+      -- A span may end in a backslash: it is not an escape inside a span.
+      { "`a" .. bs .. "` `b`", (" "):rep(8) },
+      { "`C:" .. bs .. "` x `y`", (" "):rep(5) .. " x " .. (" "):rep(3) },
+      -- An escaped backslash does not escape the backtick after it.
+      { "a" .. bs .. bs .. "`b` c", "a" .. bs .. bs .. (" "):rep(3) .. " c" },
+      -- Three backslashes: the backtick is escaped, nothing opens.
+      { "a" .. bs .. bs .. bs .. "`b` c", "a" .. bs .. bs .. bs .. "`b` c" },
+      -- An escaped first backtick of a longer run: the rest of the run opens.
+      { "a" .. bs .. "``b` c", "a" .. bs .. "`" .. (" "):rep(3) .. " c" },
+    }
+    for _, c in ipairs(mask_cases) do
+      it(("masks %q"):format(c[1]), function()
+        local got = links.mask_code_spans(c[1])
+        assert.are.equal(#c[1], #got)
+        assert.are.equal(c[2], got)
+      end)
+    end
+
+    it("reports a link after a span that ends in a backslash", function()
+      assert.are.same(
+        { "$R/r.md" },
+        scanned({ "`C:" .. bs .. "` and `[x]($R/e.md)` [y]($R/r.md)" })
+      )
+    end)
+
+    it("does not see a heading after a closing fence with an info string", function()
+      write_file(root .. "/f.md", "```md\n```js\n# nope\n```\n# yes\n")
+      local idx = assert(links.heading_index(root .. "/f.md"))
+      assert.is_nil(links.heading_lookup(idx, "nope"))
+      assert.are.equal(4, links.heading_lookup(idx, "yes"))
+    end)
+  end)
+
   -- `target_at` answers for one column; `links` for the whole line, with the
   -- span of each target (what a diagnostic underlines).
   describe("links", function()
