@@ -621,7 +621,7 @@ hid that, and every genuinely broken link along with it.
   GitHub spelling with the braces), HTML `id`/`name` anchors, and a heading's
   emoji dropped (`## 🚀 Features` is `#-features`); a trailing image or tag
   keeps its hyphen (`#title-`). ATX headings count, also in block quotes and
-  list items; setext headings at the top level and in list items; none in a
+  list items; setext headings at the top level; none in a
   front matter or a
   fenced block. A few extra lenient spellings exist; they can only make a link
   resolve that GitHub would not.
@@ -640,7 +640,9 @@ hid that, and every genuinely broken link along with it.
   (diagnostics, hover, definition, the marksman filter): a stat on one that
   does not answer blocks Neovim for the OS timeout, and the hover says "not
   checked". One pull spends at most about 50 ms in `fs_stat` itself, about 250 ms
-  building heading indexes (at most 32 files), and looks at 128 different files;
+  building heading indexes (it stops *starting* builds after that; one build of
+  a 2 MB file may still take up to a second; at most 32 files), and looks at 128
+  different files;
   links it did not get to are left alone until the next pull. The heading index
   of a target file is cached (64 files, by real path, validated by size and
   modification time) between pulls.

@@ -302,7 +302,7 @@ function M.quoted(text)
 end
 
 --- A resolved path as it may be shown, or nil when it may not: an absolute one
---- whose directory exists. The path is the variable's value joined with the rest
+--- below a directory that exists (not the root alone). The path is the variable's value joined with the rest
 --- of the target, and a variable can hold anything: `[x]($API_TOKEN/a.md)`
 --- resolves to `<the token>/a.md`, which is not a path and must not be put on the
 --- screen by a document. A secret is not a directory (and one that happens to
@@ -315,9 +315,11 @@ function M.displayable_path(path, stat)
   if not (path:find("^/") or path:find("^%a:/")) then
     return nil
   end
+  -- A directory below the root, not the root: `/` and `C:/` always exist, so a
+  -- value that is nothing but `/secret` or `C:/secret` would otherwise pass.
   local dir = path:match("^(.*)/[^/]*$")
-  if dir == nil or dir == "" or dir:find("^%a:$") then
-    dir = (dir or "") .. "/"
+  if dir == nil or dir:find("^/*$") or dir:find("^%a:/*$") then
+    return nil
   end
   if not (stat or on_disk)(dir) then
     return nil
@@ -716,22 +718,24 @@ end
 ---@param line string
 ---@return integer depth
 ---@return string rest
+---@return string[] leads # The blanks before each `>`.
 local function unquote(line)
   -- One `>` and at most one blank after it, per level: what follows keeps its
   -- own indentation (`>   [x]` is a continuation line of a list item).
-  local pos, depth = 1, 0
+  local pos, depth, leads = 1, 0, {}
   while true do
-    local _, e = line:find("^[ \t]*>[ \t]?", pos)
+    local _, e, lead = line:find("^([ \t]*)>[ \t]?", pos)
     if not e then
       break
     end
     depth = depth + 1
+    leads[depth] = lead
     pos = e + 1
   end
   if depth == 0 then
-    return 0, line
+    return 0, line, leads
   end
-  return depth, line:sub(pos)
+  return depth, line:sub(pos), leads
 end
 
 ---@internal
@@ -768,17 +772,21 @@ end
 ---@return LspNvim.EnvLink.Fence|nil fence
 ---@return boolean skip
 local function fence_step(fence, line)
-  local quote, rest = unquote(line)
+  local quote, rest, leads = unquote(line)
   if fence and quote < fence.quote then
     fence = nil -- the block quote that held the block ended, and the block with it
   end
-  if
-    fence
-    and fence.indent > 0
-    and rest:find("%S")
-    and columns(rest:match("^[ \t]*")) < fence.indent
-  then
-    fence = nil -- the list item that held the block ended, and the block with it
+  -- The list item the block was opened in ends at a line indented less than its
+  -- content. Inside a deeper block quote the indentation is the blanks before the
+  -- `>` (a `>` that starts before the content column is a quote of its own,
+  -- and one at the content column is code), otherwise the blanks that remain
+  -- after the quote prefix.
+  if fence and fence.indent > 0 and rest:find("%S") then
+    local cols = quote > fence.quote and columns(leads[fence.quote + 1])
+      or columns(rest:match("^[ \t]*"))
+    if cols < fence.indent then
+      fence = nil
+    end
   end
   local indent = 0
   if not fence then
@@ -1505,7 +1513,7 @@ end
 
 --- The anchors of the Markdown file at `path`, each with the 0-based line it
 --- names: a heading's GitHub-style slug (ATX headings, also in block quotes and
---- list items; setext headings at the top level and in list items; a repeated heading `x` is `x`,
+--- list items; setext headings at the top level; a repeated heading `x` is `x`,
 --- `x-1`, `x-2`, ..., counted on the anchor GitHub ends up with), its
 --- `{#custom-id}`, and the `id`/`name` of an HTML anchor. Headings inside fenced code blocks and a YAML
 --- front matter are not headings.

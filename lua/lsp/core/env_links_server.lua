@@ -228,7 +228,8 @@ M.MAX_INDEXED_FILES = 32
 M.MAX_LOOKED_UP_FILES = 128
 
 --- Time one pull may spend building heading indexes, in nanoseconds. Past it a
---- file is answered from the cache or not at all, until the next pull. (One build
+--- file is answered from the cache or not at all, until the next pull. It stops
+--- the pull from *starting* builds, it does not interrupt one. (One build
 --- is up to about half a second for a 2 MB file; the cap on files alone let 32
 --- of them run in one synchronous pull.)
 ---@type integer
