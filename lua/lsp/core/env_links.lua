@@ -204,10 +204,18 @@ end
 ---@field stat? fun(path: string): boolean|nil # Whether `path` is on disk; nil = not looked at. Default: `fs_stat`.
 
 ---@internal
---- Whether `path` is on disk, by `fs_stat`.
+--- Whether `path` is on disk, by `fs_stat` -- but not for a network path
+--- (`//host/share`, `\\host\share`): a stat on one that does not answer blocks Neovim
+--- for the OS connect timeout (21 s measured), and a time budget cannot interrupt
+--- a call that is already blocked. nil is "not looked at", the answer for a path
+--- nobody asked the disk about; every caller of `resolve` gets it by default
+--- (hover and definition, the marksman filter, the diagnostics).
 ---@param path string
----@return boolean
+---@return boolean|nil
 local function on_disk(path)
+  if path:find("^//") or path:find("^\\\\") then
+    return nil
+  end
   return vim.uv.fs_stat(path) ~= nil
 end
 
@@ -263,6 +271,46 @@ function M.resolve(target, opts)
   }
 end
 
+--- Longest link target or path quoted in a message, in bytes.
+---@type integer
+M.MAX_QUOTED_BYTES = 200
+
+--- `text` made safe to quote in a message: no control bytes (the link target is
+--- whatever the document says, a `<...>` one may hold a tab or an escape), and
+--- not longer than `MAX_QUOTED_BYTES`.
+---@param text string
+---@return string
+function M.quoted(text)
+  text = text:gsub("%c", "?")
+  if #text > M.MAX_QUOTED_BYTES then
+    text = text:sub(1, M.MAX_QUOTED_BYTES) .. "..."
+  end
+  return text
+end
+
+--- A resolved path as it may be shown, or nil when it may not: only an absolute
+--- one. The path is the variable's value joined with the rest of the target, and
+--- a variable can hold anything: `[x]($API_TOKEN/a.md)` resolves to
+--- `<the token>/a.md`, which is not a path and must not be put on the screen by a
+--- document.
+---@param path string
+---@return string|nil
+function M.displayable_path(path)
+  if path:find("^/") or path:find("^%a:/") then
+    return M.quoted(path)
+  end
+  return nil
+end
+
+--- Where a link was looked up, as the tail of a message: ` (resolved to <path>)`,
+--- or nothing when the path may not be shown (see `displayable_path`).
+---@param path string
+---@return string
+function M.looked_up_at(path)
+  local shown = M.displayable_path(path)
+  return shown and (" (resolved to " .. shown .. ")") or ""
+end
+
 -- ----------------------------------------------------------------------------
 -- Link under the cursor
 -- ----------------------------------------------------------------------------
@@ -311,13 +359,14 @@ end
 ---@param i integer # First byte after `(`.
 ---@return string|nil target
 ---@return integer|nil close # Byte of the closing `)`, or the last byte seen.
+---@return integer|nil after # First byte after the destination.
 local function parse_target(line, i)
   if line:byte(i) == 60 then -- "<"
     local gt = line:find(">", i + 1, true)
     if not gt or gt - i - 1 > M.MAX_TARGET_BYTES then
       return nil, nil
     end
-    return line:sub(i + 1, gt - 1), line:find(")", gt + 1, true) or gt
+    return line:sub(i + 1, gt - 1), line:find(")", gt + 1, true) or gt, gt + 1
   end
 
   local depth, j = 0, i
@@ -353,7 +402,7 @@ local function parse_target(line, i)
   if j - i > M.MAX_TARGET_BYTES then
     return nil, nil
   end
-  return line:sub(i, j - 1), line:find(")", j, true) or (j - 1)
+  return line:sub(i, j - 1), line:find(")", j, true) or (j - 1), j
 end
 
 ---@internal
@@ -470,7 +519,7 @@ local function walk(line, col, found)
           reaches = open <= col and i + 4 + M.MAX_TARGET_BYTES >= col
         end
         if reaches or n > 0 then
-          local target, close = parse_target(line, i + 2)
+          local target, close, after = parse_target(line, i + 2)
           if target and close then
             if col == nil then
               local first = i + 2 + (line:byte(i + 2) == 60 and 1 or 0)
@@ -478,9 +527,22 @@ local function walk(line, col, found)
             elseif reaches and col <= close then
               return target
             end
-            if not img then
-              dead = n
-            end
+          end
+          -- The links around it are dead only when this one really is a link:
+          -- the destination is followed by `)` or a title. `[x](a b)` and
+          -- `[x](foo` (still being typed) are answered, leniently, but they
+          -- are text to CommonMark and must not take the enclosing link with
+          -- them. `[x]()` is a link.
+          local formed = false
+          if target then
+            local nxt = after and line:find("%S", after)
+            local b = nxt and line:byte(nxt)
+            formed = b == 41 or b == 34 or b == 39 or b == 40
+          elseif close and line:byte(i + 2) == 41 then
+            formed = true
+          end
+          if formed and not img then
+            dead = n
           end
           budget = budget - (close and (close - i) or M.MAX_TARGET_BYTES)
           if budget < 0 then
@@ -623,6 +685,7 @@ end
 ---@field char string # "`" or "~".
 ---@field len integer # How many of them opened the block.
 ---@field quote integer # Block quote depth the block was opened at.
+---@field indent integer # Columns of the list item it was opened in (0: none).
 
 ---@internal
 --- The block quote depth of `line` (how many `>`), and the line without them.
@@ -639,6 +702,18 @@ local function unquote(line)
 end
 
 ---@internal
+--- The width in columns of `s`, a tab going to the next multiple of four.
+---@param s string
+---@return integer
+local function columns(s)
+  local w = 0
+  for k = 1, #s do
+    w = s:byte(k) == 9 and w + 4 - w % 4 or w + 1
+  end
+  return w
+end
+
+---@internal
 --- The state of fenced-code-block tracking after `line`, and whether the line
 --- is no document text: the fence line itself, or a line inside the block.
 ---
@@ -648,8 +723,10 @@ end
 ---     content, not its end);
 ---   * the info string of a backtick fence holds no backtick (a line that
 ---     starts with "```x``` is inline code" is a paragraph, not an opener);
----   * a fence may open behind a list marker (`- ```md`), and inside a block
----     quote (`> ```md`), where it ends with the quote.
+---   * a fence may open behind a list marker (`- ```md`), where it ends with
+---     the list item (a line indented less than the item's content), and inside
+---     a block quote (`> ```md`), where it ends with the quote; a fence line
+---     closes a block only at the block's own quote depth.
 --- (A single on/off toggle closed a `~~~` block at the first inner "```" line
 --- and a four-backtick block at an inner three-backtick one, and the lines
 --- after it were read as document; one such slip inverted the rest of the file.)
@@ -662,9 +739,19 @@ local function fence_step(fence, line)
   if fence and quote < fence.quote then
     fence = nil -- the block quote that held the block ended, and the block with it
   end
+  if
+    fence
+    and fence.indent > 0
+    and rest:find("%S")
+    and columns(rest:match("^[ \t]*")) < fence.indent
+  then
+    fence = nil -- the list item that held the block ended, and the block with it
+  end
+  local indent = 0
   if not fence then
     local item = rest:match("^%s*[-*+]%s+()") or rest:match("^%s*%d+[.)]%s+()")
     if item then
+      indent = columns(rest:sub(1, item - 1))
       rest = rest:sub(item)
     end
   end
@@ -677,9 +764,9 @@ local function fence_step(fence, line)
     return fence, fence ~= nil
   end
   if not fence then
-    return { char = char, len = #run, quote = quote }, true
+    return { char = char, len = #run, quote = quote, indent = indent }, true
   end
-  if char == fence.char and #run >= fence.len and info:match("^%s*$") then
+  if quote == fence.quote and char == fence.char and #run >= fence.len and info:match("^%s*$") then
     return nil, true
   end
   return fence, true
@@ -693,9 +780,11 @@ end
 ---@return boolean
 local function opens_block(line)
   return line:find("^%s*$") ~= nil
-    or line:find("^%s*[#>|]") ~= nil
+    or line:find("^%s*[>|]") ~= nil
+    or line:find("^%s*#+%s") ~= nil
+    or line:find("^%s*#+$") ~= nil
     or line:find("^%s*[-*+]%s") ~= nil
-    or line:find("^%s*%d+[.)]%s") ~= nil
+    or line:find("^%s*1[.)]%s") ~= nil -- another number cannot interrupt a paragraph
     or line:find("^%s*[-*_=][-*_= ]*[-*_=][-*_= ]*[-*_=]") ~= nil
 end
 
@@ -709,7 +798,9 @@ end
 --- the closing backtick would pair with the next one on its line, and the
 --- link between them would be missed or an example in the next span exposed.
 --- A paragraph ends at a blank line, a fence, or a line that opens a block of
---- its own (`opens_block`), and is cut at `MAX_LINE_BYTES`.
+--- its own (`opens_block`), and is cut at `MAX_LINE_BYTES`. (The lines of a
+--- block quote are paragraphs of their own: a span that wraps over `>` lines is
+--- not followed.)
 ---@param lines string[]
 ---@return LspNvim.EnvLink.Found[]
 function M.scan(lines)
@@ -772,7 +863,7 @@ function M.scan(lines)
         para[#para + 1] = { lnum = k - 1, line = line }
         bytes = bytes + #line + 1
       end
-      if line:find("^%s*[#|]") then
+      if line:find("^%s*|") or line:find("^%s*#+%s") or line:find("^%s*#+$") then
         flush() -- a heading or a table row is a block of one line
       end
     end
@@ -815,8 +906,8 @@ function M.verdict(message)
     return nil, nil
   end
   local resolved = M.resolve(target)
-  if not resolved then
-    return nil, nil
+  if not resolved or resolved.exists == nil then
+    return nil, nil -- not looked at (a network path): cannot tell
   end
   return resolved.exists and "drop" or "keep", resolved
 end
@@ -1236,7 +1327,7 @@ end
 
 --- How many heading indexes are kept between calls.
 ---@type integer
-M.INDEX_CACHE_SIZE = 32
+M.INDEX_CACHE_SIZE = 64
 
 ---@type table<string, LspNvim.EnvLink.IndexCacheEntry>
 local index_cache = {}
@@ -1271,15 +1362,20 @@ end
 --- a read and a parse, and the case variants of a path on a case-insensitive
 --- file system are one file. The returned table is shared: do not change it.
 ---@param path string
----@return LspNvim.EnvLink.HeadingIndex|nil
-function M.heading_index(path)
+---@param only_cached? boolean # Answer from the cache or not at all: no read, no parse.
+---@return LspNvim.EnvLink.HeadingIndex|nil index
+---@return boolean|nil cached # True when it came from the cache: a stat, no read.
+function M.heading_index(path, only_cached)
   local real, st = text_doc(path)
   if not real or not st then
     return nil
   end
   local hit = index_cache[real]
   if hit and hit.size == st.size and hit.sec == st.mtime.sec and hit.nsec == st.mtime.nsec then
-    return hit.index
+    return hit.index, true
+  end
+  if only_cached then
+    return nil
   end
   local content = require("lib.nvim.fs.read")(real)
   if not content then
@@ -1412,6 +1508,17 @@ function M.heading_index(path)
     n = n + 1
   end
 
+  if hit then
+    -- A changed file is indexed again: its old place in the order goes, or the
+    -- key would be in the list twice and the eviction would drop the entry just
+    -- made (every call after that a miss).
+    for k = #index_cache_order, 1, -1 do
+      if index_cache_order[k] == real then
+        table.remove(index_cache_order, k)
+        break
+      end
+    end
+  end
   index_cache[real] = { size = st.size, sec = st.mtime.sec, nsec = st.mtime.nsec, index = index }
   index_cache_order[#index_cache_order + 1] = real
   while #index_cache_order > M.INDEX_CACHE_SIZE do
