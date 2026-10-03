@@ -1450,6 +1450,49 @@ describe("lsp.core.env_links", function()
     end)
   end)
 
+  -- Completion of the path of a link whose target starts with a variable.
+  describe("typing_at and fenced_at", function()
+    ---@param line string
+    ---@param col? integer # Default: the end of the line.
+    local function typing(line, col)
+      return links.typing_at(line, col or #line + 1)
+    end
+
+    it("finds the target typed so far in an inline link, an image and a definition", function()
+      assert.are.same({ text = "$R/x", start = 5, angled = false }, typing("[a]($R/x"))
+      assert.are.same({ text = "$R/p", start = 6, angled = false }, typing("![i]($R/p"))
+      assert.are.same({ text = "$R/x", start = 10, angled = false }, typing("[label]: $R/x"))
+      assert.are.same({ text = "", start = 5, angled = false }, typing("[a]("))
+      -- the cursor in an earlier link of the line
+      assert.are.same({ text = "$R/", start = 5, angled = false }, typing("[a]($R/x) [b](y)", 8))
+    end)
+
+    it("takes a `<...>` target with blanks, and balanced parentheses", function()
+      assert.are.same({ text = "$R/my n", start = 6, angled = true }, typing("[a](<$R/my n"))
+      assert.are.same({ text = "$R/f(1)/x", start = 5, angled = false }, typing("[a]($R/f(1)/x"))
+    end)
+
+    it("answers nil outside a target, or when it is closed", function()
+      assert.is_nil(typing("plain text"))
+      assert.is_nil(typing("[a]($R/x) more"))
+      assert.is_nil(typing("[a]($R/x)"))
+      assert.is_nil(typing("[a](<$R/x>"))
+      assert.is_nil(typing("[a]($R/x y"))
+      assert.is_nil(links.typing_at(nil, 1))
+      assert.is_nil(links.typing_at("[a]($R/x", "3"))
+      assert.is_nil(links.typing_at(("[a]($R/x"):rep(links.MAX_LINE_BYTES), 5))
+    end)
+
+    it("knows a fence, a fence line and a front matter", function()
+      local lines = { "---", "title: x", "---", "text", "```", "code", "```", "text" }
+      for lnum, want in ipairs({ true, true, true, false, true, true, true, false }) do
+        assert.are.equal(want, links.fenced_at(lines, lnum), "line " .. lnum)
+      end
+      -- not closed: no front matter
+      assert.is_false(links.fenced_at({ "---", "text" }, 2))
+    end)
+  end)
+
   -- `target_at` answers for one column; `links` for the whole line, with the
   -- span of each target (what a diagnostic underlines).
   describe("links", function()
@@ -2706,6 +2749,221 @@ describe("lsp.core.env_links_server", function()
     end)
   end)
 
+  describe("completion", function()
+    local seq = 0
+
+    --- Ask for completion at the end of line `lnum` (0-based) of a new document.
+    ---@param lines string[]
+    ---@param lnum? integer # Default: the last line.
+    ---@param character? integer # UTF-16 column of the cursor. Default: the end of the line.
+    ---@return table|nil
+    local function complete(lines, lnum, character)
+      seq = seq + 1
+      local buf = doc(("%s/cp%d.md"):format(root, seq), table.concat(lines, "\n") .. "\n")
+      lnum = lnum or #lines - 1
+      local line = lines[lnum + 1]
+      return server.completion({
+        textDocument = { uri = vim.uri_from_bufnr(buf) },
+        position = { line = lnum, character = character or vim.str_utfindex(line, "utf-16", #line) },
+      })
+    end
+
+    ---@param result table|nil
+    ---@return string[]
+    local function labels(result)
+      local out = {}
+      for _, item in ipairs(result and result.items or {}) do
+        out[#out + 1] = item.label
+      end
+      return out
+    end
+
+    before_each(function()
+      vim.fn.mkdir(root .. "/notes/sub", "p")
+      write_file(root .. "/notes/a.md", "# a\n")
+      write_file(root .. "/notes/b file.md", "# b\n")
+      write_file(root .. "/notes/.hidden", "x\n")
+      vim.fn.mkdir(root .. "/My Dir", "p")
+    end)
+
+    it("lists the entries of the directory, folders first, without dotfiles", function()
+      local r = complete({ "[a]($LSPTEST_ENV_ROOT/notes/" })
+      assert.are.same({ "sub/", "a.md", "b file.md" }, labels(r))
+      table.sort(r.items, function(x, y)
+        return x.sortText < y.sortText
+      end)
+      assert.are.equal("sub/", r.items[1].label)
+      assert.is_false(r.isIncomplete)
+      local kinds = {}
+      for _, i in ipairs(r.items) do
+        kinds[i.label] = i.kind
+      end
+      assert.are.equal(19, kinds["sub/"])
+      assert.are.equal(17, kinds["a.md"])
+    end)
+
+    it("filters by what is typed after the last slash, and replaces just that", function()
+      local r = complete({ "[a]($LSPTEST_ENV_ROOT/notes/b" })
+      assert.are.same({ "b file.md" }, labels(r))
+      local edit = r.items[1].textEdit
+      assert.are.equal("b%20file.md", edit.newText)
+      assert.are.equal(#"[a]($LSPTEST_ENV_ROOT/notes/", edit.range.start.character)
+      assert.are.equal(#"[a]($LSPTEST_ENV_ROOT/notes/b", edit.range["end"].character)
+      -- case does not matter, and a dot asks for the hidden ones
+      assert.are.same({ "a.md" }, labels(complete({ "[a]($LSPTEST_ENV_ROOT/notes/A" })))
+      assert.are.same({ ".hidden" }, labels(complete({ "[a]($LSPTEST_ENV_ROOT/notes/." })))
+    end)
+
+    it("percent-encodes what a bare target cannot hold, and not inside `<...>`", function()
+      local bare = complete({ "[a]($LSPTEST_ENV_ROOT/My" })
+      assert.are.equal("My%20Dir/", bare.items[1].textEdit.newText)
+      assert.are.equal("My%20Dir", bare.items[1].filterText)
+      local angled = complete({ "[a](<$LSPTEST_ENV_ROOT/My" })
+      assert.are.equal("My Dir/", angled.items[1].textEdit.newText)
+      -- ... and an encoded part already typed is understood
+      assert.are.same({ "My Dir/" }, labels(complete({ "[a]($LSPTEST_ENV_ROOT/My%20" })))
+    end)
+
+    it("counts the range in UTF-16 units, after an emoji and an umlaut", function()
+      local r = complete({ "😀 ü [a]($LSPTEST_ENV_ROOT/notes/b" })
+      local units = 2 + 1 + 1 + 1 + #"[a]($LSPTEST_ENV_ROOT/notes/"
+      assert.are.equal(units, r.items[1].textEdit.range.start.character)
+      assert.are.equal(units + 1, r.items[1].textEdit.range["end"].character)
+    end)
+
+    it("completes a reference definition and a `~/` target", function()
+      assert.are.same(
+        { "sub/", "a.md", "b file.md" },
+        labels(complete({ "[lbl]: $LSPTEST_ENV_ROOT/notes/" }))
+      )
+      local real_home = vim.uv.os_homedir
+      vim.uv.os_homedir = function()
+        return root
+      end
+      local r = complete({ "[a](~/notes/s" })
+      vim.uv.os_homedir = real_home
+      assert.are.same({ "sub/" }, labels(r))
+    end)
+
+    it("offers the variables that name a directory, and no secret", function()
+      vim.env.LSPTEST_SECRET_X = "sk-secret-token"
+      vim.env.LSPTEST_FILE_X = root .. "/notes/a.md"
+      local r = complete({ "[a]($LSPTEST_" })
+      vim.env.LSPTEST_SECRET_X = nil
+      vim.env.LSPTEST_FILE_X = nil
+      assert.are.same({ "$LSPTEST_ENV_ROOT" }, labels(r))
+      assert.are.equal("$LSPTEST_ENV_ROOT/", r.items[1].textEdit.newText)
+      assert.are.equal(#"[a](", r.items[1].textEdit.range.start.character)
+      -- the braced spelling keeps its braces
+      local braced = complete({ "[a](${LSPTEST_E" })
+      assert.are.equal("${LSPTEST_ENV_ROOT}/", braced.items[1].textEdit.newText)
+      -- the config directory has no real variable behind it
+      assert.is_truthy(vim.tbl_contains(labels(complete({ "[a]($NVIM_CONF" })), "$NVIM_CONFIG_DIR"))
+      -- a variable typed in full is offered once more, with its slash
+      assert.are.same({ "$LSPTEST_ENV_ROOT" }, labels(complete({ "[a]($LSPTEST_ENV_ROOT" })))
+    end)
+
+    it("answers nil where it has nothing to say", function()
+      for name, lines in pairs({
+        ordinary = { "[a](./notes/" },
+        undefined = { "[a]($LSPTEST_NOT_DEFINED/notes/" },
+        ["no slash after a tilde"] = { "[a](~" },
+        fragment = { "[a]($LSPTEST_ENV_ROOT/target.md#" },
+        closed = { "[a]($LSPTEST_ENV_ROOT/notes/) x" },
+        ["missing directory"] = { "[a]($LSPTEST_ENV_ROOT/nope/" },
+        ["a file, not a directory"] = { "[a]($LSPTEST_ENV_ROOT/target.md/" },
+        fence = { "```", "[a]($LSPTEST_ENV_ROOT/notes/", "```" },
+        ["front matter"] = { "---", "x: [a]($LSPTEST_ENV_ROOT/notes/", "---" },
+        ["no match"] = { "[a]($LSPTEST_ENV_ROOT/notes/zzz" },
+      }) do
+        local lnum = name == "fence" and 1 or name == "front matter" and 1 or nil
+        assert.is_nil(complete(lines, lnum), name)
+      end
+    end)
+
+    it("shows a symlink to a directory as a folder", function()
+      local made = vim.uv.fs_symlink(root .. "/notes/sub", root .. "/notes/linkdir", { dir = true })
+      if not made then
+        return pending("cannot create symlinks here")
+      end
+      local r = complete({ "[a]($LSPTEST_ENV_ROOT/notes/link" })
+      assert.are.same({ "linkdir/" }, labels(r))
+      assert.are.equal(19, r.items[1].kind)
+    end)
+
+    it("answers nil inside a closed code span", function()
+      local line = "`[a]($LSPTEST_ENV_ROOT/notes/` and more"
+      assert.is_nil(complete({ line }, 0, #"`[a]($LSPTEST_ENV_ROOT/notes/"))
+      -- the same line without the span completes
+      local plain = "[a]($LSPTEST_ENV_ROOT/notes/) and more"
+      assert.is_truthy(complete({ plain }, 0, #"[a]($LSPTEST_ENV_ROOT/notes/"))
+    end)
+
+    it("does not look at a network path", function()
+      vim.env.LSPTEST_UNC = "//192.0.2.1/share"
+      local was_windows = require("lsp.core.env_links").windows
+      require("lsp.core.env_links").windows = true
+      local stats = {}
+      local real_stat = vim.uv.fs_stat
+      vim.uv.fs_stat = function(path, ...)
+        if tostring(path):find("192.0.2.1", 1, true) then
+          stats[#stats + 1] = path
+        end
+        return real_stat(path, ...)
+      end
+      local ok, r = pcall(complete, { "[a]($LSPTEST_UNC/dir/" })
+      local ok2, names = pcall(complete, { "[a]($LSPTEST_U" })
+      vim.uv.fs_stat = real_stat
+      require("lsp.core.env_links").windows = was_windows
+      vim.env.LSPTEST_UNC = nil
+      assert.is_true(ok, tostring(r))
+      assert.is_true(ok2, tostring(names))
+      assert.is_nil(r)
+      assert.is_nil(names, "a network share is not offered as a variable either")
+      assert.are.same({}, stats)
+    end)
+
+    it("stops at the item cap and says the answer is incomplete", function()
+      for i = 1, 6 do
+        write_file(("%s/notes/many%d.md"):format(root, i), "x\n")
+      end
+      local saved = server.MAX_COMPLETION_ITEMS
+      server.MAX_COMPLETION_ITEMS = 3
+      local r = complete({ "[a]($LSPTEST_ENV_ROOT/notes/many" })
+      server.MAX_COMPLETION_ITEMS = saved
+      assert.are.equal(3, #r.items)
+      assert.is_true(r.isIncomplete)
+    end)
+
+    it("looks at no more than a bounded number of directory entries", function()
+      for i = 1, 6 do
+        write_file(("%s/notes/zz%d.md"):format(root, i), "x\n")
+      end
+      local saved = server.MAX_COMPLETION_SCAN
+      server.MAX_COMPLETION_SCAN = 2
+      local r = complete({ "[a]($LSPTEST_ENV_ROOT/notes/zz" })
+      server.MAX_COMPLETION_SCAN = saved
+      assert.is_true(r == nil or r.isIncomplete)
+    end)
+
+    it("does not raise on a position that names no line", function()
+      assert.is_nil(server.completion(nil))
+      assert.is_nil(server.completion({
+        textDocument = { uri = "file:///nope.md" },
+        position = { line = 0, character = 0 },
+      }))
+      local buf = doc(root .. "/one.md", "# x\n")
+      assert.is_nil(server.completion({
+        textDocument = { uri = vim.uri_from_bufnr(buf) },
+        position = { line = 99, character = 0 },
+      }))
+      assert.is_nil(server.completion({
+        textDocument = { uri = vim.uri_from_bufnr(buf) },
+        position = { line = -1, character = 0 },
+      }))
+    end)
+  end)
+
   describe("as a client", function()
     ---@param path string
     ---@param text string
@@ -2915,6 +3173,31 @@ describe("lsp.core.env_links_server", function()
         end),
         "the warning stayed after the target was created"
       )
+    end)
+
+    it("answers completion through the same client, and advertises its triggers", function()
+      server.setup({ env_links = true })
+      vim.fn.mkdir(root .. "/notes", "p")
+      write_file(root .. "/notes/a.md", "# a\n")
+      local buf = open_markdown(root .. "/doc.md", "[a]($LSPTEST_ENV_ROOT/notes/\n")
+      assert.is_true(vim.wait(3000, function()
+        return #vim.lsp.get_clients({ bufnr = buf, name = server.NAME }) > 0
+      end))
+      local caps = vim.lsp.get_clients({ bufnr = buf, name = server.NAME })[1].server_capabilities
+      assert.are.same({ "/", "$", "{" }, caps.completionProvider.triggerCharacters)
+
+      local results = vim.lsp.buf_request_sync(buf, "textDocument/completion", {
+        textDocument = { uri = vim.uri_from_bufnr(buf) },
+        position = { line = 0, character = #"[a]($LSPTEST_ENV_ROOT/notes/" },
+      }, 3000)
+      local found
+      for _, r in pairs(results or {}) do
+        if r.result then
+          found = r.result
+        end
+      end
+      assert.is_truthy(found)
+      assert.are.equal("a.md", found.items[1].label)
     end)
 
     it("says whether it is running", function()

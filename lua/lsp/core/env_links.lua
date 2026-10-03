@@ -837,6 +837,22 @@ local function opens_block(line, head)
     or line:find("^%s*[-*_=][-*_= ]*[-*_=][-*_= ]*[-*_=]") ~= nil
 end
 
+---@internal
+--- The last line of a YAML front matter: `---` on the first line, up to the next
+--- `---` or `...`. 0 when there is none, or it is not closed.
+---@param lines string[]
+---@return integer
+local function front_matter_end(lines)
+  if lines[1] and lines[1]:match("^%-%-%-%s*$") then
+    for k = 2, #lines do
+      if lines[k]:match("^%-%-%-%s*$") or lines[k]:match("^%.%.%.%s*$") then
+        return k
+      end
+    end
+  end
+  return 0
+end
+
 --- Every env link (`$VAR/...`, `${VAR}/...`, `~/...`) in a buffer's lines
 --- that is a link in the Markdown sense: not inside a fenced code block or a
 --- code span, not in a YAML front matter. Documentation that *shows* a link
@@ -855,16 +871,7 @@ end
 function M.scan(lines)
   local found = {} ---@type LspNvim.EnvLink.Found[]
 
-  -- Front matter: `---` on the first line, up to the next `---` or `...`.
-  local from = 1
-  if lines[1] and lines[1]:match("^%-%-%-%s*$") then
-    for k = 2, #lines do
-      if lines[k]:match("^%-%-%-%s*$") or lines[k]:match("^%.%.%.%s*$") then
-        from = k + 1
-        break
-      end
-    end
-  end
+  local from = front_matter_end(lines) + 1
 
   local para, bytes = {}, 0 ---@type { lnum: integer, line: string }[], integer
 
@@ -922,6 +929,94 @@ function M.scan(lines)
   end
   flush()
   return found
+end
+
+-- ----------------------------------------------------------------------------
+-- Typing a link target
+-- ----------------------------------------------------------------------------
+
+---@class LspNvim.EnvLink.Typing
+---@field text string # The target as typed so far, up to the cursor.
+---@field start integer # 1-based byte of its first character (after a `<`).
+---@field angled boolean # Written in `<...>`: blanks are allowed.
+
+--- The link target being typed at the byte column `col` (1-based: the cursor
+--- sits before that byte): the text from the start of the target up to the
+--- cursor, in `[text](target`, `![alt](target` or `[label]: target`. nil when the
+--- cursor is not in a target, or the target is already closed (`)` or `>`
+--- before it) or has a blank in it (a bare target ends at one).
+---
+--- Works on one line, like `target_at`.
+---@param line any
+---@param col any
+---@return LspNvim.EnvLink.Typing|nil
+function M.typing_at(line, col)
+  if type(line) ~= "string" or type(col) ~= "number" or #line > M.MAX_LINE_BYTES then
+    return nil
+  end
+  local before = line:sub(1, col - 1)
+
+  local last ---@type integer|nil
+  local pos = 1
+  while true do
+    local at = before:find("](", pos, true)
+    if not at then
+      break
+    end
+    last, pos = at, at + 1
+  end
+
+  local start ---@type integer|nil
+  if last then
+    start = last + 2
+  else
+    -- A reference definition: `[label]: target`.
+    start = before:match("^%s*%[[^%]]+%]:%s*()")
+  end
+  if not start then
+    return nil
+  end
+
+  local angled = before:byte(start) == 60 -- "<"
+  if angled then
+    start = start + 1
+  end
+  local text = before:sub(start)
+  if angled then
+    if text:find(">", 1, true) then
+      return nil
+    end
+  else
+    if text:find("%s") then
+      return nil
+    end
+    local depth = 0
+    for c in text:gmatch("[()]") do
+      depth = depth + (c == "(" and 1 or -1)
+      if depth < 0 then
+        return nil -- the `)` that closes the link is before the cursor
+      end
+    end
+  end
+  return { text = text, start = start, angled = angled }
+end
+
+--- Is line `lnum` (1-based) of `lines` no document text: inside a fenced code
+--- block or a YAML front matter, or a fence line itself?
+---@param lines string[]
+---@param lnum integer
+---@return boolean
+function M.fenced_at(lines, lnum)
+  local front = front_matter_end(lines)
+  if lnum <= front then
+    return true
+  end
+  local fence ---@type LspNvim.EnvLink.Fence|nil
+  local skip = false
+  for k = front + 1, lnum do
+    fence, skip = fence_step(fence, lines[k] or "")
+  end
+  return skip
 end
 
 -- ----------------------------------------------------------------------------

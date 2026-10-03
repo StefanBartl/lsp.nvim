@@ -553,7 +553,9 @@ languages.env_links   (boolean)   Resolve `$VAR/...`, `${VAR}/...` and `~/...`
                                   `lsp.nvim-envlinks` client, which also
                                   warns about env links whose file or
                                   `#heading` is missing (marksman reports no
-                                  link that carries a `#fragment`).
+                                  link that carries a `#fragment`), and
+                                  completes the directories such a target
+                                  names (`/`, `$`, `{` trigger it).
                                   Resolved through gopath.nvim's
                                   `resolve_text` when installed, built-in
                                   otherwise. On by default.

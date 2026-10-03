@@ -1,5 +1,5 @@
 ---@module 'lsp.core.env_links_server'
----@brief Definition and hover for `$VAR/...` and `~/...` Markdown links.
+---@brief Definition, hover, diagnostics and path completion for `$VAR/...` and `~/...` Markdown links.
 ---@description
 --- marksman answers neither request for a link whose target starts with an
 --- environment variable (see `lsp.core.env_links` for the measurement), so
@@ -27,6 +27,16 @@
 --- *pulled* (`textDocument/diagnostic`): Neovim asks on every open and change,
 --- and the client answers from the buffer. Documentation that shows a link in a
 --- code block or code span is not reported (`lsp.core.env_links.scan`).
+---
+--- **Completion.** marksman completes relative paths in a link, never an env
+--- one. While a target is typed -- `[x]($REPOS_DIR/no`, `[x](${VAR}/`,
+--- `[x](~/`, `![i](...`, `[l]: ...` -- the client answers `textDocument/completion`
+--- with the entries of the directory typed so far (folders first, dotfiles only
+--- when a dot is typed, a blank or parenthesis percent-encoded in a bare target
+--- and left alone inside `<...>`), and for a `$` or `${` with the variables that
+--- name a directory (never a secret, never a network share). Everywhere else it
+--- answers `nil`, in code blocks and code spans too. Any completion engine that
+--- asks the LSP clients (blink, cmp, `omnifunc`) gets it with no wiring.
 ---
 --- **What it costs.** One more client in `vim.lsp.get_clients()` and in
 --- `:Lsp servers`, named `lsp.nvim-envlinks` like the gitsigns one and looked
@@ -103,15 +113,18 @@ local function code_safe(text)
 end
 
 ---@internal
---- The env link at an LSP position, resolved.
+--- The loaded buffer, the line (0-based number and text) and the byte column
+--- (1-based) an LSP position names; nil for a position that names none.
 ---
---- LSP columns are UTF-16 code units and `target_at` works in bytes; a German
+--- LSP columns are UTF-16 code units and the scanners work in bytes; a German
 --- document has an umlaut before the link often enough that mixing the two
 --- would miss it.
 ---@param params table
----@return string|nil target
----@return LspNvim.EnvLink.Resolved|nil resolved
-local function link_at(params)
+---@return integer|nil bufnr
+---@return integer|nil lnum
+---@return string|nil line
+---@return integer|nil col
+local function buffer_position(params)
   local uri = params and params.textDocument and params.textDocument.uri
   local pos = params and params.position
   -- A negative line would not be refused by `nvim_buf_get_lines`: -1 is the
@@ -124,20 +137,33 @@ local function link_at(params)
     or type(pos.character) ~= "number"
     or pos.character < 0
   then
-    return nil, nil
+    return nil
   end
 
   local bufnr = loaded_buffer(uri)
   if not bufnr then
-    return nil, nil
+    return nil
   end
   local line = api.nvim_buf_get_lines(bufnr, pos.line, pos.line + 1, false)[1]
   if not line then
-    return nil, nil
+    return nil
   end
 
   local ok, byte = pcall(vim.str_byteindex, line, "utf-16", pos.character)
-  local target = links.target_at(line, (ok and byte or pos.character) + 1)
+  return bufnr, pos.line, line, (ok and byte or pos.character) + 1
+end
+
+---@internal
+--- The env link at an LSP position, resolved.
+---@param params table
+---@return string|nil target
+---@return LspNvim.EnvLink.Resolved|nil resolved
+local function link_at(params)
+  local bufnr, _, line, col = buffer_position(params)
+  if not bufnr or not line or not col then
+    return nil, nil
+  end
+  local target = links.target_at(line, col)
   if not target then
     return nil, nil
   end
@@ -400,6 +426,198 @@ local function refresh_diagnostics()
   end, REFRESH_DELAY_MS)
 end
 
+--- Most items one completion answers with. Past it the answer says it is
+--- incomplete, and the editor asks again with more typed.
+---@type integer
+M.MAX_COMPLETION_ITEMS = 300
+
+--- Most directory entries one completion looks at.
+---@type integer
+M.MAX_COMPLETION_SCAN = 5000
+
+---@type integer
+local KIND_VARIABLE, KIND_FILE, KIND_FOLDER = 6, 17, 19
+
+---@internal
+--- `name` as it goes into a link target: a bare target ends at a blank or an
+--- unbalanced parenthesis and `#` starts a fragment, so those are
+--- percent-encoded (the resolver decodes them). In `<...>` nothing is.
+---@param name string
+---@param angled boolean
+---@return string
+local function target_text(name, angled)
+  if angled then
+    return name
+  end
+  return (name:gsub("[%s()#%%<>]", function(c)
+    return ("%%%02X"):format(c:byte())
+  end))
+end
+
+---@internal
+--- Is `path` a directory that may be looked at: not a network path (a stat on
+--- one that does not answer blocks Neovim), and there.
+---@param path string
+---@return boolean
+local function is_directory(path)
+  if links.is_network_path(path) then
+    return false
+  end
+  local st = vim.uv.fs_stat(path)
+  return st ~= nil and st.type == "directory"
+end
+
+---@internal
+--- The environment variables that name a directory, as completion items, for a
+--- `$` or `${` and the letters typed after it. Only names whose value is an
+--- existing directory are offered (a secret in the environment is not one), and
+--- `$NVIM_CONFIG_DIR`, which has no real variable behind it.
+---@param typing LspNvim.EnvLink.Typing
+---@param lnum integer
+---@param line string
+---@param col integer
+---@return table[]|nil
+local function variable_items(typing, lnum, line, col)
+  local braced = typing.text:sub(2, 2) == "{"
+  local prefix = (braced and typing.text:sub(3) or typing.text:sub(2)):lower()
+
+  local names = {} ---@type table<string, string>
+  for name, value in pairs(vim.fn.environ()) do
+    if name:lower():find(prefix, 1, true) == 1 then
+      names[name] = value
+    end
+  end
+  if ("nvim_config_dir"):find(prefix, 1, true) == 1 and names.NVIM_CONFIG_DIR == nil then
+    names.NVIM_CONFIG_DIR = vim.fn.stdpath("config")
+  end
+
+  local range = {
+    start = { line = lnum, character = lsp_column(line, typing.start - 1) },
+    ["end"] = { line = lnum, character = lsp_column(line, col - 1) },
+  }
+  local items = {}
+  for name, value in pairs(names) do
+    if is_directory(value) then
+      local label = braced and ("${" .. name .. "}") or ("$" .. name)
+      items[#items + 1] = {
+        label = label,
+        kind = KIND_VARIABLE,
+        detail = (value:gsub("\\", "/")),
+        sortText = name:lower(),
+        filterText = label,
+        textEdit = { newText = label .. "/", range = range },
+      }
+    end
+  end
+  table.sort(items, function(a, b)
+    return a.sortText < b.sortText
+  end)
+  return items
+end
+
+---@internal
+--- The entries of the directory a `$VAR/dir/` target names, as completion items,
+--- for what is typed after its last slash.
+---@param typing LspNvim.EnvLink.Typing
+---@param lnum integer
+---@param line string
+---@param col integer
+---@return table[]|nil items
+---@return boolean|nil incomplete
+local function path_items(typing, lnum, line, col)
+  local dir, partial = typing.text:match("^(.*/)([^/]*)$")
+  if not dir or typing.text:find("#", 1, true) then
+    return nil, nil -- no slash yet, or a fragment: headings are not completed here
+  end
+  local resolved = links.resolve(dir)
+  if not resolved or not resolved.exists or not is_directory(resolved.path) then
+    return nil, nil
+  end
+
+  local handle = vim.uv.fs_scandir(resolved.path)
+  if not handle then
+    return nil, nil
+  end
+  local want = vim.uri_decode(partial):lower()
+  local show_hidden = want:sub(1, 1) == "."
+  local range = {
+    start = { line = lnum, character = lsp_column(line, typing.start - 1 + #dir) },
+    ["end"] = { line = lnum, character = lsp_column(line, col - 1) },
+  }
+
+  local items, scanned, incomplete = {}, 0, false
+  while true do
+    local name, kind = vim.uv.fs_scandir_next(handle)
+    if not name then
+      break
+    end
+    scanned = scanned + 1
+    if scanned > M.MAX_COMPLETION_SCAN or #items >= M.MAX_COMPLETION_ITEMS then
+      incomplete = true
+      break
+    end
+    if
+      (show_hidden or name:sub(1, 1) ~= ".")
+      and name:lower():find(want, 1, true) == 1
+      and not name:find("[%c]")
+    then
+      local is_dir = kind == "directory"
+      if kind == "link" then
+        is_dir = is_directory(resolved.path .. "/" .. name)
+      end
+      local text = target_text(name, typing.angled) .. (is_dir and "/" or "")
+      items[#items + 1] = {
+        label = name .. (is_dir and "/" or ""),
+        kind = is_dir and KIND_FOLDER or KIND_FILE,
+        sortText = (is_dir and "0" or "1") .. name:lower(),
+        filterText = target_text(name, typing.angled),
+        textEdit = { newText = text, range = range },
+      }
+    end
+  end
+  -- Folders first, then by name: the order the directory happens to be read in
+  -- is the file system's.
+  table.sort(items, function(a, b)
+    return a.sortText < b.sortText
+  end)
+  return items, incomplete
+end
+
+--- `textDocument/completion`: the directories a `$VAR/`, `${VAR}/` or `~/` link
+--- target names -- marksman completes relative paths only -- and, for a `$` or
+--- `${`, the variables that name one. nil everywhere else (in code too), so for
+--- an ordinary link marksman's answer stands alone.
+---@param params table
+---@return table|nil
+function M.completion(params)
+  local bufnr, lnum, line, col = buffer_position(params)
+  if not bufnr or not lnum or not line or not col then
+    return nil
+  end
+  local typing = links.typing_at(line, col)
+  if not typing then
+    return nil
+  end
+  -- Not in a code span or a code block: there it is text.
+  if links.mask_code_spans(line):sub(typing.start, col - 1) ~= line:sub(typing.start, col - 1) then
+    return nil
+  end
+  if links.fenced_at(api.nvim_buf_get_lines(bufnr, 0, -1, false), lnum + 1) then
+    return nil
+  end
+
+  local items, incomplete
+  if typing.text:match("^%$[%w_]*$") or typing.text:match("^%${[%w_]*$") then
+    items = variable_items(typing, lnum, line, col)
+  elseif links.is_env_target(typing.text) then
+    items, incomplete = path_items(typing, lnum, line, col)
+  end
+  if not items or #items == 0 then
+    return nil
+  end
+  return { isIncomplete = incomplete == true, items = items }
+end
+
 --- The in-process server, in the shape `vim.lsp.start`'s `cmd` function wants.
 ---@param dispatchers table
 ---@return table
@@ -437,12 +655,14 @@ function M.server(dispatchers)
     local answer = method == "textDocument/definition" and M.definition
       or method == "textDocument/hover" and M.hover
       or method == "textDocument/diagnostic" and M.diagnostics
+      or method == "textDocument/completion" and M.completion
       or nil
     if method == "initialize" then
       callback(nil, {
         capabilities = {
           definitionProvider = true,
           hoverProvider = true,
+          completionProvider = { triggerCharacters = { "/", "$", "{" }, resolveProvider = false },
           -- Neovim pulls diagnostics after the document was opened or changed
           -- (`LspNotify`), so it must be told about both. The content itself
           -- is read from the buffer, not from the notifications.
