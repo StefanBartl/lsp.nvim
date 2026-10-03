@@ -633,22 +633,15 @@ hid that, and every genuinely broken link along with it.
   The message names the path a link was looked up at only when that path is
   absolute: a variable can hold anything (`$API_TOKEN/a.md` resolves to
   `<the token>/a.md`), and a document must not be able to put such a value on
-  the screen. Network paths (`//host/share/...`) are not looked at -- a stat on
-  one that does not answer blocks Neovim for the OS timeout -- and one pull
-  spends at most about 50 ms on `fs_stat`; links it did not get to are left
-  alone until the next pull. The heading index of a target file is cached
-  (by real path, validated by size and modification time) between pulls.
-- **Definition and hover.** A small in-process client, `lsp.nvim-envlinks`
-  (the same shape as the gitsigns one, attached to Markdown buffers), answers
-  `textDocument/definition` -- the file, at the heading when the target carries
-  a `#fragment` -- and `textDocument/hover`: where the link leads, whether it is
-  there, and -- for Markdown and text files up to 2 MB only -- the top of the
-  file. Nothing else is ever quoted: `[x]($HOME/.ssh/id_rsa)` in a document
-  resolves and jumps, but the hover shows the path, never the content. Every
-  feature that asks the language servers
-  about a position (`gd`, the peek float, `K`) merges the answers of all
-  clients, so all of them work with no per-feature wiring. It answers `nil`
-  everywhere else, so for ordinary links marksman's answer stands alone.
+  the screen -- not in a diagnostic, not in marksman's annotated message, not
+  in a hover. Network paths (`//host/share/...`) are not looked at anywhere
+  (diagnostics, hover, definition, the marksman filter): a stat on one that
+  does not answer blocks Neovim for the OS timeout, and the hover says "not
+  checked". One pull spends at most about 50 ms in `fs_stat` itself, and builds
+  the heading index of at most 32 different files (a cache hit is not charged);
+  links it did not get to are left alone until the next pull. The heading index
+  of a target file is cached (64 files, by real path, validated by size and
+  modification time) between pulls.
 
 Resolution goes to **gopath.nvim first** when it is installed and has
 `resolve_text` (its public text API): it owns the variable rules -- `$VAR`,

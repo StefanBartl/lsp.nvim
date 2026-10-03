@@ -720,6 +720,31 @@ describe("lsp.core.env_links", function()
       assert.are.equal(6, #reads)
     end)
 
+    -- A changed file is indexed again; its old place in the eviction order must
+    -- go, or the key is in the list twice and the entry just made is evicted.
+    it("keeps a file that is edited over and over in the cache", function()
+      local path = root .. "/busy.md"
+      local last
+      for i = 1, links.INDEX_CACHE_SIZE + 5 do
+        write_file(path, ("# H\n"):rep(i))
+        last = links.heading_index(path)
+      end
+      local before = #reads
+      assert.are.equal(last, links.heading_index(path))
+      assert.are.equal(before, #reads, "an unchanged file was read again")
+    end)
+
+    it("answers from the cache or not at all when asked to", function()
+      write_file(root .. "/c.md", "# One\n")
+      assert.is_nil(links.heading_index(root .. "/c.md", true))
+      assert.are.equal(0, #reads)
+      local built, cached = links.heading_index(root .. "/c.md")
+      assert.is_nil(cached)
+      local again, hit = links.heading_index(root .. "/c.md", true)
+      assert.are.equal(built, again)
+      assert.is_true(hit)
+    end)
+
     it("forgets everything on clear_cache", function()
       write_file(root .. "/c.md", "# One\n")
       links.heading_index(root .. "/c.md")
@@ -1035,6 +1060,138 @@ describe("lsp.core.env_links", function()
       assert.are.equal(0, at(idx, "i\204\135stanbul"))
       assert.are.equal(1, at(idx, "\206\191\206\180\206\191\207\131")) -- medial sigma
       assert.are.equal(1, at(idx, "\206\191\206\180\206\191\207\130")) -- final sigma
+    end)
+  end)
+
+  -- Third round: what the review of the fixes found.
+  describe("parser: after the review of the fixes", function()
+    ---@param lines string[]
+    ---@return string[]
+    local function scanned(lines)
+      local out = {}
+      for _, l in ipairs(links.scan(lines)) do
+        out[#out + 1] = l.target
+      end
+      return out
+    end
+
+    ---@param line string
+    ---@return string[]
+    local function link_targets(line)
+      local out = {}
+      for _, l in ipairs(links.links(line)) do
+        out[#out + 1] = l.target
+      end
+      return out
+    end
+
+    -- A fence line closes a block only at the block's own quote depth.
+    it("does not close a block at a `>` line inside it", function()
+      assert.are.same(
+        { "$R/real.md" },
+        scanned({ "```md", "> ```js", "> [x]($R/e.md)", "> ```", "```", "[b]($R/real.md)" })
+      )
+      assert.are.same(
+        { "$R/real.md" },
+        scanned({ "> ```md", ">> ```", "> [b]($R/x.md)", "> ```", "[b]($R/real.md)" })
+      )
+    end)
+
+    it("does not take a `>` fence line inside a block for its end in heading_index", function()
+      write_file(root .. "/q.md", "```md\n> ```js\n> x\n> ```\n```\n# Real\n")
+      local idx = assert(links.heading_index(root .. "/q.md"))
+      assert.are.equal(5, links.heading_lookup(idx, "real"))
+    end)
+
+    -- ... and a block opened in a list item ends with the item.
+    it("ends a block opened behind a list marker when the item ends", function()
+      -- never closed: the next list item and a column-0 line end it
+      assert.are.same(
+        { "$R/a.md", "$R/b.md" },
+        scanned({ "- ```md", "  [x]($R/e.md)", "- next", "[a]($R/a.md)", "", "[b]($R/b.md)" })
+      )
+      assert.are.same({ "$R/real.md" }, scanned({ "1. ```", "   [x]($R/e.md)", "[y]($R/real.md)" }))
+      -- a blank line and the item's own indentation keep it
+      assert.are.same(
+        { "$R/real.md" },
+        scanned({ "- ```md", "", "  [x]($R/e.md)", "  ```", "[y]($R/real.md)" })
+      )
+      -- a tab-indented item
+      assert.are.same(
+        { "$R/real.md" },
+        scanned({
+          "-" .. string.char(9) .. "```md",
+          string.char(9) .. "[x]($R/e.md)",
+          "[y]($R/real.md)",
+        })
+      )
+    end)
+
+    it("ends such a block in heading_index, too", function()
+      write_file(root .. "/l.md", "- ```md\n  # nope\n- next\n# Yes\n")
+      local idx = assert(links.heading_index(root .. "/l.md"))
+      assert.is_nil(links.heading_lookup(idx, "nope"))
+      assert.are.equal(3, links.heading_lookup(idx, "yes"))
+    end)
+
+    -- `[x](a b)` and `[x](foo` are answered, leniently, but they are text to
+    -- CommonMark: they must not take the enclosing link with them.
+    it("does not let a malformed inner link kill the link around it", function()
+      assert.are.same({ "a", "$R/real.md" }, link_targets("[see [x](a b) here]($R/real.md)"))
+      -- (`foo` is the lenient answer for a link still being typed.)
+      assert.are.same({ "foo", "$R/real.md" }, link_targets("[a [x](foo b]($R/real.md)"))
+      assert.are.equal("$R/real.md", links.target_at("[see [x](a b) here]($R/real.md)", 5))
+    end)
+
+    it("lets a real inner link kill it, `[x]()` and a titled one included", function()
+      assert.are.same({}, link_targets("[a [x]() b]($R/outer.md)"))
+      assert.are.same({ "$R/in.md" }, link_targets([=[[a [x]($R/in.md "t") b]($R/outer.md)]=]))
+    end)
+
+    -- `#tag` is no heading and `2.` no list that interrupts a paragraph: neither
+    -- may cut a code span's paragraph.
+    it("does not end a paragraph at a `#tag` line or a `2.` line", function()
+      assert.are.same({}, scanned({ "the syntax is `[x]($R/ex.md)", "#tag more` text" }))
+      assert.are.same({}, scanned({ "the syntax is `[x]($R/ex.md)", "2. more` text" }))
+      -- while a heading and a first list item do
+      assert.are.same({ "$R/real.md" }, scanned({ "a ` lone", "# heading", "[b]($R/real.md) `x`" }))
+    end)
+  end)
+
+  describe("safe by default: network paths and quoting", function()
+    local function counting_stat()
+      local stats = {}
+      local real_stat = vim.uv.fs_stat
+      vim.uv.fs_stat = function(path, ...)
+        if tostring(path):find("192.0.2.1", 1, true) then
+          stats[#stats + 1] = path
+        end
+        return real_stat(path, ...)
+      end
+      return stats, function()
+        vim.uv.fs_stat = real_stat
+      end
+    end
+
+    it("does not stat a network path, whoever asks", function()
+      vim.env.LSPTEST_UNC = "//192.0.2.1/share"
+      local stats, restore = counting_stat()
+      local resolved = links.resolve("$LSPTEST_UNC/a.md")
+      local verdict = links.verdict("Link to non-existent document '$LSPTEST_UNC/a.md'")
+      restore()
+      vim.env.LSPTEST_UNC = nil
+      assert.is_nil(resolved.exists)
+      assert.is_nil(verdict, "not looked at is no verdict")
+      assert.are.same({}, stats)
+    end)
+
+    it("shows a path only when it is an absolute one", function()
+      assert.are.equal("C:/a/b.md", links.displayable_path("C:/a/b.md"))
+      assert.are.equal("/home/a/b.md", links.displayable_path("/home/a/b.md"))
+      assert.is_nil(links.displayable_path("sk-secret-token/a.md"))
+      assert.are.equal("", links.looked_up_at("sk-secret-token/a.md"))
+      assert.are.equal(" (resolved to /x/y.md)", links.looked_up_at("/x/y.md"))
+      assert.are.equal("/x/y?md", links.displayable_path("/x/y" .. string.char(27) .. "md"))
     end)
   end)
 
@@ -1691,6 +1848,37 @@ describe("lsp.servers.marksman.diagnostics_handler with env links", function()
     assert.is_truthy(got[1]:find("resolved to " .. root .. "/gone.md", 1, true), got[1])
   end)
 
+  it("does not annotate a kept message with what a variable holds that is not a path", function()
+    vim.env.LSPTEST_SECRET = "sk-secret-token"
+    local got = handler.filter_diagnostics({
+      diag("Link to non-existent document '$LSPTEST_SECRET/a.md'"),
+    }, false)
+    vim.env.LSPTEST_SECRET = nil
+    assert.are.equal(1, #got)
+    assert.is_nil(got[1].message:find("sk-secret", 1, true), got[1].message)
+  end)
+
+  it("does not stat a network path to judge a message", function()
+    vim.env.LSPTEST_UNC = "//192.0.2.1/share"
+    local stats = {}
+    local real_stat = vim.uv.fs_stat
+    vim.uv.fs_stat = function(path, ...)
+      if tostring(path):find("192.0.2.1", 1, true) then
+        stats[#stats + 1] = path
+      end
+      return real_stat(path, ...)
+    end
+    local ok, got = pcall(handler.filter_diagnostics, {
+      diag("Link to non-existent document '$LSPTEST_UNC/a.md'"),
+    }, false)
+    vim.uv.fs_stat = real_stat
+    vim.env.LSPTEST_UNC = nil
+    assert.is_true(ok, tostring(got))
+    assert.are.same({}, stats)
+    -- No verdict: the old rules apply (the blanket rule hides it).
+    assert.are.same({}, got)
+  end)
+
   it("does not mutate the diagnostics it was given", function()
     local input = all()
     local before = vim.deepcopy(input)
@@ -2123,6 +2311,94 @@ describe("lsp.core.env_links_server", function()
       local items = items_of(table.concat(lines, "\n") .. "\n")
       assert.are.equal(server.MAX_INDEXED_FILES, #items)
     end)
+
+    it("does not stat a network path for a hover, and says so", function()
+      vim.env.LSPTEST_UNC = "//192.0.2.1/share"
+      local stats = {}
+      local real_stat = vim.uv.fs_stat
+      vim.uv.fs_stat = function(path, ...)
+        if tostring(path):find("192.0.2.1", 1, true) then
+          stats[#stats + 1] = path
+        end
+        return real_stat(path, ...)
+      end
+      local buf = doc(root .. "/unc.md", "[u]($LSPTEST_UNC/x.md)\n")
+      local ok, hover = pcall(server.hover, {
+        textDocument = { uri = vim.uri_from_bufnr(buf) },
+        position = { line = 0, character = 8 },
+      })
+      local definition = server.definition({
+        textDocument = { uri = vim.uri_from_bufnr(buf) },
+        position = { line = 0, character = 8 },
+      })
+      vim.uv.fs_stat = real_stat
+      vim.env.LSPTEST_UNC = nil
+      assert.is_true(ok, tostring(hover))
+      assert.are.same({}, stats)
+      assert.is_nil(definition)
+      assert.is_truthy(hover.contents.value:find("(not checked)", 1, true))
+      assert.is_nil(hover.contents.value:find("(missing)", 1, true))
+    end)
+
+    it("does not print a variable's value in a hover", function()
+      vim.env.LSPTEST_SECRET = "sk-secret-token"
+      local buf = doc(root .. "/secret.md", "[x]($LSPTEST_SECRET/a.md)\n")
+      local hover = server.hover({
+        textDocument = { uri = vim.uri_from_bufnr(buf) },
+        position = { line = 0, character = 8 },
+      })
+      vim.env.LSPTEST_SECRET = nil
+      assert.is_nil(hover.contents.value:find("sk-secret", 1, true), hover.contents.value)
+      assert.is_truthy(hover.contents.value:find("(missing)", 1, true))
+    end)
+
+    -- The budget is for the disk: scanning and indexing a large document must
+    -- not use it up, or the links after them are silently not checked.
+    it("does not count anything but fs_stat against the stat budget", function()
+      local calls = 0
+      local real_hrtime = vim.uv.hrtime
+      vim.uv.hrtime = function()
+        calls = calls + 1
+        return calls == 1 and 0 or 10 ^ 12 -- the pull "took" far longer than the budget
+      end
+      local ok, items = pcall(items_of, "[g]($LSPTEST_ENV_ROOT/gone.md)\n")
+      vim.uv.hrtime = real_hrtime
+      assert.is_true(ok, tostring(items))
+      assert.are.equal(1, #items)
+    end)
+
+    it("charges only a read and a parse against the cap on indexed files", function()
+      local lines = {}
+      for i = 1, server.MAX_INDEXED_FILES + 8 do
+        write_file(("%s/cap%d.md"):format(root, i), "# Only\n")
+        lines[#lines + 1] = ("[l]($LSPTEST_ENV_ROOT/cap%d.md#nope)"):format(i)
+      end
+      local text = table.concat(lines, "\n") .. "\n"
+      assert.are.equal(server.MAX_INDEXED_FILES, #items_of(text))
+      -- The next pull is answered from the cache for those, and builds the rest.
+      assert.are.equal(server.MAX_INDEXED_FILES + 8, #items_of(text))
+    end)
+
+    it("logs the first failure of a pull once, and keeps the other links", function()
+      local logged = {}
+      local real_error = vim.lsp.log.error
+      vim.lsp.log.error = function(...)
+        logged[#logged + 1] = table.concat(vim.tbl_map(tostring, { ... }), " ")
+      end
+      require("lsp.core.env_links").heading_index = function()
+        error("boom")
+      end
+      local ok, items = pcall(
+        items_of,
+        "[a]($LSPTEST_ENV_ROOT/target.md#x)\n[b]($LSPTEST_ENV_ROOT/target.md#y)\n[c]($LSPTEST_ENV_ROOT/gone.md)\n"
+      )
+      vim.lsp.log.error = real_error
+      assert.is_true(ok, tostring(items))
+      assert.are.equal(1, #items)
+      assert.are.equal(1, #logged, vim.inspect(logged))
+      assert.is_truthy(logged[1]:find("boom", 1, true))
+      assert.is_truthy(logged[1]:find("target.md#x", 1, true))
+    end)
   end)
 
   describe("as a client", function()
@@ -2412,6 +2688,32 @@ describe("lsp.core.env_links_server", function()
         end),
         "the stale diagnostic stayed once the buffer was shown"
       )
+    end)
+
+    it("pulls for a hidden buffer whatever its file is called", function()
+      server.setup({ env_links = true })
+      write_file(root .. "/hidden.mkd", "[g]($LSPTEST_ENV_ROOT/gone.md)\n")
+      open_markdown(root .. "/shown.md", "# x\n")
+      local hidden = vim.fn.bufadd(root .. "/hidden.mkd")
+      vim.fn.bufload(hidden)
+      vim.bo[hidden].filetype = "markdown"
+      local function ours()
+        return vim.tbl_filter(function(d)
+          return d.source == server.NAME
+        end, vim.diagnostic.get(hidden))
+      end
+      assert.is_true(vim.wait(3000, function()
+        return #ours() == 1
+      end))
+      vim.api.nvim_buf_set_lines(hidden, 0, 1, false, { "[t]($LSPTEST_ENV_ROOT/target.md)" })
+      vim.wait(800, function()
+        return false
+      end)
+      assert.are.equal(1, #ours())
+      vim.api.nvim_set_current_buf(hidden)
+      assert.is_true(vim.wait(3000, function()
+        return #ours() == 0
+      end))
     end)
 
     -- Neovim clears a client's pulled diagnostics on detach only when no other

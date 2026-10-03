@@ -289,7 +289,7 @@ function M.filter_diagnostics(diagnostics, env_client)
     if not suppressed then
       if verdict == "keep" and resolved_env and not env_client then
         d = vim.tbl_extend("force", {}, d, {
-          message = ("%s (resolved to %s)"):format(msg, resolved_env.path),
+          message = msg .. env_links.looked_up_at(resolved_env.path),
         })
       end
       table.insert(out, d)

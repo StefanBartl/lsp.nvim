@@ -177,8 +177,16 @@ function M.hover(params)
   local lines = {
     ("**`%s`**"):format(code_safe(target)),
     "",
-    ("%s `%s`"):format(resolved.exists and "->" or "-> (missing)", code_safe(resolved.path)),
+    "",
   }
+  -- "Where it leads" is the one thing a hover is for; the path is shown only
+  -- when it is one (see `links.displayable_path`), and "not checked" when the
+  -- disk was not asked (a network path).
+  local arrow = resolved.exists == nil and "-> (not checked)"
+    or resolved.exists and "->"
+    or "-> (missing)"
+  local shown = links.displayable_path(resolved.path)
+  lines[3] = shown and ("%s `%s`"):format(arrow, code_safe(shown)) or arrow
   if resolved.exists and vim.fn.isdirectory(resolved.path) == 1 then
     lines[#lines + 1] = ""
     lines[#lines + 1] = "_directory_"
@@ -214,13 +222,10 @@ local STAT_BUDGET_NS = 50 * 1000 * 1000
 ---@type integer
 M.MAX_INDEXED_FILES = 32
 
---- Longest link target quoted in a message, in bytes.
----@type integer
-local MAX_QUOTED_BYTES = 200
-
 ---@internal
 --- A `stat` for `links.resolve` that looks at each path once per pull, spends at
---- most `STAT_BUDGET_NS`, and does not touch a network path (`//host/share`,
+--- most `STAT_BUDGET_NS` in `fs_stat` itself (not on scanning or indexing), and
+--- does not touch a network path (`//host/share`,
 --- `\\host\share`) at all. A stat on one that does not answer blocks Neovim
 --- for the OS connect timeout (21 s measured) and no budget interrupts a call
 --- that is already blocked; it would also come back "not there" and be reported
@@ -228,7 +233,7 @@ local MAX_QUOTED_BYTES = 200
 ---@return fun(path: string): boolean|nil
 local function pull_stat()
   local seen = {} ---@type table<string, boolean|"unknown">
-  local deadline = vim.uv.hrtime() + STAT_BUDGET_NS
+  local spent = 0 -- nanoseconds spent inside fs_stat so far
   return function(path)
     local known = seen[path]
     if known == "unknown" then
@@ -236,44 +241,19 @@ local function pull_stat()
     elseif known ~= nil then
       return known --[[@as boolean]]
     end
-    if path:find("^//") or path:find("^\\\\") or vim.uv.hrtime() > deadline then
+    if path:find("^//") or path:find("^\\\\") or spent > STAT_BUDGET_NS then
       seen[path] = "unknown"
       return nil
     end
+    local t0 = vim.uv.hrtime()
     local on_disk = vim.uv.fs_stat(path) ~= nil
+    spent = spent + (vim.uv.hrtime() - t0)
     seen[path] = on_disk
     return on_disk
   end
 end
 
----@internal
---- `text` made safe to quote in a message: no control bytes (the link target is
---- whatever the document says, a `<...>` one may hold a tab or an escape), and
---- not longer than `MAX_QUOTED_BYTES`.
----@param text string
----@return string
-local function quoted(text)
-  text = text:gsub("%c", "?")
-  if #text > MAX_QUOTED_BYTES then
-    text = text:sub(1, MAX_QUOTED_BYTES) .. "..."
-  end
-  return text
-end
-
----@internal
---- Where a link was looked up, for a message: the resolved path -- but only an
---- absolute one. The path is the variable's value joined with the rest of the
---- target, and a variable can hold anything: `[x]($API_TOKEN/a.md)` resolves to
---- `<the token>/a.md`, which is not a path and must not be shown. (Nor does the
---- document get to read a variable that is not a directory out of the editor.)
----@param path string
----@return string
-local function looked_up_at(path)
-  if path:find("^/") or path:find("^%a:/") then
-    return " (resolved to " .. quoted(path) .. ")"
-  end
-  return ""
-end
+local quoted, looked_up_at = links.quoted, links.looked_up_at
 
 ---@internal
 --- The problem with one env link, if it has one: a message and a code.
@@ -304,11 +284,13 @@ local function problem(resolved, target, indexes)
   -- keeps what it built for the next pull).
   local index = indexes[resolved.path]
   if index == nil then
-    if indexes.files >= M.MAX_INDEXED_FILES then
-      return nil, nil
+    -- Only a read and a parse costs: past the cap a file is answered from the
+    -- cache or not at all, and a cache hit is not charged.
+    local built, cached = links.heading_index(resolved.path, indexes.files >= M.MAX_INDEXED_FILES)
+    if built and not cached then
+      indexes.files = indexes.files + 1
     end
-    indexes.files = indexes.files + 1
-    index = links.heading_index(resolved.path) or false
+    index = built or false
     indexes[resolved.path] = index
   end
   if index and not links.heading_lookup(index, resolved.fragment) then
@@ -326,6 +308,7 @@ end
 ---@return table report # A full `DocumentDiagnosticReport`.
 function M.diagnostics(params)
   local items = {}
+  local failure ---@type string|nil
   local uri = params and params.textDocument and params.textDocument.uri
   local bufnr = type(uri) == "string" and loaded_buffer(uri) or nil
   if bufnr then
@@ -341,7 +324,9 @@ function M.diagnostics(params)
           return problem(resolved, link.target, indexes)
         end
       end)
-      if ok and message then
+      if not ok then
+        failure = failure or ("%s: %s"):format(quoted(link.target), tostring(message))
+      elseif message then
         local line = lines[link.lnum + 1]
         items[#items + 1] = {
           range = {
@@ -355,6 +340,11 @@ function M.diagnostics(params)
         }
       end
     end
+  end
+  if failure then
+    -- The links that failed are skipped, not hidden: the first error is in
+    -- `:LspLog`.
+    pcall(vim.lsp.log.error, M.NAME .. ": env link check failed: " .. failure)
   end
   return { kind = "full", items = items }
 end
@@ -546,7 +536,7 @@ function M.setup(opts)
     end
   end, {
     group = group,
-    pattern = { "*.md", "*.markdown", "*.mdx" },
+    -- No name pattern: `attach` decides by filetype, and so does the check above.
     desc = "lsp.nvim: pull env-link diagnostics when a loaded Markdown buffer is first shown",
   })
   -- A link's target can appear or go away without the document changing: a
