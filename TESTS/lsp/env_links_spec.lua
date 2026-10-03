@@ -674,6 +674,26 @@ describe("lsp.core.env_links", function()
       )
     end)
 
+    -- A block ends at a fence of its own kind and at least its own length.
+    it("keeps a block open past a fence of another kind or a shorter one", function()
+      assert.are.same(
+        { "$R/real.md" },
+        targets({
+          "~~~md",
+          "```",
+          "[a]($R/in-tilde-block.md)",
+          "```",
+          "~~~",
+          "````",
+          "```",
+          "[b]($R/in-long-block.md)",
+          "```",
+          "````",
+          "[c]($R/real.md)",
+        })
+      )
+    end)
+
     it("does not take a link in a code span for one", function()
       assert.are.same(
         { "$R/real.md" },
@@ -782,6 +802,12 @@ describe("lsp.core.env_links", function()
       local idx = index_of("```\n# nope\n```\n# yes\n")
       assert.is_nil(links.heading_lookup(idx, "nope"))
       assert.are.equal(3, links.heading_lookup(idx, "yes"))
+    end)
+
+    it("does not see a heading after a fence of another kind inside a block", function()
+      local idx = index_of("~~~md\n```\n# nope\n```\n~~~\n# yes\n")
+      assert.is_nil(links.heading_lookup(idx, "nope"))
+      assert.are.equal(5, links.heading_lookup(idx, "yes"))
     end)
 
     -- The file is whatever the link points at, up to MAX_READ_BYTES; every

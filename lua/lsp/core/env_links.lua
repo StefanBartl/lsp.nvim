@@ -557,12 +557,38 @@ function M.mask_code_spans(line)
   return table.concat(out)
 end
 
+---@class LspNvim.EnvLink.Fence
+---@field char string # "`" or "~".
+---@field len integer # How many of them opened the block.
+
 ---@internal
---- Whether `line` opens or closes a fenced code block.
+--- The state of fenced-code-block tracking after `line`, and whether the line
+--- is no document text: the fence line itself, or a line inside the block.
+---
+--- A block ends at a fence of the same character that is at least as long as
+--- the one that opened it (CommonMark), so a `~~~` block that shows a "```"
+--- example, or a four-backtick block around a three-backtick one, stays open
+--- until its own end. (A single on/off toggle closed both at the first inner
+--- fence, and the lines after it were read as document.)
+---@param fence LspNvim.EnvLink.Fence|nil # State before `line`; nil outside a block.
 ---@param line string
----@return boolean
-local function is_fence(line)
-  return line:match("^%s*```") ~= nil or line:match("^%s*~~~") ~= nil
+---@return LspNvim.EnvLink.Fence|nil fence
+---@return boolean skip
+local function fence_step(fence, line)
+  local char, run = "`", line:match("^%s*(```+)")
+  if not run then
+    char, run = "~", line:match("^%s*(~~~+)")
+  end
+  if not run then
+    return fence, fence ~= nil
+  end
+  if not fence then
+    return { char = char, len = #run }, true
+  end
+  if char == fence.char and #run >= fence.len then
+    return nil, true
+  end
+  return fence, true
 end
 
 --- Every env link (`$VAR/...`, `${VAR}/...`, `~/...`) in a buffer's lines
@@ -585,12 +611,12 @@ function M.scan(lines)
     end
   end
 
-  local in_fence = false
+  local fence ---@type LspNvim.EnvLink.Fence|nil
+  local skip ---@type boolean
   for k = from, #lines do
     local line = lines[k]
-    if is_fence(line) then
-      in_fence = not in_fence
-    elseif not in_fence and #line <= M.MAX_LINE_BYTES and line:find("[$~]") then
+    fence, skip = fence_step(fence, line)
+    if not skip and #line <= M.MAX_LINE_BYTES and line:find("[$~]") then
       for _, link in ipairs(M.links(M.mask_code_spans(line))) do
         if M.is_env_target(link.target) then
           found[#found + 1] =
@@ -888,12 +914,12 @@ function M.heading_index(path)
     end
   end
 
-  local in_fence = false
+  local fence ---@type LspNvim.EnvLink.Fence|nil
+  local skip ---@type boolean
   local n = 0
   for line in (content .. "\n"):gmatch("(.-)\r?\n") do
-    if is_fence(line) then
-      in_fence = not in_fence
-    elseif not in_fence then
+    fence, skip = fence_step(fence, line)
+    if not skip then
       local title = heading_title(line)
       if title then
         local text, id = split_custom_id(title)
