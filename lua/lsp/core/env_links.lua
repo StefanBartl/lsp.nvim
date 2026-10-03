@@ -203,6 +203,19 @@ end
 ---@class LspNvim.EnvLink.ResolveOpts
 ---@field stat? fun(path: string): boolean|nil # Whether `path` is on disk; nil = not looked at. Default: `fs_stat`.
 
+--- Whether `path` is a Windows network path (`//host/share`, `\\host\share`). Only
+--- there does a stat on a host that does not answer block for the OS connect
+--- timeout; on POSIX `//data` is an ordinary local path (the same as `/data`).
+---@param path string
+---@param win? boolean # Default: running on Windows (a spec passes it).
+---@return boolean
+function M.is_network_path(path, win)
+  if win == nil then
+    win = vim.fn.has("win32") == 1
+  end
+  return win and (path:find("^//[^/]") ~= nil or path:find("^\\\\") ~= nil)
+end
+
 ---@internal
 --- Whether `path` is on disk, by `fs_stat` -- but not for a network path
 --- (`//host/share`, `\\host\share`): a stat on one that does not answer blocks Neovim
@@ -213,7 +226,7 @@ end
 ---@param path string
 ---@return boolean|nil
 local function on_disk(path)
-  if path:find("^//") or path:find("^\\\\") then
+  if M.is_network_path(path) then
     return nil
   end
   return vim.uv.fs_stat(path) ~= nil
@@ -288,26 +301,37 @@ function M.quoted(text)
   return text
 end
 
---- A resolved path as it may be shown, or nil when it may not: only an absolute
---- one. The path is the variable's value joined with the rest of the target, and
---- a variable can hold anything: `[x]($API_TOKEN/a.md)` resolves to
---- `<the token>/a.md`, which is not a path and must not be put on the screen by a
---- document.
+--- A resolved path as it may be shown, or nil when it may not: an absolute one
+--- whose directory exists. The path is the variable's value joined with the rest
+--- of the target, and a variable can hold anything: `[x]($API_TOKEN/a.md)`
+--- resolves to `<the token>/a.md`, which is not a path and must not be put on the
+--- screen by a document. A secret is not a directory (and one that happens to
+--- start with a slash has no directory that exists), so it is not shown; a
+--- path to a file that is not there yet, in a folder that is, is.
 ---@param path string
+---@param stat? fun(path: string): boolean|nil # Whether a path is on disk (default: guarded `fs_stat`).
 ---@return string|nil
-function M.displayable_path(path)
-  if path:find("^/") or path:find("^%a:/") then
-    return M.quoted(path)
+function M.displayable_path(path, stat)
+  if not (path:find("^/") or path:find("^%a:/")) then
+    return nil
   end
-  return nil
+  local dir = path:match("^(.*)/[^/]*$")
+  if dir == nil or dir == "" or dir:find("^%a:$") then
+    dir = (dir or "") .. "/"
+  end
+  if not (stat or on_disk)(dir) then
+    return nil
+  end
+  return M.quoted(path)
 end
 
 --- Where a link was looked up, as the tail of a message: ` (resolved to <path>)`,
 --- or nothing when the path may not be shown (see `displayable_path`).
 ---@param path string
+---@param stat? fun(path: string): boolean|nil
 ---@return string
-function M.looked_up_at(path)
-  local shown = M.displayable_path(path)
+function M.looked_up_at(path, stat)
+  local shown = M.displayable_path(path, stat)
   return shown and (" (resolved to " .. shown .. ")") or ""
 end
 
@@ -693,12 +717,21 @@ end
 ---@return integer depth
 ---@return string rest
 local function unquote(line)
-  local prefix = line:match("^%s*>[%s>]*")
-  if not prefix then
+  -- One `>` and at most one blank after it, per level: what follows keeps its
+  -- own indentation (`>   [x]` is a continuation line of a list item).
+  local pos, depth = 1, 0
+  while true do
+    local _, e = line:find("^[ \t]*>[ \t]?", pos)
+    if not e then
+      break
+    end
+    depth = depth + 1
+    pos = e + 1
+  end
+  if depth == 0 then
     return 0, line
   end
-  local _, depth = prefix:gsub(">", "")
-  return depth, line:sub(#prefix + 1)
+  return depth, line:sub(pos)
 end
 
 ---@internal
@@ -777,14 +810,18 @@ end
 --- the paragraph above it: blank, heading, block quote, table row, list item,
 --- thematic break.
 ---@param line string
+---@param head? string # The first line of the paragraph the line would go on.
 ---@return boolean
-local function opens_block(line)
+local function opens_block(line, head)
   return line:find("^%s*$") ~= nil
     or line:find("^%s*[>|]") ~= nil
     or line:find("^%s*#+%s") ~= nil
     or line:find("^%s*#+$") ~= nil
     or line:find("^%s*[-*+]%s") ~= nil
-    or line:find("^%s*1[.)]%s") ~= nil -- another number cannot interrupt a paragraph
+    or line:find("^%s*1[.)]%s") ~= nil
+    -- Another number cannot interrupt a paragraph, but after a numbered item it
+    -- is the next item of the list.
+    or (head ~= nil and line:find("^%s*%d+[.)]%s") ~= nil and head:find("^%s*%d+[.)]%s") ~= nil)
     or line:find("^%s*[-*_=][-*_= ]*[-*_=][-*_= ]*[-*_=]") ~= nil
 end
 
@@ -856,7 +893,7 @@ function M.scan(lines)
     if skip or #line > M.MAX_LINE_BYTES then
       flush()
     else
-      if opens_block(line) or bytes + #line > M.MAX_LINE_BYTES then
+      if opens_block(line, para[1] and para[1].line) or bytes + #line > M.MAX_LINE_BYTES then
         flush()
       end
       if not line:find("^%s*$") then
@@ -1287,12 +1324,20 @@ local function rendered_title(title, keep_alt)
       end
       local auto = shown:match("^<(%a[%w+.-]*:[^%s<>]*)>", k)
         or shown:match("^<([%w._%%+-]+@[%w.-]+)>", k)
-      if auto then
+      if shown:sub(k, k + 3) == "<!--" then
+        local close = shown:find("-->", k + 4, true)
+        if not close then
+          break
+        end
+        out[#out + 1] = title:sub(piece, k - 1)
+        piece = close + 3
+        i = piece
+      elseif auto then
         out[#out + 1] = title:sub(piece, k - 1)
         out[#out + 1] = title:sub(k + 1, k + #auto)
         piece = k + #auto + 2
         i = piece
-      elseif shown:find("^/?%a", k + 1) then
+      elseif shown:find("^/?%a[%w:-]*[%s/>]", k + 1) then -- `<T, E>` is text, not a tag
         local close = shown:find(">", k, true)
         if not close then
           break
@@ -1460,7 +1505,7 @@ end
 
 --- The anchors of the Markdown file at `path`, each with the 0-based line it
 --- names: a heading's GitHub-style slug (ATX headings, also in block quotes and
---- list items; setext headings at the top level; a repeated heading `x` is `x`,
+--- list items; setext headings at the top level and in list items; a repeated heading `x` is `x`,
 --- `x-1`, `x-2`, ..., counted on the anchor GitHub ends up with), its
 --- `{#custom-id}`, and the `id`/`name` of an HTML anchor. Headings inside fenced code blocks and a YAML
 --- front matter are not headings.
@@ -1622,7 +1667,7 @@ function M.heading_index(path, only_cached)
       elseif title then
         index_title(title, n)
         para = {}
-      elseif opens_block(line) then
+      elseif opens_block(line, para[1]) then
         para = {}
       elseif #line <= M.MAX_HEADING_BYTES and #para < 8 then
         if #para == 0 then

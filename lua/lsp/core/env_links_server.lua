@@ -222,6 +222,18 @@ local STAT_BUDGET_NS = 50 * 1000 * 1000
 ---@type integer
 M.MAX_INDEXED_FILES = 32
 
+--- How many different files one pull looks at for a heading at all: a lookup
+--- costs a `realpath` and a `stat` even when the cache answers.
+---@type integer
+M.MAX_LOOKED_UP_FILES = 128
+
+--- Time one pull may spend building heading indexes, in nanoseconds. Past it a
+--- file is answered from the cache or not at all, until the next pull. (One build
+--- is up to about half a second for a 2 MB file; the cap on files alone let 32
+--- of them run in one synchronous pull.)
+---@type integer
+M.INDEX_BUDGET_NS = 250 * 1000 * 1000
+
 ---@internal
 --- A `stat` for `links.resolve` that looks at each path once per pull, spends at
 --- most `STAT_BUDGET_NS` in `fs_stat` itself (not on scanning or indexing), and
@@ -241,7 +253,7 @@ local function pull_stat()
     elseif known ~= nil then
       return known --[[@as boolean]]
     end
-    if path:find("^//") or path:find("^\\\\") or spent > STAT_BUDGET_NS then
+    if links.is_network_path(path) or spent > STAT_BUDGET_NS then
       seen[path] = "unknown"
       return nil
     end
@@ -253,7 +265,7 @@ local function pull_stat()
   end
 end
 
-local quoted, looked_up_at = links.quoted, links.looked_up_at
+local quoted = links.quoted
 
 ---@internal
 --- The problem with one env link, if it has one: a message and a code.
@@ -263,17 +275,18 @@ local quoted, looked_up_at = links.quoted, links.looked_up_at
 --- is not "broken".
 ---@param resolved LspNvim.EnvLink.Resolved
 ---@param target string
----@param indexes table # `{ files = integer }` and one index (or `false`) per path.
+---@param indexes table # `{ files, looked, spent }` and one index (or `false`) per path.
+---@param stat? fun(path: string): boolean|nil
 ---@return string|nil message
 ---@return string|nil code
-local function problem(resolved, target, indexes)
+local function problem(resolved, target, indexes, stat)
   if resolved.exists == nil then
     return nil, nil
   end
   if not resolved.exists then
     return ("Link to non-existent document '%s'%s"):format(
       quoted(target),
-      looked_up_at(resolved.path)
+      links.looked_up_at(resolved.path, stat)
     ),
       "missing-file"
   end
@@ -286,9 +299,16 @@ local function problem(resolved, target, indexes)
   if index == nil then
     -- Only a read and a parse costs: past the cap a file is answered from the
     -- cache or not at all, and a cache hit is not charged.
-    local built, cached = links.heading_index(resolved.path, indexes.files >= M.MAX_INDEXED_FILES)
+    if indexes.looked >= M.MAX_LOOKED_UP_FILES then
+      return nil, nil -- cannot tell
+    end
+    indexes.looked = indexes.looked + 1
+    local over = indexes.files >= M.MAX_INDEXED_FILES or indexes.spent > M.INDEX_BUDGET_NS
+    local t0 = vim.uv.hrtime()
+    local built, cached = links.heading_index(resolved.path, over)
     if built and not cached then
       indexes.files = indexes.files + 1
+      indexes.spent = indexes.spent + (vim.uv.hrtime() - t0)
     end
     index = built or false
     indexes[resolved.path] = index
@@ -313,7 +333,7 @@ function M.diagnostics(params)
   local bufnr = type(uri) == "string" and loaded_buffer(uri) or nil
   if bufnr then
     local lines = api.nvim_buf_get_lines(bufnr, 0, -1, false)
-    local indexes = { files = 0 }
+    local indexes = { files = 0, looked = 0, spent = 0 }
     local opts = { stat = pull_stat() }
     for _, link in ipairs(links.scan(lines)) do
       -- One link that makes the code raise must not take the report of every
@@ -321,7 +341,7 @@ function M.diagnostics(params)
       local ok, message, code = pcall(function()
         local resolved = links.resolve(link.target, opts)
         if resolved then
-          return problem(resolved, link.target, indexes)
+          return problem(resolved, link.target, indexes, opts.stat)
         end
       end)
       if not ok then
