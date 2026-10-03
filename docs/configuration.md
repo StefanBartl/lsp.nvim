@@ -615,8 +615,10 @@ hid that, and every genuinely broken link along with it.
   a repeated heading numbered (`#same`, `#same-1`), the text of a link in a
   heading (`## [1.2.0](url)` is `#120`), `{#custom-id}`, HTML `id`/`name`
   anchors, and a heading's emoji dropped (`## 🚀 Features` is `#-features`).
-  Links inside fenced code blocks, code spans and a YAML front matter are not
-  links and are not reported. Diagnostics follow the document as it is edited,
+  Links inside fenced code blocks (followed the CommonMark way: by character and
+  length, in block quotes and behind list markers), code spans (also ones that
+  wrap over a line break) and a YAML front matter are not links and are not
+  reported. A link cannot contain a link: in `[A [B](x) C](y)` only `x` is one. Diagnostics follow the document as it is edited,
   and are re-checked when any file is written or Neovim regains focus, so a
   target that is created later clears its warning.
 

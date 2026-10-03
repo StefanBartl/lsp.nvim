@@ -345,7 +345,12 @@ local function parse_target(line, i)
     end
     j = k + 1
   end
-  if j == i or j - i > M.MAX_TARGET_BYTES then
+  if j == i then
+    -- Empty or blank-led target (`[x]()`, `[x]( p)`, a trailing `[x](`): found
+    -- by the first `find`, so it costs one byte, not a whole target.
+    return nil, i - 1
+  end
+  if j - i > M.MAX_TARGET_BYTES then
     return nil, nil
   end
   return line:sub(i, j - 1), line:find(")", j, true) or (j - 1)
@@ -383,6 +388,117 @@ local function ref_definition(line)
   return ref, first, last
 end
 
+---@class LspNvim.EnvLink.Span
+---@field target string # As written, `#fragment` included, `<>` not.
+---@field first integer # 1-based byte of the target's first character.
+---@field last integer # 1-based byte of its last character.
+
+---@class LspNvim.EnvLink.Found : LspNvim.EnvLink.Span
+---@field lnum integer # 0-based line.
+
+--- Bytes of link targets `links` examines in one line, summed over its links.
+---@type integer
+local LINKS_SCAN_BUDGET = 2 * M.MAX_LINE_BYTES
+
+--- Most env links `scan` returns for one buffer. Above this a buffer is a
+--- generated file, not a note, and the answer would not be read anyway.
+---@type integer
+M.MAX_SCANNED_LINKS = 2000
+
+---@internal
+--- The inline links of one line, found in one left-to-right pass over its
+--- brackets -- the one rule set `target_at` and `links` both go by.
+---
+--- A stack holds the `[` not yet closed, and a `]` closes the innermost. A `](`
+--- right after it makes an inline link whose text starts there. The text may
+--- hold balanced brackets and an image (the badge pattern,
+--- `[![alt](img)](target)`), and a backslash escapes the byte after it (`\]`).
+--- Inner links are completed, and so found, before the ones around them.
+---
+--- A link cannot contain a link (CommonMark): once one is formed, the `[` still
+--- open around it are dead and their `](` is text -- except an image's, whose
+--- description may hold a link. `dead` is how many of the lowest stack entries
+--- that is true for, so it costs nothing per bracket.
+---
+--- With `col` (column mode) it returns the target of the link that holds the
+--- byte column `col`, and skips the targets that cannot reach it: a link that
+--- starts past `col`, or whose target starts more than a target's length before
+--- it, is not parsed -- unless a `[` is open around it, because whether it
+--- forms decides whether that one is dead. Without `col`, it appends every
+--- link to `found`.
+---
+--- The target bytes examined are budgeted (`TARGET_SCAN_BUDGET`,
+--- `LINKS_SCAN_BUDGET`): nesting lets one hostile line make thousands of `](`
+--- each parse a target that runs to the limit (273 ms measured, 10000 `[` and
+--- 5000 `](`). A link that fails to parse is charged what the parse cost: the
+--- limit for one that ran on, a byte for an empty target.
+---@param line string
+---@param col integer|nil
+---@param found LspNvim.EnvLink.Span[]|nil
+---@return string|nil target # Column mode only.
+local function walk(line, col, found)
+  local opens, imgs, n = {}, {}, 0 ---@type integer[], boolean[], integer
+  local dead, escaped = 0, 0 -- `escaped`: the byte the last backslash escaped
+  local budget = col and TARGET_SCAN_BUDGET or LINKS_SCAN_BUDGET
+  local pos = 1
+  while true do
+    local i = line:find("[%[%]\\]", pos)
+    if not i then
+      break
+    end
+    local c = line:byte(i)
+    pos = i + 1
+    if c == 92 then -- "\": the next byte is text
+      pos = i + 2
+      escaped = i + 1
+    elseif c == 91 then -- "["
+      n = n + 1
+      opens[n] = i
+      imgs[n] = i > 1 and line:byte(i - 1) == 33 and escaped ~= i - 1 -- an unescaped "!"
+    elseif n > 0 then -- "]"
+      local open, img = opens[n], imgs[n]
+      local live = img or n > dead
+      n = n - 1
+      if dead > n then
+        dead = n
+      end
+      if live and line:byte(i + 1) == 40 then -- "]("
+        local reaches = true
+        if col then
+          -- Counting the `>` and `)` that close a `<...>` target as part of
+          -- the link.
+          reaches = open <= col and i + 4 + M.MAX_TARGET_BYTES >= col
+        end
+        if reaches or n > 0 then
+          local target, close = parse_target(line, i + 2)
+          if target and close then
+            if col == nil then
+              local first = i + 2 + (line:byte(i + 2) == 60 and 1 or 0)
+              found[#found + 1] = { target = target, first = first, last = first + #target - 1 }
+            elseif reaches and col <= close then
+              return target
+            end
+            if not img then
+              dead = n
+            end
+          end
+          budget = budget - (close and (close - i) or M.MAX_TARGET_BYTES)
+          if budget < 0 then
+            break
+          end
+        end
+        -- Links come left to right, but an enclosing one is only completed
+        -- after the inner ones: nothing further right can hold `col` once
+        -- this one starts past it AND no `[` still open starts before it.
+        if col and open > col and (n == 0 or opens[1] > col) then
+          break
+        end
+      end
+    end
+  end
+  return nil
+end
+
 --- The link target of the Markdown link the byte column `col` (1-based) is
 --- on: anywhere in `[text](target)` / `![alt](target)`, or anywhere on a
 --- reference definition line `[label]: target`.
@@ -404,62 +520,9 @@ function M.target_at(line, col)
     return nil
   end
 
-  -- One pass over the brackets, with a stack of the `[` not yet closed: a `]`
-  -- closes the innermost one, and a `](` right after it makes an inline link
-  -- whose text starts there. The text may hold balanced brackets -- an image
-  -- inside a link, `[![badge](img)](target)`, is the common case -- and a
-  -- backslash escapes the byte after it (`\]`). Inner links are completed, and
-  -- so answered, before the ones around them. (`%[[^%]]*%]%(` did the same job
-  -- for flat text, but re-scanned to the end of the line from every `[`.)
-  local opens, n = {}, 0 ---@type integer[], integer
-  local budget = TARGET_SCAN_BUDGET
-  local pos = 1
-  while true do
-    local i = line:find("[%[%]\\]", pos)
-    if not i then
-      break
-    end
-    local c = line:byte(i)
-    if c == 92 then -- "\": the next byte is text, whatever it is
-      pos = i + 2
-    elseif c == 91 then -- "["
-      n = n + 1
-      opens[n] = i
-      pos = i + 1
-    else -- "]"
-      pos = i + 1
-      if n > 0 then
-        local open = opens[n]
-        opens[n] = nil
-        n = n - 1
-        if line:byte(i + 1) == 40 then -- "]("
-          -- A link that starts past `col` cannot hold it; and one whose target
-          -- starts more than a target's length before `col` cannot reach it --
-          -- counting the `>` and `)` that close a `<...>` target as part of the
-          -- link. Neither is parsed: that bounds the work per link.
-          if open <= col and i + 4 + M.MAX_TARGET_BYTES >= col then
-            local target, close = parse_target(line, i + 2)
-            if target and close and col <= close then
-              return target
-            end
-            -- With nesting, one hostile line can make thousands of `](` each
-            -- close a `[` that reaches `col`, and each of those parses a target
-            -- that runs to the limit (measured: 273 ms for 10000 `[` then
-            -- 5000 `](`). A real link costs its own length; this stops the sum.
-            budget = budget - (close and (close - i) or M.MAX_TARGET_BYTES)
-            if budget < 0 then
-              break
-            end
-          end
-          -- Links come left to right, but an enclosing one is only completed
-          -- after the inner ones: nothing further right can hold `col` once
-          -- this one starts past it AND no `[` still open starts before it.
-          if open > col and (n == 0 or opens[1] > col) then
-            break
-          end
-        end
-      end
-    end
+  local target = walk(line, col, nil)
+  if target then
+    return target
   end
 
   -- A reference definition is a link too, and answers from any column of its
@@ -470,23 +533,6 @@ end
 -- ----------------------------------------------------------------------------
 -- Every link in a buffer
 -- ----------------------------------------------------------------------------
-
----@class LspNvim.EnvLink.Span
----@field target string # As written, `#fragment` included, `<>` not.
----@field first integer # 1-based byte of the target's first character.
----@field last integer # 1-based byte of its last character.
-
----@class LspNvim.EnvLink.Found : LspNvim.EnvLink.Span
----@field lnum integer # 0-based line.
-
---- Bytes of link targets `links` examines in one line, summed over its links.
----@type integer
-local LINKS_SCAN_BUDGET = 2 * M.MAX_LINE_BYTES
-
---- Most env links `scan` returns for one buffer. Above this a buffer is a
---- generated file, not a note, and the answer would not be read anyway.
----@type integer
-M.MAX_SCANNED_LINKS = 2000
 
 --- Every link on one line: `[text](target)`, `![alt](target)`, and a reference
 --- definition `[label]: target`, with the span of each target. The same bracket
@@ -499,35 +545,7 @@ function M.links(line)
     return found
   end
 
-  local n = 0 -- how many `[` are open: a `]` closes the innermost one
-  local budget = LINKS_SCAN_BUDGET
-  local pos = 1
-  while true do
-    local i = line:find("[%[%]\\]", pos)
-    if not i then
-      break
-    end
-    local c = line:byte(i)
-    pos = i + 1
-    if c == 92 then -- "\": the next byte is text
-      pos = i + 2
-    elseif c == 91 then -- "["
-      n = n + 1
-    elseif n > 0 then -- "]"
-      n = n - 1
-      if line:byte(i + 1) == 40 then -- "]("
-        local target, close = parse_target(line, i + 2)
-        if target and close then
-          local first = i + 2 + (line:byte(i + 2) == 60 and 1 or 0)
-          found[#found + 1] = { target = target, first = first, last = first + #target - 1 }
-        end
-        budget = budget - (close and (close - i) or M.MAX_TARGET_BYTES)
-        if budget < 0 then
-          break
-        end
-      end
-    end
-  end
+  walk(line, nil, found)
 
   local ref, first, last = ref_definition(line)
   if ref and first and last then
@@ -536,100 +554,162 @@ function M.links(line)
   return found
 end
 
---- `line` with the inside of every code span (`` `x` ``, ``` ``x`` ```) blanked
+--- `text` with the inside of every code span (`` `x` ``, ``` ``x`` ```) blanked
 --- out, byte for byte, so columns still line up. A span ends at the next run of
 --- exactly as many backticks; a run with none stays text, as in CommonMark.
+---
+--- A backslash escapes a backtick only outside a span: an odd number of them
+--- right before a run makes it open with one backtick less, and a run that ends
+--- a span counts in full (`C:\` is a span that ends in a backslash).
 ---
 --- Linear: the runs are matched from the right in one pass instead of searching
 --- ahead from each opener, which a line of backticks of a hundred different
 --- lengths would turn quadratic.
----@param line string
+---@param text string
 ---@return string
-function M.mask_code_spans(line)
-  if not line:find("`", 1, true) then
-    return line
+function M.mask_code_spans(text)
+  if not text:find("`", 1, true) then
+    return text
   end
 
-  local starts, stops = {}, {}
+  local starts, stops, escaped = {}, {}, {}
   local pos = 1
   while true do
-    local s, e = line:find("`+", pos)
+    local s, e = text:find("`+", pos)
     if not s then
       break
     end
-    if s > 1 and line:byte(s - 1) == 92 then -- an escaped backtick opens nothing
-      s = s + 1
+    local b = s - 1 -- an odd number of backslashes right before the run
+    while b >= 1 and text:byte(b) == 92 do
+      b = b - 1
     end
-    if s <= e then
-      starts[#starts + 1] = s
-      stops[#stops + 1] = e
-    end
+    starts[#starts + 1], stops[#stops + 1] = s, e
+    escaped[#escaped + 1] = (s - 1 - b) % 2 == 1
     pos = e + 1
   end
 
-  local next_same = {}
-  local latest = {} ---@type table<integer, integer>
+  local next_same, next_less, latest = {}, {}, {} ---@type table<integer, integer>, table<integer, integer>, table<integer, integer>
   for k = #starts, 1, -1 do
-    local len = stops[k] - starts[k]
+    local len = stops[k] - starts[k] + 1
     next_same[k] = latest[len]
+    next_less[k] = latest[len - 1]
     latest[len] = k
   end
 
-  local out, from = {}, 1
-  local k = 1
+  local out, from, k = {}, 1, 1
   while k <= #starts do
-    local close = next_same[k]
-    if close then
-      out[#out + 1] = line:sub(from, starts[k] - 1)
-      out[#out + 1] = (" "):rep(stops[close] - starts[k] + 1)
+    local first = starts[k]
+    local close ---@type integer|nil
+    if escaped[k] then
+      first = first + 1 -- the escaped backtick is text, the rest of the run opens
+      close = next_less[k]
+    else
+      close = next_same[k]
+    end
+    if close and first <= stops[k] then
+      out[#out + 1] = text:sub(from, first - 1)
+      out[#out + 1] = (" "):rep(stops[close] - first + 1)
       from = stops[close] + 1
       k = close + 1
     else
       k = k + 1
     end
   end
-  out[#out + 1] = line:sub(from)
+  out[#out + 1] = text:sub(from)
   return table.concat(out)
 end
 
 ---@class LspNvim.EnvLink.Fence
 ---@field char string # "`" or "~".
 ---@field len integer # How many of them opened the block.
+---@field quote integer # Block quote depth the block was opened at.
+
+---@internal
+--- The block quote depth of `line` (how many `>`), and the line without them.
+---@param line string
+---@return integer depth
+---@return string rest
+local function unquote(line)
+  local prefix = line:match("^%s*>[%s>]*")
+  if not prefix then
+    return 0, line
+  end
+  local _, depth = prefix:gsub(">", "")
+  return depth, line:sub(#prefix + 1)
+end
 
 ---@internal
 --- The state of fenced-code-block tracking after `line`, and whether the line
 --- is no document text: the fence line itself, or a line inside the block.
 ---
---- A block ends at a fence of the same character that is at least as long as
---- the one that opened it (CommonMark), so a `~~~` block that shows a "```"
---- example, or a four-backtick block around a three-backtick one, stays open
---- until its own end. (A single on/off toggle closed both at the first inner
---- fence, and the lines after it were read as document.)
+--- CommonMark's rules, as far as a line-by-line pass can follow them:
+---   * a block ends at a fence of the same character at least as long as the
+---     opener, followed by nothing but blanks (so a "```js" inside a block is
+---     content, not its end);
+---   * the info string of a backtick fence holds no backtick (a line that
+---     starts with "```x``` is inline code" is a paragraph, not an opener);
+---   * a fence may open behind a list marker (`- ```md`), and inside a block
+---     quote (`> ```md`), where it ends with the quote.
+--- (A single on/off toggle closed a `~~~` block at the first inner "```" line
+--- and a four-backtick block at an inner three-backtick one, and the lines
+--- after it were read as document; one such slip inverted the rest of the file.)
 ---@param fence LspNvim.EnvLink.Fence|nil # State before `line`; nil outside a block.
 ---@param line string
 ---@return LspNvim.EnvLink.Fence|nil fence
 ---@return boolean skip
 local function fence_step(fence, line)
-  local char, run = "`", line:match("^%s*(```+)")
+  local quote, rest = unquote(line)
+  if fence and quote < fence.quote then
+    fence = nil -- the block quote that held the block ended, and the block with it
+  end
+  if not fence then
+    local item = rest:match("^%s*[-*+]%s+()") or rest:match("^%s*%d+[.)]%s+()")
+    if item then
+      rest = rest:sub(item)
+    end
+  end
+
+  local char, run, info = "`", rest:match("^%s*(```+)([^`]*)$")
   if not run then
-    char, run = "~", line:match("^%s*(~~~+)")
+    char, run, info = "~", rest:match("^%s*(~~~+)(.*)$")
   end
   if not run then
     return fence, fence ~= nil
   end
   if not fence then
-    return { char = char, len = #run }, true
+    return { char = char, len = #run, quote = quote }, true
   end
-  if char == fence.char and #run >= fence.len then
+  if char == fence.char and #run >= fence.len and info:match("^%s*$") then
     return nil, true
   end
   return fence, true
+end
+
+---@internal
+--- Does `line` start a block of its own (or is it blank)? Then it cannot go on
+--- the paragraph above it: blank, heading, block quote, table row, list item,
+--- thematic break.
+---@param line string
+---@return boolean
+local function opens_block(line)
+  return line:find("^%s*$") ~= nil
+    or line:find("^%s*[#>|]") ~= nil
+    or line:find("^%s*[-*+]%s") ~= nil
+    or line:find("^%s*%d+[.)]%s") ~= nil
+    or line:find("^%s*[-*_=][-*_= ]*[-*_=][-*_= ]*[-*_=]") ~= nil
 end
 
 --- Every env link (`$VAR/...`, `${VAR}/...`, `~/...`) in a buffer's lines
 --- that is a link in the Markdown sense: not inside a fenced code block or a
 --- code span, not in a YAML front matter. Documentation that *shows* a link
 --- must not be told its example is broken.
+---
+--- Code spans are found per paragraph, not per line: a span may wrap over a
+--- line break (hard-wrapped prose does exactly that), and read line by line
+--- the closing backtick would pair with the next one on its line, and the
+--- link between them would be missed or an example in the next span exposed.
+--- A paragraph ends at a blank line, a fence, or a line that opens a block of
+--- its own (`opens_block`), and is cut at `MAX_LINE_BYTES`.
 ---@param lines string[]
 ---@return LspNvim.EnvLink.Found[]
 function M.scan(lines)
@@ -646,23 +726,61 @@ function M.scan(lines)
     end
   end
 
+  local para, bytes = {}, 0 ---@type { lnum: integer, line: string }[], integer
+
+  --- Look for env links in the paragraph collected so far.
+  ---@return nil
+  local function flush()
+    if #para == 0 then
+      return
+    end
+    local texts = {}
+    for i, entry in ipairs(para) do
+      texts[i] = entry.line
+    end
+    local masked = M.mask_code_spans(table.concat(texts, "\n"))
+    -- Cut by offset, not by splitting on "\n": a span that wraps blanks the
+    -- line break inside it too.
+    local off = 1
+    for _, entry in ipairs(para) do
+      local text = masked:sub(off, off + #entry.line - 1)
+      off = off + #entry.line + 1
+      if text:find("[$~]") then
+        for _, link in ipairs(M.links(text)) do
+          if M.is_env_target(link.target) and #found < M.MAX_SCANNED_LINKS then
+            found[#found + 1] =
+              { lnum = entry.lnum, target = link.target, first = link.first, last = link.last }
+          end
+        end
+      end
+    end
+    para, bytes = {}, 0
+  end
+
   local fence ---@type LspNvim.EnvLink.Fence|nil
   local skip ---@type boolean
   for k = from, #lines do
     local line = lines[k]
     fence, skip = fence_step(fence, line)
-    if not skip and #line <= M.MAX_LINE_BYTES and line:find("[$~]") then
-      for _, link in ipairs(M.links(M.mask_code_spans(line))) do
-        if M.is_env_target(link.target) then
-          found[#found + 1] =
-            { lnum = k - 1, target = link.target, first = link.first, last = link.last }
-          if #found >= M.MAX_SCANNED_LINKS then
-            return found
-          end
-        end
+    if skip or #line > M.MAX_LINE_BYTES then
+      flush()
+    else
+      if opens_block(line) or bytes + #line > M.MAX_LINE_BYTES then
+        flush()
+      end
+      if not line:find("^%s*$") then
+        para[#para + 1] = { lnum = k - 1, line = line }
+        bytes = bytes + #line + 1
+      end
+      if line:find("^%s*[#|]") then
+        flush() -- a heading or a table row is a block of one line
       end
     end
+    if #found >= M.MAX_SCANNED_LINKS then
+      return found
+    end
   end
+  flush()
   return found
 end
 
