@@ -621,7 +621,8 @@ hid that, and every genuinely broken link along with it.
   GitHub spelling with the braces), HTML `id`/`name` anchors, and a heading's
   emoji dropped (`## 🚀 Features` is `#-features`); a trailing image or tag
   keeps its hyphen (`#title-`). ATX headings count, also in block quotes and
-  list items; setext headings at the top level; none in a front matter or a
+  list items; setext headings at the top level and in list items; none in a
+  front matter or a
   fenced block. A few extra lenient spellings exist; they can only make a link
   resolve that GitHub would not.
   Links inside fenced code blocks (followed the CommonMark way: by character and
@@ -632,17 +633,28 @@ hid that, and every genuinely broken link along with it.
   target that is created later clears its warning.
 
   The message names the path a link was looked up at only when that path is
-  absolute: a variable can hold anything (`$API_TOKEN/a.md` resolves to
+  absolute and its directory exists: a variable can hold anything (`$API_TOKEN/a.md` resolves to
   `<the token>/a.md`), and a document must not be able to put such a value on
   the screen -- not in a diagnostic, not in marksman's annotated message, not
-  in a hover. Network paths (`//host/share/...`) are not looked at anywhere
+  in a hover. Windows network paths (`//host/share/...`) are not looked at anywhere
   (diagnostics, hover, definition, the marksman filter): a stat on one that
   does not answer blocks Neovim for the OS timeout, and the hover says "not
-  checked". One pull spends at most about 50 ms in `fs_stat` itself, and builds
-  the heading index of at most 32 different files (a cache hit is not charged);
+  checked". One pull spends at most about 50 ms in `fs_stat` itself, about 250 ms
+  building heading indexes (at most 32 files), and looks at 128 different files;
   links it did not get to are left alone until the next pull. The heading index
   of a target file is cached (64 files, by real path, validated by size and
   modification time) between pulls.
+- **Definition and hover.** A small in-process client, `lsp.nvim-envlinks`
+  (the same shape as the gitsigns one, attached to Markdown buffers), answers
+  `textDocument/definition` -- the file, at the heading when the target carries
+  a `#fragment` -- and `textDocument/hover`: where the link leads, whether it is
+  there ("not checked" for a network path), and -- for Markdown and text files
+  up to 2 MB only -- the top of the file. Nothing else is ever quoted:
+  `[x]($HOME/.ssh/id_rsa)` in a document resolves and jumps, but the hover shows
+  the path, never the content. Every feature that asks the language servers
+  about a position (`gd`, the peek float, `K`) merges the answers of all
+  clients, so all of them work with no per-feature wiring. It answers `nil`
+  everywhere else, so for ordinary links marksman's answer stands alone.
 
 Resolution goes to **gopath.nvim first** when it is installed and has
 `resolve_text` (its public text API): it owns the variable rules -- `$VAR`,

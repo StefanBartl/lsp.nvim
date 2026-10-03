@@ -1185,13 +1185,14 @@ describe("lsp.core.env_links", function()
       assert.are.same({}, stats)
     end)
 
-    it("shows a path only when it is an absolute one", function()
-      assert.are.equal("C:/a/b.md", links.displayable_path("C:/a/b.md"))
-      assert.are.equal("/home/a/b.md", links.displayable_path("/home/a/b.md"))
+    it("shows an absolute path, quoted, and only that", function()
+      assert.are.equal(root .. "/a.md", links.displayable_path(root .. "/a.md"))
       assert.is_nil(links.displayable_path("sk-secret-token/a.md"))
       assert.are.equal("", links.looked_up_at("sk-secret-token/a.md"))
-      assert.are.equal(" (resolved to /x/y.md)", links.looked_up_at("/x/y.md"))
-      assert.are.equal("/x/y?md", links.displayable_path("/x/y" .. string.char(27) .. "md"))
+      assert.are.equal(
+        (root .. "/y?md"),
+        links.displayable_path(root .. "/y" .. string.char(27) .. "md")
+      )
     end)
   end)
 
@@ -1292,6 +1293,99 @@ describe("lsp.core.env_links", function()
     it("does not let a fence line in a front matter hide the headings after it", function()
       assert.are.equal(4, at(index_of("---\nsnippet: |\n  ```sh\n---\n# After\n"), "after"))
       assert.are.equal(4, at(index_of("---\nsnippet: |\n  ~~~\n---\n# After\n"), "after"))
+    end)
+  end)
+
+  -- Fourth round: what the review of the second fixes found.
+  describe("scanner and paths: after the third review", function()
+    ---@param lines string[]
+    ---@return string[]
+    local function scanned(lines)
+      local out = {}
+      for _, l in ipairs(links.scan(lines)) do
+        out[#out + 1] = l.target
+      end
+      return out
+    end
+
+    -- The quote prefix used to swallow the indentation of a list item's
+    -- continuation lines, so the item "ended" at its first content line.
+    it("keeps a list-item fence inside a block quote open until the item ends", function()
+      assert.are.same(
+        { "$A/after.md", "$A/out.md" },
+        scanned({
+          "> - ```md",
+          ">   [in]($A/in.md)",
+          ">   ```",
+          "> [after]($A/after.md)",
+          "",
+          "[out]($A/out.md)",
+        })
+      )
+    end)
+
+    it("ends a list-item fence in a block quote at the item's dedent", function()
+      assert.are.same(
+        { "$A/next.md" },
+        scanned({ "> - ```md", ">   [in]($A/in.md)", "> - next", "> [x]($A/next.md)" })
+      )
+    end)
+
+    it("keeps the headings after a list-item fence in a block quote", function()
+      write_file(root .. "/ql.md", "> - ```md\n>   # nope\n>   ```\n> # Inside quote\n# Real\n")
+      links.clear_cache()
+      local idx = assert(links.heading_index(root .. "/ql.md"))
+      assert.is_nil(links.heading_lookup(idx, "nope"))
+      assert.are.equal(3, links.heading_lookup(idx, "inside-quote"))
+      assert.are.equal(4, links.heading_lookup(idx, "real"))
+    end)
+
+    -- Another number does not interrupt a paragraph, but after a numbered item it
+    -- is the next item of the list.
+    it("splits the items of a numbered list, and still not a plain paragraph", function()
+      assert.are.same({ "$A/x.md" }, scanned({ "1. press `", "2. [x]($A/x.md) and `y` ok" }))
+      assert.are.same({}, scanned({ "1. a `", "2. use `[x]($A/x.md)` here" }))
+      assert.are.same({}, scanned({ "the syntax is `[x]($A/ex.md)", "2. more` text" }))
+    end)
+
+    it("takes a double slash for a network path on Windows only", function()
+      assert.is_true(links.is_network_path("//h/s/a.md", true))
+      assert.is_false(links.is_network_path("//h/s/a.md", false))
+      assert.is_true(
+        links.is_network_path(string.rep(string.char(92), 2) .. "h" .. string.char(92) .. "s", true)
+      )
+      assert.is_false(links.is_network_path(string.rep(string.char(92), 2) .. "h", false))
+      assert.is_false(links.is_network_path("C:/x", true))
+      assert.is_false(links.is_network_path("///x", true))
+    end)
+
+    it("shows a path only when its directory exists", function()
+      assert.are.equal(root .. "/gone.md", links.displayable_path(root .. "/gone.md"))
+      assert.is_nil(links.displayable_path(root .. "/no/such/dir/gone.md"))
+      -- a value that starts with a slash is still no path
+      assert.is_nil(links.displayable_path("/9f2Kx+Qm7vT3rLw8aZpYc0Hn5bUeDg1J/a.md"))
+      assert.are.equal("", links.looked_up_at("/9f2Kx+Qm7vT3rLw8aZpYc0Hn5bUeDg1J/a.md"))
+      assert.is_truthy(links.looked_up_at(root .. "/gone.md"):find(root, 1, true))
+    end)
+
+    it("takes a tag name to end at a blank, a slash or a `>`", function()
+      write_file(
+        root .. "/t.md",
+        "## Result<T, E> type\n## K<K,V> map\n## Use <kbd>Ctrl</kbd> keys\n"
+      )
+      links.clear_cache()
+      local idx = assert(links.heading_index(root .. "/t.md"))
+      assert.are.equal(0, links.heading_lookup(idx, "resultt-e-type"))
+      assert.are.equal(1, links.heading_lookup(idx, "kkv-map"))
+      assert.are.equal(2, links.heading_lookup(idx, "use-ctrl-keys"))
+    end)
+
+    it("renders an HTML comment in a heading away", function()
+      write_file(root .. "/c.md", "## Title <!-- omit in toc -->\n## Other <!-- never closed\n")
+      links.clear_cache()
+      local idx = assert(links.heading_index(root .. "/c.md"))
+      assert.are.equal(0, links.heading_lookup(idx, "title-"))
+      assert.are.equal(0, links.heading_lookup(idx, "title"))
     end)
   end)
 
@@ -2355,6 +2449,36 @@ describe("lsp.core.env_links_server", function()
       assert.are.equal(1, #items)
       assert.is_nil(items[1].message:find(tab, 1, true))
       assert.is_true(#items[1].message < 400, #items[1].message)
+    end)
+
+    it("spends only so much time on building heading indexes in one pull", function()
+      local saved = server.INDEX_BUDGET_NS
+      server.INDEX_BUDGET_NS = 0 -- the first build uses it up
+      local lines = {}
+      for i = 1, 4 do
+        write_file(("%s/bud%d.md"):format(root, i), "# Only\n")
+        lines[#lines + 1] = ("[l]($LSPTEST_ENV_ROOT/bud%d.md#nope)"):format(i)
+      end
+      local text = table.concat(lines, "\n") .. "\n"
+      local first = items_of(text)
+      local second = items_of(text)
+      server.INDEX_BUDGET_NS = saved
+      assert.are.equal(1, #first)
+      -- the next pull answers the first from the cache and builds the next one
+      assert.are.equal(2, #second)
+    end)
+
+    it("looks at only so many different files in one pull", function()
+      local saved = server.MAX_LOOKED_UP_FILES
+      server.MAX_LOOKED_UP_FILES = 3
+      local lines = {}
+      for i = 1, 8 do
+        write_file(("%s/look%d.md"):format(root, i), "# Only\n")
+        lines[#lines + 1] = ("[l]($LSPTEST_ENV_ROOT/look%d.md#nope)"):format(i)
+      end
+      local items = items_of(table.concat(lines, "\n") .. "\n")
+      server.MAX_LOOKED_UP_FILES = saved
+      assert.are.equal(3, #items)
     end)
 
     it("does not look at a network path", function()
