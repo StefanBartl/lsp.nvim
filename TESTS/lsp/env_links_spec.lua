@@ -1195,6 +1195,106 @@ describe("lsp.core.env_links", function()
     end)
   end)
 
+  -- What the review of the anchor rework found.
+  describe("heading_index: after the review of the rework", function()
+    ---@param text string
+    ---@return table<string, integer>
+    local function index_of(text)
+      write_file(root .. "/g2.md", text)
+      links.clear_cache()
+      return assert(links.heading_index(root .. "/g2.md"))
+    end
+
+    local function at(idx, fragment)
+      return links.heading_lookup(idx, fragment)
+    end
+
+    it("keeps an underscore inside a word, drops those of emphasis, in linear time", function()
+      local idx = index_of("## snake__case here\n## a _b_ c\n## x_ y\n")
+      assert.are.equal(0, at(idx, "snake__case-here"))
+      assert.are.equal(1, at(idx, "a-b-c"))
+      assert.are.equal(2, at(idx, "x-y"))
+      assert.are.equal(2, at(idx, "x_-y")) -- the lenient spelling stays known
+      for _, shape in ipairs({
+        ("_"):rep(1990),
+        "a" .. ("_"):rep(1990) .. "b",
+        ("a_"):rep(995),
+        ("_a"):rep(995),
+      }) do
+        local line = "## " .. shape
+        write_file(root .. "/u.md", (line .. "\n"):rep(100))
+        local ms = best_ms(function()
+          links.clear_cache()
+          links.heading_index(root .. "/u.md")
+        end, 3)
+        assert.is_true(ms < 400, ("%.0f ms on %q"):format(ms, shape:sub(1, 6)))
+      end
+    end)
+
+    it("leaves a character reference in a code span as it is", function()
+      local idx =
+        index_of("## Entities: `&lt;` and `&gt;`\n## `a &amp; b`\n## `&amp;` &amp; x\n## Q&amp;A\n")
+      assert.are.equal(0, at(idx, "entities-lt-and-gt"))
+      assert.are.equal(1, at(idx, "a-amp-b"))
+      assert.are.equal(2, at(idx, "amp--x"))
+      assert.are.equal(3, at(idx, "qa"))
+    end)
+
+    it("knows more of the named references", function()
+      local idx =
+        index_of("## Setup &mdash; Linux\n## Product&trade; Overview\n## &Uuml;bersicht\n")
+      assert.are.equal(0, at(idx, "setup--linux"))
+      assert.are.equal(1, at(idx, "product-overview"))
+      assert.are.equal(2, at(idx, "übersicht"))
+    end)
+
+    it("keeps the hyphen GitHub keeps for a trailing image, badge or tag", function()
+      local idx =
+        index_of('## Title <img src="x">\n# Proj ![build](b.svg)\n## Title ![b](x.svg)\n## Plain\n')
+      assert.are.equal(0, at(idx, "title-"))
+      assert.are.equal(1, at(idx, "proj-"))
+      assert.are.equal(0, at(idx, "title")) -- the trimmed spelling is known too
+      assert.is_nil(at(idx, "plain-"))
+    end)
+
+    it("trims the lines of a setext title", function()
+      assert.are.equal(0, at(index_of("   Title\n===\n"), "title"))
+      assert.are.equal(
+        0,
+        at(index_of("first line\n   second line  \n======\n"), "first-line-second-line")
+      )
+      assert.are.equal(2, at(index_of("- item\n\n  Para\n  ---\n"), "para"))
+    end)
+
+    -- A lenient spelling is known, but it never takes the anchor of a heading
+    -- whose exact anchor it is.
+    it("does not let a lenient spelling take a later heading's anchor", function()
+      local idx = index_of("## ![logo](a.png) Brand\n## logo Brand\n## logo Brand\n")
+      assert.are.equal(0, at(idx, "-brand"))
+      assert.are.equal(1, at(idx, "logo-brand"))
+      assert.are.equal(2, at(idx, "logo-brand-1"))
+      local emphasis = index_of("## _foo_ bar\n## foo bar\n")
+      assert.are.equal(0, at(emphasis, "foo-bar"))
+      assert.are.equal(1, at(emphasis, "foo-bar-1"))
+    end)
+
+    it("takes nested brackets, autolinks and parentheses in a destination", function()
+      local idx = index_of(
+        "## [a [b] c](u) Z\n## <https://a.b/c> text\n## [Foo](https://x/Foo_(bar)) y\n## <me@a.b> mail\n## [Bar](x_(a)b) z\n"
+      )
+      assert.are.equal(0, at(idx, "a-b-c-z"))
+      assert.are.equal(1, at(idx, "httpsabc-text"))
+      assert.are.equal(2, at(idx, "foo-y"))
+      assert.are.equal(3, at(idx, "mea.b-mail"))
+      assert.are.equal(4, at(idx, "bar-z")) -- not "barb-z": the destination balances its parentheses
+    end)
+
+    it("does not let a fence line in a front matter hide the headings after it", function()
+      assert.are.equal(4, at(index_of("---\nsnippet: |\n  ```sh\n---\n# After\n"), "after"))
+      assert.are.equal(4, at(index_of("---\nsnippet: |\n  ~~~\n---\n# After\n"), "after"))
+    end)
+  end)
+
   -- `target_at` answers for one column; `links` for the whole line, with the
   -- span of each target (what a diagnostic underlines).
   describe("links", function()

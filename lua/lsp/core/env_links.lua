@@ -1088,18 +1088,53 @@ local function split_custom_id(title)
 end
 
 ---@internal
---- Named character references a heading is likely to hold. Unknown names stay
---- as written.
----@type table<string, string>
+--- Named character references a heading is likely to hold, as code points.
+--- Unknown names stay as written.
+---@type table<string, integer>
 local NAMED_ENTITIES = {
-  amp = "&",
-  lt = "<",
-  gt = ">",
-  quot = '"',
-  apos = "'",
-  nbsp = "\194\160",
-  copy = "\194\169",
-  reg = "\194\174",
+  amp = 0x26,
+  lt = 0x3C,
+  gt = 0x3E,
+  quot = 0x22,
+  apos = 0x27,
+  nbsp = 0xA0,
+  iexcl = 0xA1,
+  cent = 0xA2,
+  pound = 0xA3,
+  yen = 0xA5,
+  sect = 0xA7,
+  copy = 0xA9,
+  laquo = 0xAB,
+  reg = 0xAE,
+  deg = 0xB0,
+  plusmn = 0xB1,
+  para = 0xB6,
+  middot = 0xB7,
+  raquo = 0xBB,
+  frac12 = 0xBD,
+  times = 0xD7,
+  Auml = 0xC4,
+  Ouml = 0xD6,
+  Uuml = 0xDC,
+  szlig = 0xDF,
+  agrave = 0xE0,
+  aacute = 0xE1,
+  auml = 0xE4,
+  ccedil = 0xE7,
+  egrave = 0xE8,
+  eacute = 0xE9,
+  ntilde = 0xF1,
+  ouml = 0xF6,
+  uuml = 0xFC,
+  ndash = 0x2013,
+  mdash = 0x2014,
+  bull = 0x2022,
+  hellip = 0x2026,
+  euro = 0x20AC,
+  trade = 0x2122,
+  larr = 0x2190,
+  rarr = 0x2192,
+  hearts = 0x2665,
 }
 
 ---@internal
@@ -1116,7 +1151,7 @@ local function decode_entities(s)
     s:gsub("&(#?%w+);", function(ref)
       local named = NAMED_ENTITIES[ref]
       if named then
-        return named
+        return vim.fn.nr2char(named)
       end
       local cp
       local hex = ref:match("^#[xX](%x+)$")
@@ -1138,33 +1173,68 @@ local function decode_entities(s)
 end
 
 ---@internal
+--- The `)` that ends the destination of a link whose text closed at `from - 2`:
+--- parentheses inside it balance (`[a](https://x/Foo_(bar))`), a backslash
+--- escapes the next byte. nil when none closes it.
+---@param shown string
+---@param from integer # First byte after the `(`.
+---@return integer|nil
+local function destination_end(shown, from)
+  local depth, j = 0, from
+  while true do
+    local c = shown:find("[()" .. string.char(92) .. "]", j)
+    if not c then
+      return nil
+    end
+    local b = shown:byte(c)
+    if b == 92 then
+      j = c + 2
+    elseif b == 40 then
+      depth = depth + 1
+      j = c + 1
+    elseif depth == 0 then
+      return c
+    else
+      depth = depth - 1
+      j = c + 1
+    end
+  end
+end
+
+---@internal
 --- One rewriting pass over a title: `[text](url)` becomes its text and
 --- `![alt](url)` its alt text (`keep_alt`) or nothing -- an `<img>` has no text
 --- in the rendered heading, so GitHub's anchor has none of it. A single
---- left-to-right sweep over the brackets: when no closing `)` is left, none will
---- be found later either, so it stops instead of searching again from every
---- opener. What is inside a code span is literal and is left alone (the sweep
---- looks at a masked copy, and cuts the real title at the same offsets).
+--- left-to-right sweep over the brackets with a stack, so `[a [b] c](u)` pairs
+--- the outer brackets: when no closing `)` is left, none will be found later
+--- either, so the sweep stops instead of searching again from every opener.
+--- What is inside a code span is literal and is left alone (the sweep looks at
+--- a masked copy, and cuts the real title at the same offsets).
 ---@param title string
 ---@param keep_alt boolean
 ---@return string
 local function strip_links(title, keep_alt)
   local shown = M.mask_code_spans(title)
-  local out, piece, last_open = {}, 1, nil
+  local out, piece = {}, 1
+  local opens, n = {}, 0 ---@type integer[], integer
   local i = 1
   while true do
-    local k = shown:find("[%[%]]", i)
+    local k = shown:find("[%[%]" .. string.char(92) .. "]", i)
     if not k then
       break
     end
     i = k + 1
-    if shown:byte(k) == 91 then -- "["
-      last_open = k
-    else
-      local open = last_open
-      last_open = nil
-      if open and shown:byte(k + 1) == 40 then -- "]("
-        local close = shown:find(")", k + 2, true)
+    local c = shown:byte(k)
+    if c == 92 then -- a backslash escapes the next byte
+      i = k + 2
+    elseif c == 91 then -- "["
+      n = n + 1
+      opens[n] = k
+    elseif n > 0 then -- "]"
+      local open = opens[n]
+      n = n - 1
+      if shown:byte(k + 1) == 40 then -- "]("
+        local close = destination_end(shown, k + 2)
         if not close then
           break
         end
@@ -1188,8 +1258,9 @@ end
 ---@internal
 --- A title as it reads once rendered, as far as the anchor is concerned: links
 --- and images rewritten (a badge, `[![ci](img)](url)`, takes a second pass, and
---- a third is the most any real title needs), HTML tags gone, character
---- references decoded. Text in a code span is literal and stays as it is.
+--- a third is the most any real title needs), HTML tags gone and autolinks
+--- (`<https://x.org>`) unwrapped to their text, character references decoded.
+--- Text in a code span is literal and stays as it is, entities included.
 ---@param title string
 ---@param keep_alt? boolean # Keep the alt text of an image (default: drop it).
 ---@return string
@@ -1210,22 +1281,51 @@ local function rendered_title(title, keep_alt)
     local out, piece = {}, 1
     local i = 1
     while true do
-      local k = shown:find("</?%a", i)
+      local k = shown:find("<", i, true)
       if not k then
         break
       end
-      local close = shown:find(">", k, true)
-      if not close then
-        break
+      local auto = shown:match("^<(%a[%w+.-]*:[^%s<>]*)>", k)
+        or shown:match("^<([%w._%%+-]+@[%w.-]+)>", k)
+      if auto then
+        out[#out + 1] = title:sub(piece, k - 1)
+        out[#out + 1] = title:sub(k + 1, k + #auto)
+        piece = k + #auto + 2
+        i = piece
+      elseif shown:find("^/?%a", k + 1) then
+        local close = shown:find(">", k, true)
+        if not close then
+          break
+        end
+        out[#out + 1] = title:sub(piece, k - 1)
+        piece = close + 1
+        i = close + 1
+      else
+        i = k + 1
       end
-      out[#out + 1] = title:sub(piece, k - 1)
-      piece = close + 1
-      i = close + 1
     end
     out[#out + 1] = title:sub(piece)
     title = table.concat(out)
   end
-  return decode_entities(title)
+
+  if not title:find("&", 1, true) then
+    return title
+  end
+  -- References are decoded outside code spans only: a span's text is literal.
+  local shown = M.mask_code_spans(title)
+  local out, pos = {}, 1
+  while true do
+    local s_, e_ = title:find("&#?%w+;", pos)
+    if not s_ then
+      break
+    end
+    out[#out + 1] = title:sub(pos, s_ - 1)
+    local ref = title:sub(s_, e_)
+    out[#out + 1] = shown:byte(s_) == 32 and ref or decode_entities(ref)
+    pos = e_ + 1
+  end
+  out[#out + 1] = title:sub(pos)
+  return table.concat(out)
 end
 
 ---@internal
@@ -1297,16 +1397,33 @@ local function without_symbols(s)
 end
 
 ---@internal
+--- Is the byte `c` part of a word: alphanumeric, or of a multibyte character?
+---@param c integer|nil
+---@return boolean
+local function word_byte(c)
+  return c ~= nil
+    and (c >= 128 or (c >= 48 and c <= 57) or (c >= 65 and c <= 90) or (c >= 97 and c <= 122))
+end
+
+---@internal
 --- `s` without the underscores that read as emphasis (`_x_`, `__x__`, `a _b_
 --- c`): GitHub renders them as <em>/<strong> and builds the anchor from the
 --- text, so they are not in it. An underscore run between two alphanumerics
 --- (`snake_case`) is literal and stays. Only ever used for an *additional* key,
---- like `without_symbols`.
+--- like `without_symbols`. One pass over whole runs: a run is judged by the
+--- bytes on its two sides (removing a run never joins two words), and a
+--- pattern that restarts at every underscore of a run is quadratic.
 ---@param s string
 ---@return string
 local function without_emphasis_underscores(s)
-  s = s:gsub("([^%w_\128-\255])_+", "%1"):gsub("_+([^%w_\128-\255])", "%1")
-  return (s:gsub("^_+", ""):gsub("_+$", ""))
+  return (
+    s:gsub("()(_+)()", function(p, run, q)
+      if word_byte(s:byte(p - 1)) and word_byte(s:byte(q)) then
+        return run
+      end
+      return ""
+    end)
+  )
 end
 
 ---@internal
@@ -1342,10 +1459,10 @@ function M.clear_cache()
 end
 
 --- The anchors of the Markdown file at `path`, each with the 0-based line it
---- names: a heading's GitHub-style slug (ATX and setext headings, in block
---- quotes and list items too; a repeated heading `x` is `x`, `x-1`, `x-2`, ...,
---- counted on the anchor GitHub ends up with), its `{#custom-id}`, and the
---- `id`/`name` of an HTML anchor. Headings inside fenced code blocks and a YAML
+--- names: a heading's GitHub-style slug (ATX headings, also in block quotes and
+--- list items; setext headings at the top level; a repeated heading `x` is `x`,
+--- `x-1`, `x-2`, ..., counted on the anchor GitHub ends up with), its
+--- `{#custom-id}`, and the `id`/`name` of an HTML anchor. Headings inside fenced code blocks and a YAML
 --- front matter are not headings.
 ---
 --- Besides the exact GitHub anchor a heading is also known by a few lenient
@@ -1388,12 +1505,16 @@ function M.heading_index(path, only_cached)
   end
 
   local index = {} ---@type LspNvim.EnvLink.HeadingIndex
-  local occ = {} ---@type table<string, integer> # anchors taken, with their repeat count
+  -- The anchors GitHub gives, counted the way github-slugger counts them, and
+  -- the lenient spellings a heading is also known by, counted among themselves:
+  -- an exact anchor always wins over a lenient one, whatever the order.
+  local occ, lenient, locc = {}, {}, {} ---@type table<string, integer>, table<string, integer>, table<string, integer>
+  ---@param tbl table<string, integer>
   ---@param key string
   ---@param n integer
-  local function add(key, n)
-    if key ~= "" and index[key] == nil then
-      index[key] = n
+  local function add(tbl, key, n)
+    if key ~= "" and tbl[key] == nil then
+      tbl[key] = n
     end
   end
   --- Register `anchor` the way GitHub numbers it (github-slugger): the first
@@ -1401,56 +1522,69 @@ function M.heading_index(path, only_cached)
   --- another heading's anchor already took.
   ---@param anchor string
   ---@param n integer
-  local function numbered(anchor, n)
+  ---@param tbl table<string, integer>
+  ---@param counter table<string, integer>
+  local function numbered(anchor, n, tbl, counter)
     if anchor == "" then
       return
     end
     local result = anchor
-    while occ[result] ~= nil do
-      occ[anchor] = occ[anchor] + 1
-      result = anchor .. "-" .. occ[anchor]
+    while counter[result] ~= nil do
+      counter[anchor] = counter[anchor] + 1
+      result = anchor .. "-" .. counter[anchor]
     end
-    occ[result] = 0
-    add(result, n)
+    counter[result] = 0
+    add(tbl, result, n)
   end
   --- Index one heading: `title` is its source text, `n` its first line.
   ---@param title string
   ---@param n integer
   local function index_title(title, n)
     local text, id = split_custom_id(title)
-    local rendered = rtrim(rendered_title(text))
-    -- The anchor, and the lenient spellings of it. Each distinct one is
-    -- numbered (a repeated `## 🚀 Fixes` is `-fixes`, `-fixes-1`, ...), but a
-    -- heading never numbers the same spelling twice against itself.
-    local spellings, seen, tried = {}, {}, {}
+    -- Not trimmed: a trailing image or tag leaves the blank before it, and that
+    -- is the hyphen GitHub keeps (`## Title <img>` is `#title-`).
+    local rendered = rendered_title(text)
+    if rendered:match("^%s*$") then
+      rendered = ""
+    end
+    local plain = rendered:find("_", 1, true) and without_emphasis_underscores(rendered) or rendered
+
+    -- What GitHub ends up with: emphasis and symbols dropped.
+    local exact = slug(without_symbols(plain))
+    numbered(exact, n, index, occ)
+
+    -- The lenient spellings (an emoji or emphasis left in, an image's alt text
+    -- kept, the title with its `{#id}`, any of them trimmed). Each distinct one
+    -- once, and none that is the exact one.
+    local seen, tried = { [exact] = true }, {}
     ---@param text_ string
     local function spelled(text_)
       if tried[text_] then
-        return -- the same text again (an ASCII title without `_` is all five)
+        return -- the same text again (an ASCII title without `_` is all of them)
       end
       tried[text_] = true
       local anchor = slug(text_)
       if anchor ~= "" and not seen[anchor] then
         seen[anchor] = true
-        spellings[#spellings + 1] = anchor
+        numbered(anchor, n, lenient, locc)
       end
     end
-    local plain = rendered:find("_", 1, true) and without_emphasis_underscores(rendered) or rendered
-    local bare = without_symbols(rendered)
-    spelled(without_symbols(plain)) -- what GitHub ends up with
+    spelled(rtrim(without_symbols(plain)))
     spelled(rendered)
+    spelled(rtrim(rendered))
     spelled(plain)
-    spelled(bare)
+    spelled(without_symbols(rendered))
     if text:find("![", 1, true) then
-      spelled(rtrim(rendered_title(text, true))) -- the alt text kept
-    end
-    for _, anchor in ipairs(spellings) do
-      numbered(anchor, n)
+      local alt = rendered_title(text, true)
+      spelled(alt)
+      spelled(rtrim(alt))
     end
     if id then
-      add(lower(id), n)
+      add(index, lower(id), n)
       -- GitHub has no custom ids: it renders the braces as text.
-      add(slug(rtrim(rendered_title(title))), n)
+      local full = rendered_title(title)
+      spelled(full)
+      spelled(rtrim(full))
     end
   end
 
@@ -1473,9 +1607,10 @@ function M.heading_index(path, only_cached)
   local para, para_first = {}, 0 ---@type string[], integer # Lines of the paragraph a setext underline would turn into a heading.
   local n = 0
   for line in (content .. "\n"):gmatch("(.-)\r?\n") do
-    fence, skip = fence_step(fence, line)
     if n <= front_until then
-      skip = true
+      fence, skip = nil, true -- YAML is no Markdown: its lines open no fence
+    else
+      fence, skip = fence_step(fence, line)
     end
     if skip then
       para = {}
@@ -1493,19 +1628,27 @@ function M.heading_index(path, only_cached)
         if #para == 0 then
           para_first = n
         end
-        para[#para + 1] = line
+        -- Leading blanks and the trailing ones before a line break are no
+        -- part of the title.
+        para[#para + 1] = rtrim(line:sub(line:match("^%s*()")))
       else
         para = {} -- too long to be a heading: it is not one, and neither is what follows
       end
       if line:find("<", 1, true) and not fence then
         for _, attr in ipairs({ "id", "name" }) do
           for value in line:gmatch("%s" .. attr .. "%s*=%s*[\"']([^\"']+)[\"']") do
-            add(lower(value), n)
+            add(index, lower(value), n)
           end
         end
       end
     end
     n = n + 1
+  end
+
+  for key, line_no in pairs(lenient) do
+    if index[key] == nil then
+      index[key] = line_no
+    end
   end
 
   if hit then
