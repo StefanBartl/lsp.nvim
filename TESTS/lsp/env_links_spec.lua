@@ -520,6 +520,311 @@ describe("lsp.core.env_links", function()
     end)
   end)
 
+  -- `target_at` answers for one column; `links` for the whole line, with the
+  -- span of each target (what a diagnostic underlines).
+  describe("links", function()
+    ---@param line string
+    ---@return string[]
+    local function targets(line)
+      local out = {}
+      for _, l in ipairs(links.links(line)) do
+        out[#out + 1] = l.target
+      end
+      return out
+    end
+
+    it("lists every link on a line, left to right", function()
+      assert.are.same(
+        { "$A/1.md", "./2.md", "$C/3.png" },
+        targets("[one]($A/1.md) text [two](./2.md) ![three]($C/3.png)")
+      )
+    end)
+
+    it("gives the span of each target, `<>` and `)` not included", function()
+      local line = "see [a]($R/x.md#f) and [b](<$R/my f.md>)"
+      local got = links.links(line)
+      assert.are.equal(2, #got)
+      assert.are.equal("$R/x.md#f", line:sub(got[1].first, got[1].last))
+      assert.are.equal("$R/my f.md", line:sub(got[2].first, got[2].last))
+      assert.are.equal("$R/my f.md", got[2].target)
+    end)
+
+    it("finds the links around brackets in the text, the badge pattern included", function()
+      assert.are.same({ "$R/i.png", "$R/doc.md" }, targets("[![alt]($R/i.png)]($R/doc.md)"))
+      assert.are.same({ "$R/x.md" }, targets("[a [b] c]($R/x.md)"))
+      assert.are.same({ "$R/x.md" }, targets("[a" .. "\\" .. "]b]($R/x.md)"))
+    end)
+
+    it("lists a reference definition, with its span", function()
+      local line = "[lbl]: <$R/my notes.md> 'title'"
+      local got = links.links(line)
+      assert.are.equal(1, #got)
+      assert.are.equal("$R/my notes.md", got[1].target)
+      assert.are.equal("$R/my notes.md", line:sub(got[1].first, got[1].last))
+      local bare = links.links("[lbl]: $R/x.md")
+      assert.are.equal("$R/x.md", ("[lbl]: $R/x.md"):sub(bare[1].first, bare[1].last))
+    end)
+
+    it("answers an empty list for a line that is not a string, or too long", function()
+      assert.are.same({}, links.links(nil))
+      assert.are.same({}, links.links(42))
+      assert.are.same({}, links.links("[a]($R/x.md)" .. (" "):rep(links.MAX_LINE_BYTES)))
+    end)
+
+    it("agrees with target_at on where each target is", function()
+      local line = "x [a]($R/one.md) y [![i]($R/two.png)]($R/three.md) z"
+      for _, l in ipairs(links.links(line)) do
+        assert.are.equal(l.target, links.target_at(line, l.first), l.target)
+        assert.are.equal(l.target, links.target_at(line, l.last), l.target)
+      end
+    end)
+
+    it("stays fast on a line of hostile brackets", function()
+      local n = links.MAX_LINE_BYTES
+      local lines = {
+        ("["):rep(n),
+        ("[a"):rep(n / 2),
+        ("[a](<"):rep(n / 5),
+        "[" .. ("[a]("):rep((n - 1) / 4),
+        ("[" .. ("]("):rep(2)):rep(n / 5),
+      }
+      for _, line in ipairs(lines) do
+        local t0 = uv.hrtime()
+        links.links(line)
+        local ms = (uv.hrtime() - t0) / 1e6
+        assert.is_true(ms < 100, ("%.1f ms on %q"):format(ms, line:sub(1, 12)))
+      end
+    end)
+  end)
+
+  describe("mask_code_spans", function()
+    local cases = {
+      { "no code here", "no code here" },
+      { "a `b` c", "a     c" },
+      { "a ``b`c`` d", "a" .. (" "):rep(9) .. "d" },
+      { "`a` and `b`", "   " .. " and " .. "   " },
+      -- No closing run of the same length: the backticks stay text.
+      { "a `b c", "a `b c" },
+      { "a `b`` c", "a `b`` c" },
+      -- An escaped backtick opens nothing.
+      { "a \\`b` c", "a \\`b` c" },
+    }
+    for _, c in ipairs(cases) do
+      it(("%q"):format(c[1]), function()
+        local got = links.mask_code_spans(c[1])
+        assert.are.equal(#c[1], #got)
+        assert.are.equal(c[2], got)
+      end)
+    end
+
+    it("hides a link inside a span but not one beside it", function()
+      local masked = links.mask_code_spans("`[a]($R/x.md)` [b]($R/y.md)")
+      assert.are.same(
+        { "$R/y.md" },
+        vim.tbl_map(function(l)
+          return l.target
+        end, links.links(masked))
+      )
+    end)
+
+    it("stays fast on backticks of a hundred different lengths", function()
+      local parts = {}
+      for k = 1, 120 do
+        parts[#parts + 1] = ("`"):rep(k) .. "x"
+      end
+      local line = table.concat(parts):rep(3):sub(1, links.MAX_LINE_BYTES)
+      local t0 = uv.hrtime()
+      links.mask_code_spans(line)
+      assert.is_true((uv.hrtime() - t0) / 1e6 < 100)
+    end)
+  end)
+
+  describe("scan", function()
+    ---@param lines string[]
+    ---@return string[]
+    local function targets(lines)
+      local out = {}
+      for _, l in ipairs(links.scan(lines)) do
+        out[#out + 1] = l.target
+      end
+      return out
+    end
+
+    it("finds env and home links, with line and span, and skips the rest", function()
+      local lines = { "# t", "[a]($R/x.md) [b](./y.md) [c](~/z.md) [d](https://e.org)" }
+      local got = links.scan(lines)
+      assert.are.equal(2, #got)
+      assert.are.equal(1, got[1].lnum)
+      assert.are.equal("$R/x.md", lines[2]:sub(got[1].first, got[1].last))
+      assert.are.equal("~/z.md", lines[2]:sub(got[2].first, got[2].last))
+    end)
+
+    it("does not take a link in a fenced code block for one", function()
+      assert.are.same(
+        { "$R/real.md" },
+        targets({
+          "```md",
+          "[x]($R/example.md)",
+          "```",
+          "[y]($R/real.md)",
+          "~~~",
+          "[z]($R/e2.md)",
+          "~~~",
+        })
+      )
+    end)
+
+    it("does not take a link in a code span for one", function()
+      assert.are.same(
+        { "$R/real.md" },
+        targets({ "write `[x]($R/example.md)` like `this` or [y]($R/real.md)" })
+      )
+    end)
+
+    it("skips a YAML front matter, and only a closed one", function()
+      assert.are.same(
+        { "$R/body.md" },
+        targets({ "---", "link: [a]($R/meta.md)", "---", "[b]($R/body.md)" })
+      )
+      -- No closing line: `---` is a thematic break, the rest is the document.
+      assert.are.same({ "$R/x.md" }, targets({ "---", "[a]($R/x.md)" }))
+      -- Not on the first line: not a front matter.
+      assert.are.same({ "$R/x.md" }, targets({ "text", "---", "[a]($R/x.md)", "---" }))
+    end)
+
+    it("finds a reference definition", function()
+      assert.are.same({ "$R/ref.md" }, targets({ "[lbl]: $R/ref.md" }))
+    end)
+
+    it("stops at the most links one buffer reports", function()
+      local lines = {}
+      for i = 1, links.MAX_SCANNED_LINKS + 50 do
+        lines[i] = "[a]($R/x.md)"
+      end
+      assert.are.equal(links.MAX_SCANNED_LINKS, #links.scan(lines))
+    end)
+
+    it("answers an empty list for an empty buffer", function()
+      assert.are.same({}, links.scan({}))
+      assert.are.same({}, links.scan({ "" }))
+    end)
+  end)
+
+  describe("heading_index", function()
+    ---@param text string
+    ---@return table<string, integer>
+    local function index_of(text)
+      write_file(root .. "/i.md", text)
+      return assert(links.heading_index(root .. "/i.md"))
+    end
+
+    it("numbers a repeated heading the way GitHub does", function()
+      local idx = index_of("# Dup\n## Dup\n### Dup\n")
+      assert.are.equal(0, links.heading_lookup(idx, "dup"))
+      assert.are.equal(1, links.heading_lookup(idx, "dup-1"))
+      assert.are.equal(2, links.heading_lookup(idx, "dup-2"))
+      assert.is_nil(links.heading_lookup(idx, "dup-3"))
+    end)
+
+    it("takes a heading's text from a link in it", function()
+      local idx = index_of("## [1.2.0](https://x.org/compare) - 2024\n## ![logo](a.png) Brand\n")
+      assert.are.equal(0, links.heading_lookup(idx, "120---2024"))
+      assert.are.equal(1, links.heading_lookup(idx, "logo-brand"))
+    end)
+
+    it("ignores HTML tags in a heading", function()
+      local idx = index_of("## <kbd>Ctrl</kbd> keys\n")
+      assert.are.equal(0, links.heading_lookup(idx, "ctrl-keys"))
+    end)
+
+    it("knows a `{#custom-id}` and an HTML anchor", function()
+      local idx = index_of('## Setup {#install}\n\n<a name="legacy"></a>\n<h2 id="other">x</h2>\n')
+      assert.are.equal(0, links.heading_lookup(idx, "install"))
+      assert.are.equal(0, links.heading_lookup(idx, "setup"))
+      assert.are.equal(2, links.heading_lookup(idx, "legacy"))
+      assert.are.equal(3, links.heading_lookup(idx, "other"))
+    end)
+
+    it("finds a heading with an emoji by the anchor GitHub gives it", function()
+      local idx = index_of("## 🚀 Features\n## ✨ Neu & Übersicht\n")
+      assert.are.equal(0, links.heading_lookup(idx, "-features"))
+      assert.are.equal(1, links.heading_lookup(idx, "-neu--übersicht"))
+    end)
+
+    it("finds an emphasised heading by its plain anchor", function()
+      local idx = index_of("## _Notes_\n")
+      assert.are.equal(0, links.heading_lookup(idx, "notes"))
+    end)
+
+    it("takes a fragment as written: encoded, with spaces, in any case", function()
+      local idx = index_of("## Second Part\n## Übersicht\n")
+      assert.are.equal(0, links.heading_lookup(idx, "Second-Part"))
+      assert.are.equal(0, links.heading_lookup(idx, "second%20part"))
+      assert.are.equal(1, links.heading_lookup(idx, "%C3%9Cbersicht"))
+    end)
+
+    it("answers nil for an empty or non-string fragment", function()
+      local idx = index_of("## A\n")
+      assert.is_nil(links.heading_lookup(idx, ""))
+      assert.is_nil(links.heading_lookup(idx, nil))
+    end)
+
+    it("is nil, not empty, for a file it cannot judge", function()
+      write_file(root .. "/x.lua", "# Title\n")
+      assert.is_nil(links.heading_index(root .. "/x.lua"))
+      assert.is_nil(links.heading_index(root .. "/missing.md"))
+      -- An empty Markdown file is judged: it has no headings.
+      write_file(root .. "/empty.md", "")
+      assert.are.same({}, links.heading_index(root .. "/empty.md"))
+    end)
+
+    it("does not see a heading inside a fenced code block", function()
+      local idx = index_of("```\n# nope\n```\n# yes\n")
+      assert.is_nil(links.heading_lookup(idx, "nope"))
+      assert.are.equal(3, links.heading_lookup(idx, "yes"))
+    end)
+
+    -- The file is whatever the link points at, up to MAX_READ_BYTES; every
+    -- heading line below is the longest one that is still read, and shaped to
+    -- make the title steps -- link text, `{#id}`, tags -- search again from
+    -- each opener. Each of those is a single sweep now.
+    it("stays fast on hostile heading lines", function()
+      local width = links.MAX_HEADING_BYTES - 6
+      local shapes = {
+        ("["):rep(width),
+        ("[a]("):rep(width / 4),
+        ("[a]("):rep(width / 8) .. ("](x "):rep(width / 8),
+        ("<a "):rep(width / 3),
+        ("{#"):rep(width / 2),
+        ("a "):rep(width / 2) .. "{#x}",
+        ("]("):rep(width / 2),
+      }
+      local lines = {}
+      for _ = 1, 100 do
+        for _, shape in ipairs(shapes) do
+          lines[#lines + 1] = "## " .. shape
+        end
+      end
+      write_file(root .. "/hostile.md", table.concat(lines, "\n"))
+
+      local t0 = uv.hrtime()
+      links.heading_index(root .. "/hostile.md")
+      local ms = (uv.hrtime() - t0) / 1e6
+      assert.is_true(ms < 1000, ("took %.0f ms"):format(ms))
+    end)
+  end)
+
+  describe("is_markdown", function()
+    it("is true for Markdown extensions only", function()
+      assert.is_true(links.is_markdown("/a/b.md"))
+      assert.is_true(links.is_markdown("/a/b.MD"))
+      assert.is_true(links.is_markdown("/a/b.markdown"))
+      assert.is_true(links.is_markdown("/a/b.mdx"))
+      assert.is_false(links.is_markdown("/a/b.txt"))
+      assert.is_false(links.is_markdown("/a/b"))
+    end)
+  end)
+
   describe("verdict", function()
     ---@param target string
     ---@return string
@@ -773,6 +1078,65 @@ describe("lsp.servers.marksman.diagnostics_handler with env links", function()
     assert.is_truthy(got[1]:find("Ambiguous link to document", 1, true))
   end)
 
+  -- While the in-process client runs it reports the broken env links itself,
+  -- including the ones marksman says nothing about; marksman's own message
+  -- about one would be a second diagnostic on the same range.
+  describe("while the env-link client runs", function()
+    before_each(function()
+      package.loaded["lsp.core.env_links_server"] = {
+        active = function()
+          return true
+        end,
+      }
+    end)
+
+    after_each(function()
+      package.loaded["lsp.core.env_links_server"] = nil
+    end)
+
+    it("leaves the broken env link to the client, and still drops the false alarm", function()
+      local got = messages(all())
+      assert.are.equal(1, #got, vim.inspect(got))
+      assert.is_truthy(got[1]:find("Ambiguous link to document", 1, true))
+    end)
+
+    it("does not touch any other diagnostic", function()
+      local others = function()
+        return {
+          diag("Ambiguous link to document 'x.md'", 2),
+          diag("Link to non-existent link definition 'x'"),
+        }
+      end
+      local with_client = messages(others())
+      package.loaded["lsp.core.env_links_server"] = {
+        active = function()
+          return false
+        end,
+      }
+      assert.are.same(messages(others()), with_client)
+      assert.is_true(#with_client >= 1)
+    end)
+
+    it("changes nothing when languages.env_links is off", function()
+      require("lsp.config").setup({ languages = { env_links = false } })
+      local got = messages(all())
+      assert.are.equal(1, #got, vim.inspect(got))
+      assert.is_truthy(got[1]:find("Ambiguous link to document", 1, true))
+    end)
+  end)
+
+  it("keeps marksman's message when the client is not running", function()
+    package.loaded["lsp.core.env_links_server"] = {
+      active = function()
+        return false
+      end,
+    }
+    local got = messages(all())
+    package.loaded["lsp.core.env_links_server"] = nil
+    assert.are.equal(2, #got, vim.inspect(got))
+    assert.is_truthy(got[1]:find("resolved to " .. root .. "/gone.md", 1, true), got[1])
+  end)
+
   it("does not mutate the diagnostics it was given", function()
     local input = all()
     local before = vim.deepcopy(input)
@@ -1009,6 +1373,127 @@ describe("lsp.core.env_links_server", function()
     end)
   end)
 
+  -- What the client reports on its own, as `textDocument/diagnostic` answers
+  -- it. marksman reports none of the `#fragment` links, so these are the
+  -- only ones there are.
+  describe("diagnostics", function()
+    local seq = 0
+
+    ---@param text string
+    ---@return table[]
+    local function items_of(text)
+      -- A new file each time: `doc` loads it, and a buffer that is already
+      -- loaded keeps its text when the file is written again.
+      seq = seq + 1
+      local buf = doc(("%s/doc%d.md"):format(root, seq), text)
+      local report = server.diagnostics({ textDocument = { uri = vim.uri_from_bufnr(buf) } })
+      assert.are.equal("full", report.kind)
+      return report.items
+    end
+
+    it("reports a link to a file that is not there, with where it looked", function()
+      local items = items_of("[g]($LSPTEST_ENV_ROOT/gone.md)\n")
+      assert.are.equal(1, #items)
+      assert.are.equal("missing-file", items[1].code)
+      assert.are.equal(vim.diagnostic.severity.WARN, items[1].severity)
+      assert.are.equal(server.NAME, items[1].source)
+      assert.is_truthy(items[1].message:find("resolved to " .. root .. "/gone.md", 1, true))
+      assert.are.same(
+        { start = { line = 0, character = 4 }, ["end"] = { line = 0, character = 29 } },
+        items[1].range
+      )
+    end)
+
+    it("is silent about a link whose file is there", function()
+      assert.are.same({}, items_of("[t]($LSPTEST_ENV_ROOT/target.md)\n[d]($LSPTEST_ENV_ROOT)\n"))
+    end)
+
+    -- The gap this closes: marksman says nothing about any link with a
+    -- `#fragment`, so a missing file behind one went unreported.
+    it("reports a missing file even when the link carries a fragment", function()
+      local items = items_of("[g]($LSPTEST_ENV_ROOT/gone.md#part)\n")
+      assert.are.equal(1, #items)
+      assert.are.equal("missing-file", items[1].code)
+    end)
+
+    it("reports a heading the file does not have, and only that", function()
+      local items = items_of(table.concat({
+        "[ok]($LSPTEST_ENV_ROOT/target.md#deep-section)",
+        "[bad]($LSPTEST_ENV_ROOT/target.md#no-such-part)",
+        "[top]($LSPTEST_ENV_ROOT/target.md#TARGET)",
+      }, "\n") .. "\n")
+      assert.are.equal(1, #items)
+      assert.are.equal("missing-heading", items[1].code)
+      assert.are.equal(1, items[1].range.start.line)
+      assert.is_truthy(items[1].message:find("#no-such-part", 1, true))
+    end)
+
+    it("knows the numbered anchor of a repeated heading", function()
+      write_file(root .. "/dups.md", "# Same\n## Same\n")
+      assert.are.same({}, items_of("[b]($LSPTEST_ENV_ROOT/dups.md#same-1)\n"))
+      assert.are.equal(1, #items_of("[b]($LSPTEST_ENV_ROOT/dups.md#same-2)\n"))
+    end)
+
+    -- A `#L10` into a source file, a fragment on a directory: nothing is known
+    -- about their anchors, and "cannot tell" is not "broken".
+    it("does not judge the fragment of a file that is not Markdown", function()
+      write_file(root .. "/code.lua", "-- x\n")
+      assert.are.same({}, items_of("[c]($LSPTEST_ENV_ROOT/code.lua#L10)\n"))
+      assert.are.same({}, items_of("[d]($LSPTEST_ENV_ROOT#anything)\n"))
+    end)
+
+    it("does not judge a Markdown file above the size cap", function()
+      local links = require("lsp.core.env_links")
+      local saved = links.MAX_READ_BYTES
+      links.MAX_READ_BYTES = 4
+      local items = items_of("[t]($LSPTEST_ENV_ROOT/target.md#nope)\n")
+      links.MAX_READ_BYTES = saved
+      assert.are.same({}, items)
+    end)
+
+    it("is silent about a variable nothing defines", function()
+      assert.are.same({}, items_of("[u]($LSPTEST_DEFINITELY_UNSET/x.md)\n"))
+    end)
+
+    it("does not report an example in a code block or a code span", function()
+      assert.are.same(
+        {},
+        items_of(table.concat({
+          "```md",
+          "[x]($LSPTEST_ENV_ROOT/example.md)",
+          "```",
+          "like `[y]($LSPTEST_ENV_ROOT/example.md)` here",
+        }, "\n") .. "\n")
+      )
+    end)
+
+    it("reports in UTF-16 columns, after an emoji and an umlaut", function()
+      -- 😀 is 4 bytes and 2 UTF-16 units; ü is 2 bytes and 1 unit.
+      local items = items_of("😀 ü [a]($LSPTEST_ENV_ROOT/gone.md)\n")
+      assert.are.equal(1, #items)
+      local before = #"😀 ü [a](" -- bytes
+      local units = 2 + 1 + 1 + 1 + #"[a]("
+      assert.is_true(before > units)
+      assert.are.equal(units, items[1].range.start.character)
+      assert.are.equal(units + #"$LSPTEST_ENV_ROOT/gone.md", items[1].range["end"].character)
+    end)
+
+    it("answers an empty report for a document Neovim does not have", function()
+      local report = server.diagnostics({
+        textDocument = { uri = vim.uri_from_fname(root .. "/never-opened.md") },
+      })
+      assert.are.same({ kind = "full", items = {} }, report)
+      assert.are.same({ kind = "full", items = {} }, server.diagnostics(nil))
+      assert.are.same({ kind = "full", items = {} }, server.diagnostics({ textDocument = {} }))
+    end)
+
+    it("does not create a buffer for a document Neovim does not have", function()
+      local before = #vim.api.nvim_list_bufs()
+      server.diagnostics({ textDocument = { uri = vim.uri_from_fname(root .. "/ghost.md") } })
+      assert.are.equal(before, #vim.api.nvim_list_bufs())
+    end)
+  end)
+
   describe("as a client", function()
     ---@param path string
     ---@param text string
@@ -1143,6 +1628,86 @@ describe("lsp.core.env_links_server", function()
       for _, client in ipairs(util.server_clients(buf)) do
         assert.are_not.equal(server.NAME, client.name)
       end
+    end)
+
+    -- Neovim pulls diagnostics by itself after the document was opened or
+    -- changed, so the client has to say so (`diagnosticProvider`,
+    -- `textDocumentSync`); without either nothing ever asks.
+    it("reports a broken link through the diagnostics Neovim pulls", function()
+      server.setup({ env_links = true })
+      local buf = open_markdown(root .. "/doc.md", "[g]($LSPTEST_ENV_ROOT/gone.md)\n")
+
+      local function ours()
+        return vim.tbl_filter(function(d)
+          return d.source == server.NAME
+        end, vim.diagnostic.get(buf))
+      end
+      assert.is_true(
+        vim.wait(3000, function()
+          return #ours() == 1
+        end),
+        "no diagnostic arrived"
+      )
+      assert.are.equal("missing-file", ours()[1].code)
+
+      -- ... and follows the document: fixing the link clears it.
+      vim.api.nvim_buf_set_lines(buf, 0, 1, false, { "[t]($LSPTEST_ENV_ROOT/target.md)" })
+      assert.is_true(
+        vim.wait(3000, function()
+          return #ours() == 0
+        end),
+        "the diagnostic stayed after the link was fixed"
+      )
+    end)
+
+    it("advertises what Neovim needs to pull", function()
+      server.setup({ env_links = true })
+      local buf = open_markdown(root .. "/doc.md", "# x\n")
+      assert.is_true(vim.wait(3000, function()
+        return #vim.lsp.get_clients({ bufnr = buf, name = server.NAME }) > 0
+      end))
+      local caps = vim.lsp.get_clients({ bufnr = buf, name = server.NAME })[1].server_capabilities
+      assert.are.equal(server.NAME, caps.diagnosticProvider.identifier)
+      assert.is_false(caps.diagnosticProvider.workspaceDiagnostics)
+      assert.is_true(caps.textDocumentSync.openClose)
+    end)
+
+    -- A file written inside Neovim does not change the document that links to
+    -- it, so nothing would ask again: the write itself has to.
+    it("re-checks when a file is written, so a created target clears the warning", function()
+      server.setup({ env_links = true })
+      local buf = open_markdown(root .. "/doc.md", "[n]($LSPTEST_ENV_ROOT/later.md)\n")
+      local function ours()
+        return vim.tbl_filter(function(d)
+          return d.source == server.NAME
+        end, vim.diagnostic.get(buf))
+      end
+      assert.is_true(vim.wait(3000, function()
+        return #ours() == 1
+      end))
+
+      write_file(root .. "/later.md", "# Later\n")
+      vim.api.nvim_exec_autocmds("BufWritePost", { buffer = buf })
+      assert.is_true(
+        vim.wait(3000, function()
+          return #ours() == 0
+        end),
+        "the warning stayed after the target was created"
+      )
+    end)
+
+    it("says whether it is running", function()
+      assert.is_false(server.active())
+      server.setup({ env_links = true })
+      local buf = open_markdown(root .. "/doc.md", "# x\n")
+      assert.is_true(vim.wait(3000, function()
+        return #vim.lsp.get_clients({ bufnr = buf, name = server.NAME }) > 0
+      end))
+      assert.is_true(server.active())
+      server.detach()
+      assert.is_true(vim.wait(3000, function()
+        return not server.active()
+      end))
     end)
   end)
 end)

@@ -316,6 +316,38 @@ local function parse_target(line, i)
   return line:sub(i, j - 1), line:find(")", j, true) or (j - 1)
 end
 
+---@internal
+--- The target of a reference definition line, `[label]: target`, and the byte
+--- span of that target within the line (`<>` not included).
+---
+--- `<...>` first: like an inline `(<...>)` target it may hold spaces (a path
+--- under "Program Files"), and `%S+` alone would cut it at the first one and
+--- return `<$R/my`. Two anchored patterns, each linear in a line of at most
+--- `MAX_LINE_BYTES`; the target is held to the same limit as an inline one.
+---@param line string
+---@return string|nil target
+---@return integer|nil first # 1-based byte of the target's first character.
+---@return integer|nil last # 1-based byte of its last character.
+local function ref_definition(line)
+  local first, ref, after = line:match("^%s*%[[^%]]+%]:%s*()(<[^>]*>)()")
+  local angled = ref ~= nil
+  if not ref then
+    first, ref, after = line:match("^%s*%[[^%]]+%]:%s*()(%S+)()")
+  end
+  if not ref then
+    return nil
+  end
+  local last = after - 1
+  if angled then
+    ref = ref:sub(2, -2)
+    first, last = first + 1, last - 1
+  end
+  if #ref > M.MAX_TARGET_BYTES then
+    return nil
+  end
+  return ref, first, last
+end
+
 --- The link target of the Markdown link the byte column `col` (1-based) is
 --- on: anywhere in `[text](target)` / `![alt](target)`, or anywhere on a
 --- reference definition line `[label]: target`.
@@ -395,19 +427,182 @@ function M.target_at(line, col)
     end
   end
 
-  -- `<...>` first: like an inline `(<...>)` target it may hold spaces (a path
-  -- under "Program Files"), and `%S+` alone would cut it at the first one and
-  -- return `<$R/my`.
-  local ref = line:match("^%s*%[[^%]]+%]:%s*(<[^>]*>)") or line:match("^%s*%[[^%]]+%]:%s*(%S+)")
-  if ref then
-    ref = ref:gsub("^<(.*)>$", "%1")
-    -- The same limit as an inline target: a reference definition is a link too.
-    if #ref > M.MAX_TARGET_BYTES then
-      return nil
-    end
-    return ref
+  -- A reference definition is a link too, and answers from any column of its
+  -- line, the title's included.
+  return (ref_definition(line))
+end
+
+-- ----------------------------------------------------------------------------
+-- Every link in a buffer
+-- ----------------------------------------------------------------------------
+
+---@class LspNvim.EnvLink.Span
+---@field target string # As written, `#fragment` included, `<>` not.
+---@field first integer # 1-based byte of the target's first character.
+---@field last integer # 1-based byte of its last character.
+
+---@class LspNvim.EnvLink.Found : LspNvim.EnvLink.Span
+---@field lnum integer # 0-based line.
+
+--- Bytes of link targets `links` examines in one line, summed over its links.
+---@type integer
+local LINKS_SCAN_BUDGET = 2 * M.MAX_LINE_BYTES
+
+--- Most env links `scan` returns for one buffer. Above this a buffer is a
+--- generated file, not a note, and the answer would not be read anyway.
+---@type integer
+M.MAX_SCANNED_LINKS = 2000
+
+--- Every link on one line: `[text](target)`, `![alt](target)`, and a reference
+--- definition `[label]: target`, with the span of each target. The same bracket
+--- rules as `target_at`, which answers for one column; this answers for all.
+---@param line any
+---@return LspNvim.EnvLink.Span[]
+function M.links(line)
+  local found = {} ---@type LspNvim.EnvLink.Span[]
+  if type(line) ~= "string" or #line > M.MAX_LINE_BYTES then
+    return found
   end
-  return nil
+
+  local n = 0 -- how many `[` are open: a `]` closes the innermost one
+  local budget = LINKS_SCAN_BUDGET
+  local pos = 1
+  while true do
+    local i = line:find("[%[%]\\]", pos)
+    if not i then
+      break
+    end
+    local c = line:byte(i)
+    pos = i + 1
+    if c == 92 then -- "\": the next byte is text
+      pos = i + 2
+    elseif c == 91 then -- "["
+      n = n + 1
+    elseif n > 0 then -- "]"
+      n = n - 1
+      if line:byte(i + 1) == 40 then -- "]("
+        local target, close = parse_target(line, i + 2)
+        if target and close then
+          local first = i + 2 + (line:byte(i + 2) == 60 and 1 or 0)
+          found[#found + 1] = { target = target, first = first, last = first + #target - 1 }
+        end
+        budget = budget - (close and (close - i) or M.MAX_TARGET_BYTES)
+        if budget < 0 then
+          break
+        end
+      end
+    end
+  end
+
+  local ref, first, last = ref_definition(line)
+  if ref and first and last then
+    found[#found + 1] = { target = ref, first = first, last = last }
+  end
+  return found
+end
+
+--- `line` with the inside of every code span (`` `x` ``, ``` ``x`` ```) blanked
+--- out, byte for byte, so columns still line up. A span ends at the next run of
+--- exactly as many backticks; a run with none stays text, as in CommonMark.
+---
+--- Linear: the runs are matched from the right in one pass instead of searching
+--- ahead from each opener, which a line of backticks of a hundred different
+--- lengths would turn quadratic.
+---@param line string
+---@return string
+function M.mask_code_spans(line)
+  if not line:find("`", 1, true) then
+    return line
+  end
+
+  local starts, stops = {}, {}
+  local pos = 1
+  while true do
+    local s, e = line:find("`+", pos)
+    if not s then
+      break
+    end
+    if s > 1 and line:byte(s - 1) == 92 then -- an escaped backtick opens nothing
+      s = s + 1
+    end
+    if s <= e then
+      starts[#starts + 1] = s
+      stops[#stops + 1] = e
+    end
+    pos = e + 1
+  end
+
+  local next_same = {}
+  local latest = {} ---@type table<integer, integer>
+  for k = #starts, 1, -1 do
+    local len = stops[k] - starts[k]
+    next_same[k] = latest[len]
+    latest[len] = k
+  end
+
+  local out, from = {}, 1
+  local k = 1
+  while k <= #starts do
+    local close = next_same[k]
+    if close then
+      out[#out + 1] = line:sub(from, starts[k] - 1)
+      out[#out + 1] = (" "):rep(stops[close] - starts[k] + 1)
+      from = stops[close] + 1
+      k = close + 1
+    else
+      k = k + 1
+    end
+  end
+  out[#out + 1] = line:sub(from)
+  return table.concat(out)
+end
+
+---@internal
+--- Whether `line` opens or closes a fenced code block.
+---@param line string
+---@return boolean
+local function is_fence(line)
+  return line:match("^%s*```") ~= nil or line:match("^%s*~~~") ~= nil
+end
+
+--- Every env link (`$VAR/...`, `${VAR}/...`, `~/...`) in a buffer's lines
+--- that is a link in the Markdown sense: not inside a fenced code block or a
+--- code span, not in a YAML front matter. Documentation that *shows* a link
+--- must not be told its example is broken.
+---@param lines string[]
+---@return LspNvim.EnvLink.Found[]
+function M.scan(lines)
+  local found = {} ---@type LspNvim.EnvLink.Found[]
+
+  -- Front matter: `---` on the first line, up to the next `---` or `...`.
+  local from = 1
+  if lines[1] and lines[1]:match("^%-%-%-%s*$") then
+    for k = 2, #lines do
+      if lines[k]:match("^%-%-%-%s*$") or lines[k]:match("^%.%.%.%s*$") then
+        from = k + 1
+        break
+      end
+    end
+  end
+
+  local in_fence = false
+  for k = from, #lines do
+    local line = lines[k]
+    if is_fence(line) then
+      in_fence = not in_fence
+    elseif not in_fence and #line <= M.MAX_LINE_BYTES and line:find("[$~]") then
+      for _, link in ipairs(M.links(M.mask_code_spans(line))) do
+        if M.is_env_target(link.target) then
+          found[#found + 1] =
+            { lnum = k - 1, target = link.target, first = link.first, last = link.last }
+          if #found >= M.MAX_SCANNED_LINKS then
+            return found
+          end
+        end
+      end
+    end
+  end
+  return found
 end
 
 -- ----------------------------------------------------------------------------
@@ -529,13 +724,152 @@ local function heading_title(line)
   return rest:sub(1, e)
 end
 
---- The 0-based line of the heading whose anchor is `fragment` in the file at
---- `path`; nil when there is none or the file cannot be read. Headings inside
---- fenced code blocks are not headings.
+---@internal
+--- `s` without trailing whitespace, by walking back from the end (see
+--- `heading_title` for why not a pattern).
+---@param s string
+---@return string
+local function rtrim(s)
+  local e = #s
+  while is_space(s:byte(e)) do
+    e = e - 1
+  end
+  return s:sub(1, e)
+end
+
+---@internal
+--- The `{#custom-id}` a heading may end with, and the title without it.
+--- (Kramdown, pandoc, Docusaurus.) Found by looking for the last `{#`, not by a
+--- pattern with a lazy prefix, which is quadratic on a long title.
+---@param title string
+---@return string title
+---@return string|nil id
+local function split_custom_id(title)
+  local at ---@type integer|nil
+  local from = 1
+  while true do
+    local p = title:find("{#", from, true)
+    if not p then
+      break
+    end
+    at, from = p, p + 1
+  end
+  if not at then
+    return title, nil
+  end
+  local id = title:sub(at + 2):match("^([%w_%-%.:]+)}%s*$")
+  if not id then
+    return title, nil
+  end
+  return rtrim(title:sub(1, at - 1)), id
+end
+
+---@internal
+--- A title as it reads once rendered, as far as the anchor is concerned:
+--- `[text](url)` and `![alt](url)` become their text, HTML tags vanish. (A
+--- changelog's `## [1.2.0](compare/...) - 2024-01-01` is `120---2024-01-01`.)
+--- Both are single left-to-right sweeps: when no closing `)` or `>` is left,
+--- none will be found later either, so the sweep stops instead of searching
+--- again from every opener.
+---@param title string
+---@return string
+local function rendered_title(title)
+  if title:find("](", 1, true) then
+    local out, piece, last_open = {}, 1, nil
+    local i = 1
+    while true do
+      local k = title:find("[%[%]]", i)
+      if not k then
+        break
+      end
+      i = k + 1
+      if title:byte(k) == 91 then -- "["
+        last_open = k
+      else
+        local open = last_open
+        last_open = nil
+        if open and title:byte(k + 1) == 40 then -- "]("
+          local close = title:find(")", k + 2, true)
+          if not close then
+            break
+          end
+          local from = (open > 1 and title:byte(open - 1) == 33) and open - 1 or open -- "!"
+          if from >= piece then
+            out[#out + 1] = title:sub(piece, from - 1)
+            out[#out + 1] = title:sub(open + 1, k - 1)
+            piece = close + 1
+          end
+          i = close + 1
+        end
+      end
+    end
+    out[#out + 1] = title:sub(piece)
+    title = table.concat(out)
+  end
+
+  if title:find("<", 1, true) then
+    local out, piece = {}, 1
+    local i = 1
+    while true do
+      local k = title:find("</?%a", i)
+      if not k then
+        break
+      end
+      local close = title:find(">", k, true)
+      if not close then
+        break
+      end
+      out[#out + 1] = title:sub(piece, k - 1)
+      piece = close + 1
+      i = close + 1
+    end
+    out[#out + 1] = title:sub(piece)
+    title = table.concat(out)
+  end
+  return title
+end
+
+---@internal
+--- `s` without symbols and emoji, which GitHub drops from an anchor but
+--- `slug` cannot tell from a letter in another script. Only ever used for an
+--- *additional* key (`## 🚀 Features` is `#-features` on GitHub), so a wrong
+--- guess here makes a link resolve that should not, never the reverse.
+---@param s string
+---@return string
+local function without_symbols(s)
+  local ok, out = pcall(function()
+    local starts = vim.str_utf_pos(s)
+    local kept = {}
+    for k, from in ipairs(starts) do
+      local char = s:sub(from, (starts[k + 1] or #s + 1) - 1)
+      local cp = vim.fn.char2nr(char)
+      local symbol = (cp >= 0xA0 and cp <= 0xBF)
+        or cp == 0xD7
+        or cp == 0xF7
+        or (cp >= 0x2000 and cp <= 0x2BFF)
+        or (cp >= 0xFE00 and cp <= 0xFE0F)
+        or cp >= 0x1F000
+      if not symbol then
+        kept[#kept + 1] = char
+      end
+    end
+    return table.concat(kept)
+  end)
+  return ok and out or s
+end
+
+---@class LspNvim.EnvLink.HeadingIndex : table<string, integer>
+
+--- The anchors of the Markdown file at `path`, each with the 0-based line it
+--- names: a heading's GitHub-style slug (a repeated heading `x` is `x`, `x-1`,
+--- `x-2`, ...), its `{#custom-id}`, and the `id`/`name` of an HTML anchor.
+--- Headings inside fenced code blocks are not headings.
+---
+--- nil when the file cannot be judged: not Markdown or text, too large, or
+--- unreadable. That is "cannot tell", not "no anchors".
 ---@param path string
----@param fragment string
----@return integer|nil
-function M.heading_line(path, fragment)
+---@return LspNvim.EnvLink.HeadingIndex|nil
+function M.heading_index(path)
   if not is_text_doc(path) then
     return nil
   end
@@ -543,21 +877,89 @@ function M.heading_line(path, fragment)
   if not content then
     return nil
   end
-  local want = vim.fn.tolower(fragment)
+
+  local index = {} ---@type LspNvim.EnvLink.HeadingIndex
+  local seen = {} ---@type table<string, integer>
+  ---@param key string
+  ---@param n integer
+  local function add(key, n)
+    if key ~= "" and index[key] == nil then
+      index[key] = n
+    end
+  end
+
   local in_fence = false
   local n = 0
   for line in (content .. "\n"):gmatch("(.-)\r?\n") do
-    if line:match("^%s*```") or line:match("^%s*~~~") then
+    if is_fence(line) then
       in_fence = not in_fence
     elseif not in_fence then
       local title = heading_title(line)
-      if title and slug(title) == want then
-        return n
+      if title then
+        local text, id = split_custom_id(title)
+        local rendered = rtrim(rendered_title(text))
+        local base = slug(rendered)
+        if base ~= "" then
+          local repeated = seen[base]
+          seen[base] = (repeated or -1) + 1
+          add(repeated and (base .. "-" .. seen[base]) or base, n)
+          if not repeated then
+            add(slug(without_symbols(rendered)), n)
+            add((base:gsub("^_+", ""):gsub("_+$", "")), n)
+          end
+        end
+        if id then
+          add(vim.fn.tolower(id), n)
+        end
+      end
+      if line:find("<", 1, true) then
+        for _, attr in ipairs({ "id", "name" }) do
+          for value in line:gmatch("%s" .. attr .. "%s*=%s*[\"']([^\"']+)[\"']") do
+            add(vim.fn.tolower(value), n)
+          end
+        end
       end
     end
     n = n + 1
   end
-  return nil
+  return index
+end
+
+--- The 0-based line `fragment` names in `index`, nil when it names nothing.
+--- The fragment is percent-decoded and matched as an anchor, so `#Second-Part`,
+--- `#second%20part` and `#second-part` all find "## Second Part".
+---@param index LspNvim.EnvLink.HeadingIndex
+---@param fragment any
+---@return integer|nil
+function M.heading_lookup(index, fragment)
+  if type(fragment) ~= "string" or fragment == "" then
+    return nil
+  end
+  local ok, decoded = pcall(vim.uri_decode, fragment)
+  if not ok then
+    decoded = fragment
+  end
+  return index[slug(decoded)] or index[vim.fn.tolower(decoded)]
+end
+
+--- The 0-based line of the heading whose anchor is `fragment` in the file at
+--- `path`; nil when there is none or the file cannot be read.
+---@param path string
+---@param fragment string
+---@return integer|nil
+function M.heading_line(path, fragment)
+  local index = M.heading_index(path)
+  return index and M.heading_lookup(index, fragment) or nil
+end
+
+--- Whether `path` names a Markdown file: the only kind whose anchors are
+--- known well enough to say that one is missing.
+---@param path string
+---@return boolean
+function M.is_markdown(path)
+  local ext = path:match("%.(%w+)$")
+  ext = ext and ext:lower()
+  return ext == "md" or ext == "markdown" or ext == "mdx"
 end
 
 --- The first `max_lines` lines of the file at `path`, for a hover preview.

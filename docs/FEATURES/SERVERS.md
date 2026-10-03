@@ -80,8 +80,10 @@ handlers, and so on.
 
 Markdown links whose target starts with `$VAR`, `${VAR}` or `~` are resolved
 (`core/env_links.lua`, `core/env_links_server.lua`), which marksman itself does
-not do: definition and hover come from an in-process `lsp.nvim-envlinks` client,
-and marksman's "Link to non-existent document" is checked against the disk
-instead of being hidden wholesale. gopath.nvim's `resolve_text` does the
+not do: definition, hover and diagnostics (a missing file, or a `#heading` the
+file does not have -- marksman reports no link with a `#fragment` at all) come
+from an in-process `lsp.nvim-envlinks` client, and marksman's own "Link to
+non-existent document" about an env link is dropped while it runs instead of
+being hidden wholesale. gopath.nvim's `resolve_text` does the
 resolving when it is installed. Details in
 [configuration.md](../configuration.md#languagesenv_links).

@@ -19,6 +19,15 @@
 --- that resolves -- so on every other position, and for every ordinary link,
 --- marksman's answer is the only one and nothing changes.
 ---
+--- **Diagnostics.** The client also reports the env links that lead nowhere:
+--- the file is not there, or (for a Markdown file) the `#fragment` names no
+--- heading. marksman cannot be the source of these: it never reports a link
+--- that carries a `#fragment` at all, relative or not (measured), and for the
+--- ones it does report it only knows the target as a folder name. They are
+--- *pulled* (`textDocument/diagnostic`): Neovim asks on every open and change,
+--- and the client answers from the buffer. Documentation that shows a link in a
+--- code block or code span is not reported (`lsp.core.env_links.scan`).
+---
 --- **What it costs.** One more client in `vim.lsp.get_clients()` and in
 --- `:Lsp servers`, named `lsp.nvim-envlinks` like the gitsigns one and looked
 --- past by `lsp.core.util.server_clients`. `languages.env_links = false` turns
@@ -51,6 +60,18 @@ M.PREVIEW_LINES = 12
 
 ---@type boolean
 local registered = false
+
+--- The dispatchers of the running in-process server, to ask the client for a
+--- diagnostics refresh when a file appears or disappears.
+---@type table|nil
+local live_dispatchers = nil
+
+---@type boolean
+local refresh_pending = false
+
+--- Delay before a refresh is asked for, so a burst of writes is one refresh.
+---@type integer
+local REFRESH_DELAY_MS = 300
 
 ---@internal
 --- The loaded buffer holding `uri`, or nil. Looked up by comparing URIs rather
@@ -174,6 +195,111 @@ function M.hover(params)
   return { contents = { kind = "markdown", value = table.concat(lines, "\n") } }
 end
 
+---@internal
+--- A byte offset (0-based) in `line` as an LSP column: UTF-16 code units.
+---@param line string
+---@param byte integer
+---@return integer
+local function lsp_column(line, byte)
+  local ok, col = pcall(vim.str_utfindex, line, "utf-16", byte)
+  return ok and col or byte
+end
+
+---@internal
+--- The problem with one env link, if it has one: a message and a code.
+---
+--- Nothing is said when the variable is not defined or the file cannot be
+--- judged (not Markdown, too large, unreadable): "cannot tell" is not "broken".
+---@param resolved LspNvim.EnvLink.Resolved
+---@param target string
+---@param indexes table<string, LspNvim.EnvLink.HeadingIndex|false>
+---@return string|nil message
+---@return string|nil code
+local function problem(resolved, target, indexes)
+  if not resolved.exists then
+    return ("Link to non-existent document '%s' (resolved to %s)"):format(target, resolved.path),
+      "missing-file"
+  end
+  if not resolved.fragment or resolved.fragment == "" or not links.is_markdown(resolved.path) then
+    return nil, nil
+  end
+  -- One read per file, however many links point at it.
+  local index = indexes[resolved.path]
+  if index == nil then
+    index = links.heading_index(resolved.path) or false
+    indexes[resolved.path] = index
+  end
+  if index and not links.heading_lookup(index, resolved.fragment) then
+    return ("Link to non-existent heading '#%s' in %s"):format(resolved.fragment, resolved.path),
+      "missing-heading"
+  end
+  return nil, nil
+end
+
+--- `textDocument/diagnostic`: the env links of the buffer that lead nowhere.
+---@param params table
+---@return table report # A full `DocumentDiagnosticReport`.
+function M.diagnostics(params)
+  local items = {}
+  local uri = params and params.textDocument and params.textDocument.uri
+  local bufnr = type(uri) == "string" and loaded_buffer(uri) or nil
+  if bufnr then
+    local lines = api.nvim_buf_get_lines(bufnr, 0, -1, false)
+    local indexes = {}
+    for _, link in ipairs(links.scan(lines)) do
+      local resolved = links.resolve(link.target)
+      local message, code
+      if resolved then
+        message, code = problem(resolved, link.target, indexes)
+      end
+      if message then
+        local line = lines[link.lnum + 1]
+        items[#items + 1] = {
+          range = {
+            start = { line = link.lnum, character = lsp_column(line, link.first - 1) },
+            ["end"] = { line = link.lnum, character = lsp_column(line, link.last) },
+          },
+          severity = vim.diagnostic.severity.WARN,
+          code = code,
+          source = M.NAME,
+          message = message,
+        }
+      end
+    end
+  end
+  return { kind = "full", items = items }
+end
+
+--- Is the in-process client running? The marksman diagnostics filter asks:
+--- while it is, the client is the one source of env-link diagnostics.
+---@return boolean
+function M.active()
+  for _, client in ipairs(vim.lsp.get_clients({ name = M.NAME })) do
+    if not client:is_stopped() then
+      return true
+    end
+  end
+  return false
+end
+
+---@internal
+--- Ask Neovim to pull the diagnostics again (`workspace/diagnostic/refresh`):
+--- a link's target can appear or go away without the document changing.
+---@return nil
+local function refresh_diagnostics()
+  if refresh_pending or not live_dispatchers then
+    return
+  end
+  refresh_pending = true
+  vim.defer_fn(function()
+    refresh_pending = false
+    local dispatchers = live_dispatchers
+    if dispatchers and dispatchers.server_request then
+      pcall(dispatchers.server_request, "workspace/diagnostic/refresh", nil)
+    end
+  end, REFRESH_DELAY_MS)
+end
+
 --- The in-process server, in the shape `vim.lsp.start`'s `cmd` function wants.
 ---@param dispatchers table
 ---@return table
@@ -182,6 +308,7 @@ function M.server(dispatchers)
   local exited = false
   local request_id = 0
   local server = {}
+  live_dispatchers = dispatchers
 
   ---@return nil
   local function exit()
@@ -190,6 +317,9 @@ function M.server(dispatchers)
       return
     end
     exited = true
+    if live_dispatchers == dispatchers then
+      live_dispatchers = nil
+    end
     dispatchers.on_exit(0, 0)
   end
 
@@ -206,10 +336,23 @@ function M.server(dispatchers)
     -- is instead.
     local answer = method == "textDocument/definition" and M.definition
       or method == "textDocument/hover" and M.hover
+      or method == "textDocument/diagnostic" and M.diagnostics
       or nil
     if method == "initialize" then
       callback(nil, {
-        capabilities = { definitionProvider = true, hoverProvider = true },
+        capabilities = {
+          definitionProvider = true,
+          hoverProvider = true,
+          -- Neovim pulls diagnostics after the document was opened or changed
+          -- (`LspNotify`), so it must be told about both. The content itself
+          -- is read from the buffer, not from the notifications.
+          textDocumentSync = { openClose = true, change = 2 },
+          diagnosticProvider = {
+            identifier = M.NAME,
+            interFileDependencies = false,
+            workspaceDiagnostics = false,
+          },
+        },
         serverInfo = { name = M.NAME },
       })
     elseif answer then
@@ -302,6 +445,15 @@ function M.setup(opts)
     pattern = { "markdown", "markdown.mdx", "mdx" },
     desc = "lsp.nvim: resolve $VAR and ~ Markdown links (definition, hover)",
   })
+  -- A link's target can appear or go away without the document changing: a
+  -- file written here (`BufWritePost`), or one changed from outside
+  -- (`FocusGained`).
+  autocmd.create({ "BufWritePost", "FocusGained" }, function()
+    refresh_diagnostics()
+  end, {
+    group = group,
+    desc = "lsp.nvim: re-check env links when a file may have appeared or gone",
+  })
 
   vim.schedule(function()
     for _, bufnr in ipairs(api.nvim_list_bufs()) do
@@ -314,6 +466,7 @@ end
 ---@return nil
 function M.detach()
   registered = false
+  live_dispatchers = nil
   pcall(api.nvim_del_augroup_by_name, M.GROUP)
   for _, client in ipairs(vim.lsp.get_clients({ name = M.NAME })) do
     client:stop()
