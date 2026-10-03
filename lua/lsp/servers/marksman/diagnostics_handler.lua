@@ -56,6 +56,36 @@ local function env_client_active()
   return ok and type(server.active) == "function" and server.active() == true
 end
 
+--- Whether the in-process client reports the env links of the document `uri`
+--- names: it is running AND attached to that document's buffer. marksman
+--- publishes for the whole workspace, files nobody has open included; the
+--- client answers for loaded buffers only, so for any other document dropping
+--- marksman's message would leave the broken link unreported.
+--- (Files are compared by path, not through `vim.uri_to_bufnr`, which creates
+--- a buffer for a name that has none.)
+--- @param uri string|nil
+--- @return boolean
+local function env_client_covers(uri)
+  if type(uri) ~= "string" or not env_client_active() then
+    return false
+  end
+  local ok, fname = pcall(vim.uri_to_fname, uri)
+  if not ok or type(fname) ~= "string" then
+    return false
+  end
+  local want = file_key(fname)
+  local name = require("lsp.core.env_links_server").NAME
+  for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_loaded(bufnr) then
+      local bufname = vim.api.nvim_buf_get_name(bufnr)
+      if bufname ~= "" and file_key(bufname) == want then
+        return #vim.lsp.get_clients({ bufnr = bufnr, name = name }) > 0
+      end
+    end
+  end
+  return false
+end
+
 --- Helper: safe conversion of diag.code to string for comparison
 --- @param code any
 --- @return string
@@ -202,8 +232,9 @@ end
 
 --- Main filter function for diagnostics of a single result.
 --- @param diagnostics table[] diagnostics array from server
+--- @param env_client? boolean the in-process env-link client reports this document's broken env links (see `env_client_covers`); nil = ask whether it runs at all
 --- @return table[] filtered diagnostics
-function M.filter_diagnostics(diagnostics)
+function M.filter_diagnostics(diagnostics, env_client)
   if not diagnostics or type(diagnostics) ~= "table" then
     return diagnostics
   end
@@ -219,7 +250,10 @@ function M.filter_diagnostics(diagnostics)
   -- Once per push, not per diagnostic: a workspace push carries hundreds, and
   -- each `env_links_enabled()` is a `require` and a config read.
   local env_links_on = env_links_enabled()
-  local env_client = env_links_on and env_client_active()
+  if env_client == nil then
+    env_client = env_links_on and env_client_active()
+  end
+  env_client = env_links_on and env_client
 
   local out = {}
   for i = 1, #diagnostics do
@@ -324,7 +358,7 @@ function M.republish_all()
       last_raw[uri] = nil
       last_meta[uri] = nil
     elseif meta then
-      local filtered = M.filter_diagnostics(diags)
+      local filtered = M.filter_diagnostics(diags, env_client_covers(uri))
       local new_result = vim.tbl_deep_extend("force", {}, meta.result, { diagnostics = filtered })
       default_handler(meta.err, new_result, meta.ctx, meta.config)
     end
@@ -356,10 +390,18 @@ function M.make_handler()
 
     -- Filter diagnostics using configured rules
     local diags = result.diagnostics
-    local filtered = M.filter_diagnostics(diags)
+    local filtered = M.filter_diagnostics(diags, env_client_covers(result.uri))
 
-    -- If the filtering removed any entries, clone result with new diagnostics
-    if #filtered ~= #diags then
+    -- If the filtering removed or rewrote any entry (a kept env link gets the
+    -- path it was looked up at), clone result with new diagnostics
+    local changed = #filtered ~= #diags
+    for i = 1, #filtered do
+      if filtered[i] ~= diags[i] then
+        changed = true
+        break
+      end
+    end
+    if changed then
       local new_result = vim.tbl_deep_extend("force", {}, result, { diagnostics = filtered })
       return default_handler(err, new_result, ctx, config)
     end

@@ -205,32 +205,117 @@ local function lsp_column(line, byte)
   return ok and col or byte
 end
 
+--- Time one pull may spend on `fs_stat`, in nanoseconds. Past it the links not
+--- yet looked at are "cannot tell" until the next pull.
+---@type integer
+local STAT_BUDGET_NS = 50 * 1000 * 1000
+
+--- How many different files one pull builds a heading index for.
+---@type integer
+M.MAX_INDEXED_FILES = 32
+
+--- Longest link target quoted in a message, in bytes.
+---@type integer
+local MAX_QUOTED_BYTES = 200
+
+---@internal
+--- A `stat` for `links.resolve` that looks at each path once per pull, spends at
+--- most `STAT_BUDGET_NS`, and does not touch a network path (`//host/share`,
+--- `\\host\share`) at all. A stat on one that does not answer blocks Neovim
+--- for the OS connect timeout (21 s measured) and no budget interrupts a call
+--- that is already blocked; it would also come back "not there" and be reported
+--- as a broken link. nil from it means "not looked at".
+---@return fun(path: string): boolean|nil
+local function pull_stat()
+  local seen = {} ---@type table<string, boolean|"unknown">
+  local deadline = vim.uv.hrtime() + STAT_BUDGET_NS
+  return function(path)
+    local known = seen[path]
+    if known == "unknown" then
+      return nil
+    elseif known ~= nil then
+      return known --[[@as boolean]]
+    end
+    if path:find("^//") or path:find("^\\\\") or vim.uv.hrtime() > deadline then
+      seen[path] = "unknown"
+      return nil
+    end
+    local on_disk = vim.uv.fs_stat(path) ~= nil
+    seen[path] = on_disk
+    return on_disk
+  end
+end
+
+---@internal
+--- `text` made safe to quote in a message: no control bytes (the link target is
+--- whatever the document says, a `<...>` one may hold a tab or an escape), and
+--- not longer than `MAX_QUOTED_BYTES`.
+---@param text string
+---@return string
+local function quoted(text)
+  text = text:gsub("%c", "?")
+  if #text > MAX_QUOTED_BYTES then
+    text = text:sub(1, MAX_QUOTED_BYTES) .. "..."
+  end
+  return text
+end
+
+---@internal
+--- Where a link was looked up, for a message: the resolved path -- but only an
+--- absolute one. The path is the variable's value joined with the rest of the
+--- target, and a variable can hold anything: `[x]($API_TOKEN/a.md)` resolves to
+--- `<the token>/a.md`, which is not a path and must not be shown. (Nor does the
+--- document get to read a variable that is not a directory out of the editor.)
+---@param path string
+---@return string
+local function looked_up_at(path)
+  if path:find("^/") or path:find("^%a:/") then
+    return " (resolved to " .. quoted(path) .. ")"
+  end
+  return ""
+end
+
 ---@internal
 --- The problem with one env link, if it has one: a message and a code.
 ---
 --- Nothing is said when the variable is not defined or the file cannot be
---- judged (not Markdown, too large, unreadable): "cannot tell" is not "broken".
+--- judged (not Markdown, too large, unreadable, not looked at): "cannot tell"
+--- is not "broken".
 ---@param resolved LspNvim.EnvLink.Resolved
 ---@param target string
----@param indexes table<string, LspNvim.EnvLink.HeadingIndex|false>
+---@param indexes table # `{ files = integer }` and one index (or `false`) per path.
 ---@return string|nil message
 ---@return string|nil code
 local function problem(resolved, target, indexes)
+  if resolved.exists == nil then
+    return nil, nil
+  end
   if not resolved.exists then
-    return ("Link to non-existent document '%s' (resolved to %s)"):format(target, resolved.path),
+    return ("Link to non-existent document '%s'%s"):format(
+      quoted(target),
+      looked_up_at(resolved.path)
+    ),
       "missing-file"
   end
   if not resolved.fragment or resolved.fragment == "" or not links.is_markdown(resolved.path) then
     return nil, nil
   end
-  -- One read per file, however many links point at it.
+  -- One look per file, however many links point at it (and `heading_index`
+  -- keeps what it built for the next pull).
   local index = indexes[resolved.path]
   if index == nil then
+    if indexes.files >= M.MAX_INDEXED_FILES then
+      return nil, nil
+    end
+    indexes.files = indexes.files + 1
     index = links.heading_index(resolved.path) or false
     indexes[resolved.path] = index
   end
   if index and not links.heading_lookup(index, resolved.fragment) then
-    return ("Link to non-existent heading '#%s' in %s"):format(resolved.fragment, resolved.path),
+    return ("Link to non-existent heading '#%s' in %s"):format(
+      quoted(resolved.fragment),
+      quoted(resolved.path)
+    ),
       "missing-heading"
   end
   return nil, nil
@@ -245,14 +330,18 @@ function M.diagnostics(params)
   local bufnr = type(uri) == "string" and loaded_buffer(uri) or nil
   if bufnr then
     local lines = api.nvim_buf_get_lines(bufnr, 0, -1, false)
-    local indexes = {}
+    local indexes = { files = 0 }
+    local opts = { stat = pull_stat() }
     for _, link in ipairs(links.scan(lines)) do
-      local resolved = links.resolve(link.target)
-      local message, code
-      if resolved then
-        message, code = problem(resolved, link.target, indexes)
-      end
-      if message then
+      -- One link that makes the code raise must not take the report of every
+      -- other link with it.
+      local ok, message, code = pcall(function()
+        local resolved = links.resolve(link.target, opts)
+        if resolved then
+          return problem(resolved, link.target, indexes)
+        end
+      end)
+      if ok and message then
         local line = lines[link.lnum + 1]
         items[#items + 1] = {
           range = {
@@ -445,6 +534,21 @@ function M.setup(opts)
     pattern = { "markdown", "markdown.mdx", "mdx" },
     desc = "lsp.nvim: resolve $VAR and ~ Markdown links (definition, hover)",
   })
+  -- Neovim pulls after a change only for buffers that are shown (`LspNotify`
+  -- -> `_refresh` with `only_visible`), and marksman's own message about a
+  -- broken env link is dropped for a buffer this client is attached to: a
+  -- loaded buffer that is first shown later has to be pulled once then. (The
+  -- refresh request is the one way to ask that does not disturb Neovim's own
+  -- pull bookkeeping: a `client:request` of ours here left stale diagnostics.)
+  autocmd.create("BufWinEnter", function(args)
+    if #vim.lsp.get_clients({ bufnr = args.buf, name = M.NAME }) > 0 then
+      refresh_diagnostics()
+    end
+  end, {
+    group = group,
+    pattern = { "*.md", "*.markdown", "*.mdx" },
+    desc = "lsp.nvim: pull env-link diagnostics when a loaded Markdown buffer is first shown",
+  })
   -- A link's target can appear or go away without the document changing: a
   -- file written here (`BufWritePost`), or one changed from outside
   -- (`FocusGained`).
@@ -469,8 +573,17 @@ function M.detach()
   live_dispatchers = nil
   pcall(api.nvim_del_augroup_by_name, M.GROUP)
   for _, client in ipairs(vim.lsp.get_clients({ name = M.NAME })) do
+    -- Neovim clears a client's pulled diagnostics when the last pull-capable
+    -- client leaves a buffer; with another one attached they would stay.
+    local ok, ns = pcall(vim.lsp.diagnostic.get_namespace, client.id, true, M.NAME)
+    if ok then
+      for bufnr in pairs(client.attached_buffers or {}) do
+        vim.diagnostic.reset(ns, bufnr)
+      end
+    end
     client:stop()
   end
+  links.clear_cache()
 end
 
 return M
