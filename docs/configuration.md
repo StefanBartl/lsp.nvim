@@ -619,8 +619,9 @@ hid that, and every genuinely broken link along with it.
   spelling is accepted too), code spans kept literally, emphasis and HTML tags
   and character references (`&amp;`) rendered away, `{#custom-id}` (and the
   GitHub spelling with the braces), HTML `id`/`name` anchors, and a heading's
-  emoji dropped (`## 🚀 Features` is `#-features`). ATX and setext headings
-  count, also in block quotes and list items, but not in a front matter or a
+  emoji dropped (`## 🚀 Features` is `#-features`); a trailing image or tag
+  keeps its hyphen (`#title-`). ATX headings count, also in block quotes and
+  list items; setext headings at the top level; none in a front matter or a
   fenced block. A few extra lenient spellings exist; they can only make a link
   resolve that GitHub would not.
   Links inside fenced code blocks (followed the CommonMark way: by character and
