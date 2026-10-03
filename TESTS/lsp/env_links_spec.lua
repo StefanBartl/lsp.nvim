@@ -339,6 +339,23 @@ describe("lsp.core.env_links", function()
       { "x](y) [a]($R/x.md)", 15, "$R/x.md" },
       { "[a]($R/x.md", 5, "$R/x.md" },
       { "[a]($R/x(1).md)", 8, "$R/x(1).md" },
+      -- Link text may hold balanced brackets, an image (the badge pattern) and
+      -- escaped brackets; the target is found from anywhere in the link.
+      { "[a [b] c]($R/x.md)", 15, "$R/x.md" },
+      { "[a [b] c]($R/x.md)", 3, "$R/x.md" },
+      { "[a [b [c] d] e]($R/x.md)", 20, "$R/x.md" },
+      { "[![alt]($R/i.png)]($R/doc.md)", 27, "$R/doc.md" }, -- outer target
+      { "[![alt]($R/i.png)]($R/doc.md)", 1, "$R/doc.md" }, -- outer `[`
+      { "[![alt]($R/i.png)]($R/doc.md)", 18, "$R/doc.md" }, -- outer `]`
+      { "[![alt]($R/i.png)]($R/doc.md)", 12, "$R/i.png" }, -- inner target
+      { "[![alt]($R/i.png)]($R/doc.md)", 4, "$R/i.png" }, -- inner alt text
+      { "[a\\]b]($R/x.md)", 12, "$R/x.md" },
+      { "[a\\[b]($R/x.md)", 12, "$R/x.md" },
+      { "x \\[not a link] [a]($R/x.md)", 24, "$R/x.md" },
+      -- An unbalanced `[` before a link does not swallow it (CommonMark: the
+      -- stray bracket is text), and neither does an extra `]`.
+      { "[ [a]($R/x.md)", 10, "$R/x.md" },
+      { "a] [b]($R/x.md)", 12, "$R/x.md" },
       -- Outside every link.
       { "see [a]($R/x.md) and more", 2, nil },
       { "see [a]($R/x.md) and more", 22, nil },
@@ -414,6 +431,30 @@ describe("lsp.core.env_links", function()
       local line = ("["):rep(links.MAX_LINE_BYTES)
       assert.is_true(time_target_at(line, #line) < 300)
       assert.is_true(time_target_at(line, 1) < 300)
+    end)
+
+    -- The bracket stack keeps every unclosed `[`; a hostile line makes it deep
+    -- and makes every `](` close one of them. Each shape below is the worst
+    -- case of one part: depth only, depth with a pending outer `[` that keeps
+    -- the early exit from firing, and links nested inside each other.
+    it("stays fast on deeply nested brackets", function()
+      local n = links.MAX_LINE_BYTES
+      local lines = {
+        { "only opens", ("[a"):rep(n / 2) },
+        { "opens, then closes", ("["):rep(n / 2) .. ("]("):rep(n / 4) },
+        { "open outer, endless inner targets", "[" .. ("[a]("):rep((n - 1) / 4) },
+        { "nested images", ("[!"):rep(n / 4) .. ("]($X/a.png)"):rep(n / 22) },
+      }
+      for _, case in ipairs(lines) do
+        local line = case[2]:sub(1, n)
+        for _, col in ipairs({ 1, math.floor(#line / 2), #line + 1 }) do
+          -- 100 ms, tighter than the other cases: without the scan budget
+          -- "opens, then closes" takes 270 ms at the middle column (measured),
+          -- with it about 2 ms.
+          local ms = time_target_at(line, col)
+          assert.is_true(ms < 100, ("%s, col %d: %.1f ms"):format(case[1], col, ms))
+        end
+      end
     end)
 
     it("stays fast on links whose targets never end", function()

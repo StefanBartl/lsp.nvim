@@ -630,6 +630,9 @@ link, a link target above 4096 bytes is refused rather than cut short, and a
 `#fragment` is only looked for on heading lines up to 2000 bytes. None of
 these is a length a hand-written Markdown line reaches.
 
+Link text may hold balanced brackets and escaped ones, so the badge pattern
+`[![alt]($REPOS_DIR/a.png)]($REPOS_DIR/doc.md)` answers on both its targets.
+
 `languages.env_links = false` switches the client and the diagnostics filter off
 together. It may also be set from `.nvim-lsp.json`, since `languages` is one of
 the keys a repository may answer.

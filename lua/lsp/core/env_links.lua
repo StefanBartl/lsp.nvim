@@ -249,6 +249,13 @@ M.MAX_LINE_BYTES = 20000
 M.MAX_TARGET_BYTES = 4096
 
 ---@internal
+--- Bytes of link targets `target_at` examines in one call, summed over all the
+--- links it tries: a few targets of the longest allowed length, and a hundred
+--- times what the links around any real position add up to.
+---@type integer
+local TARGET_SCAN_BUDGET = 4 * M.MAX_TARGET_BYTES
+
+---@internal
 --- Whether byte `b` is what Lua's `%s` matches.
 ---@param b integer|nil
 ---@return boolean
@@ -330,37 +337,62 @@ function M.target_at(line, col)
     return nil
   end
 
-  -- One pass over the brackets. `open` is the last `[` not yet closed; a `](`
-  -- after it is an inline link, whose text starts there. (`%[[^%]]*%]%(` did
-  -- the same job, but re-scanned to the end of the line from every `[`.)
-  local open ---@type integer|nil
+  -- One pass over the brackets, with a stack of the `[` not yet closed: a `]`
+  -- closes the innermost one, and a `](` right after it makes an inline link
+  -- whose text starts there. The text may hold balanced brackets -- an image
+  -- inside a link, `[![badge](img)](target)`, is the common case -- and a
+  -- backslash escapes the byte after it (`\]`). Inner links are completed, and
+  -- so answered, before the ones around them. (`%[[^%]]*%]%(` did the same job
+  -- for flat text, but re-scanned to the end of the line from every `[`.)
+  local opens, n = {}, 0 ---@type integer[], integer
+  local budget = TARGET_SCAN_BUDGET
   local pos = 1
   while true do
-    local i = line:find("[%[%]]", pos)
+    local i = line:find("[%[%]\\]", pos)
     if not i then
       break
     end
-    if line:byte(i) == 91 then -- "["
-      open = i
-    else
-      if open and line:byte(i + 1) == 40 then -- "]("
-        -- Links come left to right: once one starts past `col`, none further
-        -- right can hold it. And one whose target starts more than a target's
-        -- length before `col` cannot reach it -- counting the `>` and `)` that
-        -- close a `<...>` target as part of the link.
-        if open > col then
-          break
-        end
-        if i + 4 + M.MAX_TARGET_BYTES >= col then
-          local target, close = parse_target(line, i + 2)
-          if target and close and col >= open and col <= close then
-            return target
+    local c = line:byte(i)
+    if c == 92 then -- "\": the next byte is text, whatever it is
+      pos = i + 2
+    elseif c == 91 then -- "["
+      n = n + 1
+      opens[n] = i
+      pos = i + 1
+    else -- "]"
+      pos = i + 1
+      if n > 0 then
+        local open = opens[n]
+        opens[n] = nil
+        n = n - 1
+        if line:byte(i + 1) == 40 then -- "]("
+          -- A link that starts past `col` cannot hold it; and one whose target
+          -- starts more than a target's length before `col` cannot reach it --
+          -- counting the `>` and `)` that close a `<...>` target as part of the
+          -- link. Neither is parsed: that bounds the work per link.
+          if open <= col and i + 4 + M.MAX_TARGET_BYTES >= col then
+            local target, close = parse_target(line, i + 2)
+            if target and close and col <= close then
+              return target
+            end
+            -- With nesting, one hostile line can make thousands of `](` each
+            -- close a `[` that reaches `col`, and each of those parses a target
+            -- that runs to the limit (measured: 273 ms for 10000 `[` then
+            -- 5000 `](`). A real link costs its own length; this stops the sum.
+            budget = budget - (close and (close - i) or M.MAX_TARGET_BYTES)
+            if budget < 0 then
+              break
+            end
+          end
+          -- Links come left to right, but an enclosing one is only completed
+          -- after the inner ones: nothing further right can hold `col` once
+          -- this one starts past it AND no `[` still open starts before it.
+          if open > col and (n == 0 or opens[1] > col) then
+            break
           end
         end
       end
-      open = nil
     end
-    pos = i + 1
   end
 
   -- `<...>` first: like an inline `(<...>)` target it may hold spaces (a path
