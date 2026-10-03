@@ -19,7 +19,7 @@
 ---   * `heading_line(...)`   -- the line of a `#fragment` heading in the target.
 ---
 --- Consumers: the diagnostics filter (drop the false alarm, keep the real
---- one) and `lsp.core.env_links_server` (definition and hover).
+--- one) and `lsp.core.env_links_server` (definition, hover, diagnostics, completion).
 ---
 --- ## Resolution order
 ---
@@ -220,6 +220,36 @@ function M.is_network_path(path, win)
   return win and (path:find("^//[^/]") ~= nil or path:find("^\\\\") ~= nil)
 end
 
+--- Most links `leads_to_network` follows by hand before it gives up.
+---@type integer
+M.MAX_LINK_HOPS = 8
+
+--- Does the symbolic link at `path` lead to a network path? Read link by link,
+--- not followed: a stat follows them and blocks for the OS connect timeout on a
+--- share that does not answer (21 s measured), and the string of `path` alone
+--- says nothing about where it leads. A path that is no link is not one that
+--- leads to a share, as far as its last component goes.
+---@param path string
+---@return boolean
+function M.leads_to_network(path)
+  for _ = 1, M.MAX_LINK_HOPS do
+    local target = vim.uv.fs_readlink(path)
+    if not target then
+      return false -- not a link (any more): a stat is safe from here
+    end
+    target = (target:gsub(string.char(92), "/"))
+    if M.is_network_path(target) or target:find("^//%?/UNC/") or target:find("^/%?%?/UNC/") then
+      return true
+    end
+    if not (target:find("^/") or target:find("^%a:")) then
+      -- relative to the link's folder (`dirname` of `X:/l` keeps the slash: `X:/`)
+      target = ((vim.fs.dirname(path) or "."):gsub("/+$", "")) .. "/" .. target
+    end
+    path = target
+  end
+  return true -- a loop, or a chain this deep: not worth a stat
+end
+
 ---@internal
 --- Whether `path` is on disk, by `fs_stat` -- but not for a network path
 --- (`//host/share`, `\\host\share`): a stat on one that does not answer blocks Neovim
@@ -230,7 +260,7 @@ end
 ---@param path string
 ---@return boolean|nil
 local function on_disk(path)
-  if M.is_network_path(path) then
+  if M.is_network_path(path) or M.leads_to_network(path) then
     return nil
   end
   return vim.uv.fs_stat(path) ~= nil
@@ -853,6 +883,80 @@ local function front_matter_end(lines)
   return 0
 end
 
+---@internal
+--- Walk the paragraphs of a buffer's lines, front matter and fenced code blocks
+--- left out: `visit(para)` gets each one as a list of `{ lnum, line }` (`lnum`
+--- is 0-based) and answers true to stop the walk.
+---
+--- A paragraph ends at a blank line, a fence, or a line that opens a block of its
+--- own (`opens_block`), and is cut at `MAX_LINE_BYTES`. (The lines of a block
+--- quote are paragraphs of their own.)
+---@param lines string[]
+---@param visit fun(para: { lnum: integer, line: string }[]): boolean|nil
+---@return nil
+local function each_paragraph(lines, visit)
+  local para, bytes = {}, 0 ---@type { lnum: integer, line: string }[], integer
+  local stopped = false
+
+  --- Hand the paragraph collected so far to `visit`.
+  ---@return nil
+  local function flush()
+    if #para == 0 then
+      return
+    end
+    local current = para
+    para, bytes = {}, 0
+    if visit(current) == true then
+      stopped = true
+    end
+  end
+
+  local fence ---@type LspNvim.EnvLink.Fence|nil
+  local skip ---@type boolean
+  for k = front_matter_end(lines) + 1, #lines do
+    local line = lines[k]
+    fence, skip = fence_step(fence, line)
+    if skip or #line > M.MAX_LINE_BYTES then
+      flush()
+    else
+      if opens_block(line, para[1] and para[1].line) or bytes + #line > M.MAX_LINE_BYTES then
+        flush()
+      end
+      if not stopped and not line:find("^%s*$") then
+        para[#para + 1] = { lnum = k - 1, line = line }
+        bytes = bytes + #line + 1
+      end
+      if line:find("^%s*|") or line:find("^%s*#+%s") or line:find("^%s*#+$") then
+        flush() -- a heading or a table row is a block of one line
+      end
+    end
+    if stopped then
+      return
+    end
+  end
+  flush()
+end
+
+---@internal
+--- The lines of a paragraph with the inside of every code span blanked out (see
+--- `mask_code_spans`), cut by offset, not by splitting on "\n": a span that wraps
+--- blanks the line break inside it too.
+---@param para { lnum: integer, line: string }[]
+---@return string[]
+local function masked_lines(para)
+  local texts = {}
+  for i, entry in ipairs(para) do
+    texts[i] = entry.line
+  end
+  local masked = M.mask_code_spans(table.concat(texts, "\n"))
+  local out, off = {}, 1
+  for i, entry in ipairs(para) do
+    out[i] = masked:sub(off, off + #entry.line - 1)
+    off = off + #entry.line + 1
+  end
+  return out
+end
+
 --- Every env link (`$VAR/...`, `${VAR}/...`, `~/...`) in a buffer's lines
 --- that is a link in the Markdown sense: not inside a fenced code block or a
 --- code span, not in a YAML front matter. Documentation that *shows* a link
@@ -862,73 +966,49 @@ end
 --- line break (hard-wrapped prose does exactly that), and read line by line
 --- the closing backtick would pair with the next one on its line, and the
 --- link between them would be missed or an example in the next span exposed.
---- A paragraph ends at a blank line, a fence, or a line that opens a block of
---- its own (`opens_block`), and is cut at `MAX_LINE_BYTES`. (The lines of a
---- block quote are paragraphs of their own: a span that wraps over `>` lines is
---- not followed.)
+--- (See `each_paragraph` for where a paragraph ends: the lines of a block
+--- quote are paragraphs of their own, a span that wraps over `>` lines is not
+--- followed.)
 ---@param lines string[]
 ---@return LspNvim.EnvLink.Found[]
 function M.scan(lines)
   local found = {} ---@type LspNvim.EnvLink.Found[]
-
-  local from = front_matter_end(lines) + 1
-
-  local para, bytes = {}, 0 ---@type { lnum: integer, line: string }[], integer
-
-  --- Look for env links in the paragraph collected so far.
-  ---@return nil
-  local function flush()
-    if #para == 0 then
-      return
-    end
-    local texts = {}
-    for i, entry in ipairs(para) do
-      texts[i] = entry.line
-    end
-    local masked = M.mask_code_spans(table.concat(texts, "\n"))
-    -- Cut by offset, not by splitting on "\n": a span that wraps blanks the
-    -- line break inside it too.
-    local off = 1
-    for _, entry in ipairs(para) do
-      local text = masked:sub(off, off + #entry.line - 1)
-      off = off + #entry.line + 1
+  each_paragraph(lines, function(para)
+    for i, text in ipairs(masked_lines(para)) do
       if text:find("[$~]") then
         for _, link in ipairs(M.links(text)) do
           if M.is_env_target(link.target) and #found < M.MAX_SCANNED_LINKS then
             found[#found + 1] =
-              { lnum = entry.lnum, target = link.target, first = link.first, last = link.last }
+              { lnum = para[i].lnum, target = link.target, first = link.first, last = link.last }
           end
         end
       end
     end
-    para, bytes = {}, 0
-  end
-
-  local fence ---@type LspNvim.EnvLink.Fence|nil
-  local skip ---@type boolean
-  for k = from, #lines do
-    local line = lines[k]
-    fence, skip = fence_step(fence, line)
-    if skip or #line > M.MAX_LINE_BYTES then
-      flush()
-    else
-      if opens_block(line, para[1] and para[1].line) or bytes + #line > M.MAX_LINE_BYTES then
-        flush()
-      end
-      if not line:find("^%s*$") then
-        para[#para + 1] = { lnum = k - 1, line = line }
-        bytes = bytes + #line + 1
-      end
-      if line:find("^%s*|") or line:find("^%s*#+%s") or line:find("^%s*#+$") then
-        flush() -- a heading or a table row is a block of one line
-      end
-    end
-    if #found >= M.MAX_SCANNED_LINKS then
-      return found
-    end
-  end
-  flush()
+    return #found >= M.MAX_SCANNED_LINKS
+  end)
   return found
+end
+
+--- Line `lnum` (1-based) of `lines` as `scan` sees it -- its code spans blanked
+--- out, also the ones that wrap over a line break -- or nil when the line is no
+--- document text: in a fenced code block or a front matter, blank, or too long.
+---@param lines string[]
+---@param lnum integer
+---@return string|nil
+function M.masked_line_at(lines, lnum)
+  local result ---@type string|nil
+  each_paragraph(lines, function(para)
+    if para[#para].lnum + 1 < lnum then
+      return false -- an earlier paragraph
+    end
+    for i, text in ipairs(masked_lines(para)) do
+      if para[i].lnum + 1 == lnum then
+        result = text
+      end
+    end
+    return true -- the paragraph of `lnum`, or one past it: done
+  end)
+  return result
 end
 
 -- ----------------------------------------------------------------------------
@@ -996,6 +1076,15 @@ function M.typing_at(line, col)
       if depth < 0 then
         return nil -- the `)` that closes the link is before the cursor
       end
+    end
+  end
+  -- An escaped `[`, or a link inside link text, opens nothing: use the rule set
+  -- `target_at` goes by, with the target closed so an empty one forms. (A line
+  -- with no `[` before the `](` is the continuation of link text that wrapped.)
+  if last and before:sub(1, last):find("[", 1, true) then
+    local closed = before .. (angled and "x>)" or "x)")
+    if M.target_at(closed, #before) == nil then
+      return nil
     end
   end
   return { text = text, start = start, angled = angled }

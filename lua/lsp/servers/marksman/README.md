@@ -39,7 +39,7 @@ is **kept** (annotated with the path it was looked up at) even though the
 blanket rule would hide it -- unless the in-process client is running, which
 reports the broken env links itself (the file *and* the `#fragment`, which
 marksman never reports for any link), and then marksman's duplicate is dropped.
-Definition, hover and those diagnostics come from a separate in-process client
+Definition, hover, path completion and those diagnostics come from a separate in-process client
 (`lsp.core.env_links_server`), because a handler in this server's config would
 only reach requests that use client handlers, and `vim.lsp.buf.definition` does
 not. See `docs/configuration.md` (`languages.env_links`).

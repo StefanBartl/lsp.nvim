@@ -404,7 +404,9 @@ local DEFAULTS = {
     -- cannot: it answers no definition or hover for it and reports "Link to
     -- non-existent document" for a file that exists. On, this resolves such
     -- targets (gopath.nvim's `resolve_text` when installed, built-in
-    -- otherwise): definition and hover through an in-process client, and the
+    -- otherwise): definition, hover and path completion (`/`, `$`, `{` trigger it)
+    -- through an in-process client, which also warns about a missing file or
+    -- heading (marksman reports no link that carries a `#fragment`), and the
     -- diagnostic is dropped when the file is there, kept -- with the path it
     -- was looked up at -- when it is not. See `lsp.core.env_links`.
     env_links = true,

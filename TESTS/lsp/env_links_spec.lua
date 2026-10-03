@@ -1483,6 +1483,94 @@ describe("lsp.core.env_links", function()
       assert.is_nil(links.typing_at(("[a]($R/x"):rep(links.MAX_LINE_BYTES), 5))
     end)
 
+    it("takes the target of the link the cursor is in, not the first one's", function()
+      assert.are.same(
+        { text = "$R/y", start = #"[a]($R/x) [b](" + 1, angled = false },
+        links.typing_at("[a]($R/x) [b]($R/y", #"[a]($R/x) [b]($R/y" + 1)
+      )
+    end)
+
+    it("applies the bracket rules of the rest of the module", function()
+      local bs = string.char(92)
+      local function text(line)
+        local found = links.typing_at(line, #line + 1)
+        return found and found.text
+      end
+      -- an escaped bracket, and a link inside link text, open no target
+      assert.is_nil(text(bs .. "[x" .. bs .. "]($R/"))
+      assert.is_nil(text("[x" .. bs .. "]($R/"))
+      assert.is_nil(text("[a [b]($R/x.md) c]($R/"))
+      -- these do
+      assert.are.equal("", text("[a]("))
+      assert.are.equal("", text("[a](<"))
+      assert.are.equal("$R/", text("[![alt]($R/i.png)]($R/"))
+      assert.are.equal("$R/", text("[a [b] c]($R/"))
+      assert.are.equal("$R/", text("[a " .. bs .. "]b]($R/"))
+      -- the continuation of link text that wrapped has no `[` on its line
+      assert.are.equal("$R/", text("more text]($R/"))
+    end)
+
+    it("knows the lines of a paragraph that a code span wraps over", function()
+      local lines = { "see `a", "b` [x]($R/c)", "", "```", "[y]($R/d)", "```" }
+      assert.are.equal("see   ", links.masked_line_at(lines, 1))
+      assert.are.equal("   [x]($R/c)", links.masked_line_at(lines, 2))
+      assert.is_nil(links.masked_line_at(lines, 3)) -- blank
+      assert.is_nil(links.masked_line_at(lines, 5)) -- in a fence
+      assert.is_nil(links.masked_line_at({ "---", "x: 1", "---", "t" }, 2)) -- in a front matter
+      assert.are.equal("t", links.masked_line_at({ "---", "x: 1", "---", "t" }, 4))
+    end)
+
+    it("follows a link that leads to a network path, by hand and not by stat", function()
+      local was_windows = links.windows
+      links.windows = true
+      local real_readlink = vim.uv.fs_readlink
+      local map = {
+        ["X:/l1"] = "//192.0.2.1/share",
+        ["X:/l2"] = "l1", -- relative: a chain
+        ["X:/loop_a"] = "loop_b",
+        ["X:/loop_b"] = "loop_a",
+        ["X:/local"] = "X:/dir",
+      }
+      vim.uv.fs_readlink = function(path)
+        return map[path]
+      end
+      local ok, err = pcall(function()
+        assert.is_true(links.leads_to_network("X:/l1"))
+        assert.is_true(links.leads_to_network("X:/l2"))
+        assert.is_true(links.leads_to_network("X:/loop_a"), "a loop is not worth a stat")
+        assert.is_false(links.leads_to_network("X:/local"))
+        assert.is_false(links.leads_to_network("X:/not-a-link"))
+      end)
+      vim.uv.fs_readlink = real_readlink
+      links.windows = was_windows
+      assert.is_true(ok, tostring(err))
+    end)
+
+    it("does not stat a path that is a link to a network path", function()
+      local was_windows = links.windows
+      links.windows = true
+      local real_readlink, real_stat = vim.uv.fs_readlink, vim.uv.fs_stat
+      local stats = {}
+      vim.uv.fs_readlink = function(path, ...)
+        if path == root .. "/netlink" then
+          return "//192.0.2.1/share"
+        end
+        return real_readlink(path, ...)
+      end
+      vim.uv.fs_stat = function(path, ...)
+        if tostring(path):find("netlink", 1, true) then
+          stats[#stats + 1] = path
+        end
+        return real_stat(path, ...)
+      end
+      local ok, resolved = pcall(links.resolve, "$LSPTEST_ENV_ROOT/netlink")
+      vim.uv.fs_readlink, vim.uv.fs_stat = real_readlink, real_stat
+      links.windows = was_windows
+      assert.is_true(ok, tostring(resolved))
+      assert.is_nil(resolved.exists)
+      assert.are.same({}, stats)
+    end)
+
     it("knows a fence, a fence line and a front matter", function()
       local lines = { "---", "title: x", "---", "text", "```", "code", "```", "text" }
       for lnum, want in ipairs({ true, true, true, false, true, true, true, false }) do
@@ -2751,6 +2839,7 @@ describe("lsp.core.env_links_server", function()
 
   describe("completion", function()
     local seq = 0
+    local last_buf ---@type integer
 
     --- Ask for completion at the end of line `lnum` (0-based) of a new document.
     ---@param lines string[]
@@ -2760,6 +2849,7 @@ describe("lsp.core.env_links_server", function()
     local function complete(lines, lnum, character)
       seq = seq + 1
       local buf = doc(("%s/cp%d.md"):format(root, seq), table.concat(lines, "\n") .. "\n")
+      last_buf = buf
       lnum = lnum or #lines - 1
       local line = lines[lnum + 1]
       return server.completion({
@@ -2840,30 +2930,25 @@ describe("lsp.core.env_links_server", function()
       vim.uv.os_homedir = function()
         return root
       end
-      local r = complete({ "[a](~/notes/s" })
+      local ok, r = pcall(complete, { "[a](~/notes/s" })
       vim.uv.os_homedir = real_home
+      assert.is_true(ok, tostring(r))
       assert.are.same({ "sub/" }, labels(r))
     end)
 
     it("offers the variables that name a directory, and no secret", function()
       vim.env.LSPTEST_SECRET_X = "sk-secret-token"
       vim.env.LSPTEST_FILE_X = root .. "/notes/a.md"
-      local r = complete({ "[a]($LSPTEST_" })
+      local ok, r = pcall(complete, { "[a]($LSPTEST_" })
       vim.env.LSPTEST_SECRET_X = nil
       vim.env.LSPTEST_FILE_X = nil
+      assert.is_true(ok, tostring(r))
       assert.are.same({ "$LSPTEST_ENV_ROOT" }, labels(r))
       assert.are.equal("$LSPTEST_ENV_ROOT/", r.items[1].textEdit.newText)
       assert.are.equal(#"[a](", r.items[1].textEdit.range.start.character)
       -- the braced spelling keeps its braces
       local braced = complete({ "[a](${LSPTEST_E" })
       assert.are.equal("${LSPTEST_ENV_ROOT}/", braced.items[1].textEdit.newText)
-      -- the config directory has no real variable behind it
-      -- (only when that directory exists: a CI runner may have no config at all)
-      local has_config = vim.fn.isdirectory(vim.fn.stdpath("config")) == 1
-      assert.are.equal(
-        has_config,
-        vim.tbl_contains(labels(complete({ "[a]($NVIM_CONF" })), "$NVIM_CONFIG_DIR")
-      )
       -- a variable typed in full is offered once more, with its slash
       assert.are.same({ "$LSPTEST_ENV_ROOT" }, labels(complete({ "[a]($LSPTEST_ENV_ROOT" })))
     end)
@@ -2949,6 +3034,280 @@ describe("lsp.core.env_links_server", function()
       local r = complete({ "[a]($LSPTEST_ENV_ROOT/notes/zz" })
       server.MAX_COMPLETION_SCAN = saved
       assert.is_true(r == nil or r.isIncomplete)
+    end)
+
+    ---@param result table
+    ---@param label string
+    ---@param lnum? integer
+    ---@return string # The line once the item's text edit is applied.
+    local function accepted(result, label, lnum)
+      local item = vim.tbl_filter(function(i)
+        return i.label == label
+      end, result.items)[1]
+      assert.is_truthy(item, "no item " .. label .. " in " .. vim.inspect(labels(result)))
+      vim.lsp.util.apply_text_edits({ item.textEdit }, last_buf, "utf-16")
+      return vim.api.nvim_buf_get_lines(last_buf, lnum or 0, (lnum or 0) + 1, false)[1]
+    end
+
+    it("replaces the closing brace and the slash an existing target goes on with", function()
+      local r = complete({ "[a](${LSPTEST_ENV_RO})" }, 0, #"[a](${LSPTEST_ENV_RO")
+      assert.are.equal("[a](${LSPTEST_ENV_ROOT}/)", accepted(r, "${LSPTEST_ENV_ROOT}"))
+
+      local with_rest = complete({ "[a](${LSPTEST_ENV_RO}/notes)" }, 0, #"[a](${LSPTEST_ENV_RO")
+      assert.are.equal("[a](${LSPTEST_ENV_ROOT}/notes)", accepted(with_rest, "${LSPTEST_ENV_ROOT}"))
+
+      local plain = complete({ "[a]($LSPTEST_ENV_RO/notes)" }, 0, #"[a]($LSPTEST_ENV_RO")
+      assert.are.equal("[a]($LSPTEST_ENV_ROOT/notes)", accepted(plain, "$LSPTEST_ENV_ROOT"))
+
+      local folder = complete({ "[a]($LSPTEST_ENV_ROOT/no/x)" }, 0, #"[a]($LSPTEST_ENV_ROOT/no")
+      assert.are.equal("[a]($LSPTEST_ENV_ROOT/notes/x)", accepted(folder, "notes/"))
+
+      -- a file's text has no slash to swallow, and at the end of the line nothing follows
+      local file =
+        complete({ "[a]($LSPTEST_ENV_ROOT/notes/a/x)" }, 0, #"[a]($LSPTEST_ENV_ROOT/notes/a")
+      assert.are.equal("[a]($LSPTEST_ENV_ROOT/notes/a.md/x)", accepted(file, "a.md"))
+      local at_end = complete({ "[a]($LSPTEST_ENV_ROOT/no" })
+      assert.are.equal(#"[a]($LSPTEST_ENV_ROOT/no", at_end.items[1].textEdit.range["end"].character)
+    end)
+
+    it("shapes a variable item, and offers only names the resolver reads", function()
+      vim.env.LSPTEST_AA = root
+      vim.env.LSPTEST_ZZ = root
+      vim.env["LSPTEST_PAR(X86)"] = root -- not a name `$NAME` can be written with
+      vim.env.LSPTEST_REL = "notes" -- relative: depends on where Neovim started
+      vim.env.LSPTEST_DRIVE = "C:" -- the current directory of a drive, not a folder
+      local ok, r = pcall(complete, { "[a]($LSPTEST_" })
+      vim.env.LSPTEST_AA, vim.env.LSPTEST_ZZ = nil, nil
+      vim.env["LSPTEST_PAR(X86)"], vim.env.LSPTEST_REL, vim.env.LSPTEST_DRIVE = nil, nil, nil
+      assert.is_true(ok, tostring(r))
+      assert.are.same({ "$LSPTEST_AA", "$LSPTEST_ENV_ROOT", "$LSPTEST_ZZ" }, labels(r))
+      local item = r.items[2]
+      assert.are.equal(6, item.kind)
+      assert.are.equal("lsptest_env_root", item.sortText)
+      assert.are.equal("$LSPTEST_ENV_ROOT", item.filterText)
+      assert.are.equal(#"[a](", item.textEdit.range.start.character)
+      assert.are.equal(#"[a]($LSPTEST_", item.textEdit.range["end"].character)
+    end)
+
+    it("encodes what the resolver would read as something else, also inside `<...>`", function()
+      write_file(root .. "/notes/p(1).md", "x\n")
+      write_file(root .. "/notes/h#.md", "x\n")
+      write_file(root .. "/notes/c%d.md", "x\n")
+      local bare = complete({ "[a]($LSPTEST_ENV_ROOT/notes/" })
+      local angled = complete({ "[a](<$LSPTEST_ENV_ROOT/notes/" })
+      local function text(r, label)
+        for _, i in ipairs(r.items) do
+          if i.label == label then
+            return i.textEdit.newText
+          end
+        end
+      end
+      assert.are.equal("p%281%29.md", text(bare, "p(1).md"))
+      assert.are.equal("h%23.md", text(bare, "h#.md"))
+      assert.are.equal("c%25d.md", text(bare, "c%d.md"))
+      assert.are.equal("p(1).md", text(angled, "p(1).md")) -- a parenthesis is fine in <...>
+      assert.are.equal("h%23.md", text(angled, "h#.md"))
+      assert.are.equal("c%25d.md", text(angled, "c%d.md"))
+    end)
+
+    it("filters on the spelling the user typed: raw or percent-encoded", function()
+      write_file(root .. "/notes/p(1).md", "x\n")
+      local raw = complete({ "[a]($LSPTEST_ENV_ROOT/notes/p(" })
+      assert.are.equal("p%281%29.md", raw.items[1].textEdit.newText)
+      assert.is_true(vim.startswith(raw.items[1].filterText, "p("))
+      local encoded = complete({ "[a]($LSPTEST_ENV_ROOT/notes/p%28" })
+      assert.is_true(vim.startswith(encoded.items[1].filterText, "p%28"))
+      local plain = complete({ "[a]($LSPTEST_ENV_ROOT/notes/p" })
+      assert.are.equal("p%281%29.md", plain.items[1].filterText)
+    end)
+
+    it("reads a backslash like a slash", function()
+      local bs = string.char(92)
+      local r = complete({ "[a]($LSPTEST_ENV_ROOT" .. bs .. "notes" .. bs })
+      assert.are.same({ "sub/", "a.md", "b file.md" }, labels(r))
+      assert.are.equal(
+        #("[a]($LSPTEST_ENV_ROOT" .. bs .. "notes" .. bs),
+        r.items[1].textEdit.range.start.character
+      )
+      assert.are.same({ "a.md" }, labels(complete({ "[a]($LSPTEST_ENV_ROOT/notes" .. bs .. "a" })))
+    end)
+
+    it("matches a typed letter against a name in another script, whatever its case", function()
+      write_file(root .. "/notes/Дом.md", "x\n")
+      local r = complete({ "[a]($LSPTEST_ENV_ROOT/notes/д" })
+      assert.are.same({ "Дом.md" }, labels(r))
+    end)
+
+    -- Folders come first in the answer, so they must not be crowded out by files
+    -- that the directory happens to list before them.
+    it("keeps the folders when there are more entries than items", function()
+      for i = 1, 5 do
+        write_file(("%s/notes/m%d.md"):format(root, i), "x\n")
+      end
+      local saved = server.MAX_COMPLETION_ITEMS
+      server.MAX_COMPLETION_ITEMS = 3
+      local ok, r = pcall(complete, { "[a]($LSPTEST_ENV_ROOT/notes/" })
+      server.MAX_COMPLETION_ITEMS = saved
+      assert.is_true(ok, tostring(r))
+      assert.are.equal(3, #r.items)
+      assert.are.equal("sub/", r.items[1].label)
+      assert.is_true(r.isIncomplete)
+    end)
+
+    it("stops at the scan cap whatever the listing order is", function()
+      vim.fn.mkdir(root .. "/scan", "p")
+      for i = 1, 6 do
+        write_file(("%s/scan/zz%d.md"):format(root, i), "x\n")
+      end
+      local saved = server.MAX_COMPLETION_SCAN
+      server.MAX_COMPLETION_SCAN = 2
+      local ok, r = pcall(complete, { "[a]($LSPTEST_ENV_ROOT/scan/zz" })
+      server.MAX_COMPLETION_SCAN = saved
+      assert.is_true(ok, tostring(r))
+      assert.are.equal(2, #r.items)
+      assert.is_true(r.isIncomplete)
+    end)
+
+    it("leaves out an entry whose name holds a control character", function()
+      local real_next = vim.uv.fs_scandir_next
+      local first = true
+      vim.uv.fs_scandir_next = function(handle)
+        if first then
+          first = false
+          return "bad" .. string.char(9) .. "name.md", "file"
+        end
+        return real_next(handle)
+      end
+      local ok, r = pcall(complete, { "[a]($LSPTEST_ENV_ROOT/notes/" })
+      vim.uv.fs_scandir_next = real_next
+      assert.is_true(ok, tostring(r))
+      assert.are.same({ "sub/", "a.md", "b file.md" }, labels(r))
+    end)
+
+    it("does not follow a link that leads to a network share", function()
+      local was_windows = require("lsp.core.env_links").windows
+      require("lsp.core.env_links").windows = true
+      local real_next, real_readlink, real_stat =
+        vim.uv.fs_scandir_next, vim.uv.fs_readlink, vim.uv.fs_stat
+      local first, stats = true, {}
+      vim.uv.fs_scandir_next = function(handle)
+        if first then
+          first = false
+          return "netlink", "link"
+        end
+        return real_next(handle)
+      end
+      vim.uv.fs_readlink = function(path, ...)
+        if path == root .. "/notes/netlink" then
+          return "//192.0.2.1/share"
+        end
+        return real_readlink(path, ...)
+      end
+      vim.uv.fs_stat = function(path, ...)
+        if tostring(path):find("netlink", 1, true) then
+          stats[#stats + 1] = path
+        end
+        return real_stat(path, ...)
+      end
+      local ok, r = pcall(complete, { "[a]($LSPTEST_ENV_ROOT/notes/net" })
+      vim.uv.fs_scandir_next, vim.uv.fs_readlink, vim.uv.fs_stat =
+        real_next, real_readlink, real_stat
+      require("lsp.core.env_links").windows = was_windows
+      assert.is_true(ok, tostring(r))
+      assert.are.same({ "netlink" }, labels(r)) -- listed, as a file: no slash
+      assert.are.same({}, stats)
+    end)
+
+    it("completes the link the cursor is in, when it is not the first on the line", function()
+      local line = "[a](./x.md) and [b]($LSPTEST_ENV_ROOT/notes/b"
+      local r = complete({ line })
+      assert.are.same({ "b file.md" }, labels(r))
+      assert.are.equal(
+        #"[a](./x.md) and [b]($LSPTEST_ENV_ROOT/notes/",
+        r.items[1].textEdit.range.start.character
+      )
+    end)
+
+    it("completes next to a fence, and in a list item before an indented fence", function()
+      local expected = { "sub/", "a.md", "b file.md" }
+      assert.are.same(
+        expected,
+        labels(complete({ "[a]($LSPTEST_ENV_ROOT/notes/", "```", "code", "```" }, 0))
+      )
+      assert.are.same(
+        expected,
+        labels(complete({ "```", "code", "```", "[a]($LSPTEST_ENV_ROOT/notes/" }, 3))
+      )
+      assert.are.same(
+        expected,
+        labels(complete({ "- [a]($LSPTEST_ENV_ROOT/notes/", "  ```", "  code", "  ```" }, 0))
+      )
+    end)
+
+    it("does not complete after a fragment, wherever the slash is", function()
+      assert.is_nil(complete({ "[a]($LSPTEST_ENV_ROOT/notes#x/" }))
+      assert.is_nil(complete({ "[a]($LSPTEST_ENV_ROOT/notes#x/s" }))
+    end)
+
+    it("finds a code span that wraps over a line break", function()
+      assert.is_nil(
+        complete(
+          { "see `some code", "[a]($LSPTEST_ENV_ROOT/notes/` and more" },
+          1,
+          #"[a]($LSPTEST_ENV_ROOT/notes/"
+        )
+      )
+      assert.is_nil(
+        complete(
+          { "Use the `[text]($LSPTEST_ENV_ROOT/notes/foo.md)", "form` to link." },
+          0,
+          #"Use the `[text]($LSPTEST_ENV_ROOT/notes/"
+        )
+      )
+      -- a real link beside a wrapped span completes
+      local r = complete(
+        { "x `foo", "bar` [a]($LSPTEST_ENV_ROOT/notes/ `y` end" },
+        1,
+        #"bar` [a]($LSPTEST_ENV_ROOT/notes/"
+      )
+      assert.are.same({ "sub/", "a.md", "b file.md" }, labels(r))
+    end)
+
+    it("does not read the buffer for an ordinary link", function()
+      local env_links = require("lsp.core.env_links")
+      local original, calls = env_links.masked_line_at, 0
+      env_links.masked_line_at = function(...)
+        calls = calls + 1
+        return original(...)
+      end
+      local ok = pcall(function()
+        complete({ "[a](docs/" })
+        complete({ "[a](https://example.org/" })
+        complete({ "[a](./notes/" })
+      end)
+      local before_env = calls
+      pcall(complete, { "[a]($LSPTEST_ENV_ROOT/notes/" })
+      env_links.masked_line_at = original
+      assert.is_true(ok)
+      assert.are.equal(0, before_env)
+      assert.are.equal(1, calls)
+    end)
+
+    it("offers $NVIM_CONFIG_DIR where the config directory is, whatever machine this is", function()
+      local real_stdpath = vim.fn.stdpath
+      local saved = vim.env.NVIM_CONFIG_DIR
+      vim.env.NVIM_CONFIG_DIR = nil
+      vim.fn.stdpath = function(what)
+        if what == "config" then
+          return root
+        end
+        return real_stdpath(what)
+      end
+      local ok, r = pcall(complete, { "[a]($NVIM_CONF" })
+      vim.fn.stdpath = real_stdpath
+      vim.env.NVIM_CONFIG_DIR = saved
+      assert.is_true(ok, tostring(r))
+      assert.is_truthy(vim.tbl_contains(labels(r), "$NVIM_CONFIG_DIR"))
     end)
 
     it("does not raise on a position that names no line", function()
@@ -3203,6 +3562,41 @@ describe("lsp.core.env_links_server", function()
       end
       assert.is_truthy(found)
       assert.are.equal("a.md", found.items[1].label)
+    end)
+
+    it("says where it answers, for the engines' own path sources to step aside", function()
+      server.setup({ env_links = true })
+      local text = {
+        "[a]($LSPTEST_ENV_ROOT/n",
+        "[b](./n",
+        "```",
+        "[c]($LSPTEST_ENV_ROOT/n",
+        "```",
+        "`[d]($LSPTEST_ENV_ROOT/n` x",
+        "plain text",
+      }
+      local buf =
+        open_markdown(root .. "/doc.md", table.concat(text, string.char(10)) .. string.char(10))
+      assert.is_true(vim.wait(3000, function()
+        return #vim.lsp.get_clients({ bufnr = buf, name = server.NAME }) > 0
+      end))
+      ---@param row integer
+      ---@param byte? integer # 0-based byte column of the cursor. Default: the end of the line.
+      local function at(row, byte)
+        vim.api.nvim_win_set_cursor(0, { row, byte or #text[row] })
+        return server.answers_at_cursor()
+      end
+      assert.is_true(at(1))
+      assert.is_false(at(2), "an ordinary link is marksman's")
+      assert.is_false(at(4), "in a code block")
+      assert.is_false(at(6, #"`[d]($LSPTEST_ENV_ROOT/n"), "in a code span")
+      assert.is_false(at(7))
+      assert.is_true(at(1, #"[a]($LSPTEST_"), "while the variable is typed")
+      server.detach()
+      assert.is_true(vim.wait(3000, function()
+        return not server.active()
+      end))
+      assert.is_false(at(1), "no client, nothing to step aside for")
     end)
 
     it("says whether it is running", function()

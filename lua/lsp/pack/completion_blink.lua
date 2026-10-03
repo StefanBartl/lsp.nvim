@@ -103,6 +103,17 @@ return {
           mdx = { inherit_defaults = true, "md_words" },
         },
         providers = {
+          -- The envlinks client (`lsp.core.env_links_server`) completes the targets
+          -- `$VAR/`, `${VAR}/` and `~/` itself: percent-encoded text for a name
+          -- with a blank, `${VAR}/`, `$NVIM_CONFIG_DIR`. blink's path source expands
+          -- the same variables and would list every entry a second time, raw, and
+          -- rank first. It steps aside exactly where the client answers.
+          path = {
+            enabled = function()
+              local ok, server = pcall(require, "lsp.core.env_links_server")
+              return not (ok and server.answers_at_cursor())
+            end,
+          },
           lazydev = {
             name = "LazyDev",
             module = "lazydev.integrations.blink",
