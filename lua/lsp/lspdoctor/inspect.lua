@@ -163,8 +163,10 @@ local function detect_conflicts(entries)
     end
     -- Only pull diagnostics are visible here: push diagnostics
     -- (`textDocument/publishDiagnostics`) carry no server capability,
-    -- so a server that sends them cannot be counted as a provider.
-    if caps.diagnosticProvider then
+    -- so a server that sends them cannot be counted as a provider. lsp.nvim's
+    -- own in-process clients (`lsp.nvim-envlinks` pulls diagnostics for
+    -- `$VAR` links only) are not language servers and overlap with none.
+    if caps.diagnosticProvider and not require("lsp.core.util").is_internal(e.client) then
       diagp[#diagp + 1] = e.label
     end
   end

@@ -24,6 +24,22 @@ local function write_file(path, text)
   uv.fs_close(fd)
 end
 
+--- The fastest of `runs` calls of `fn`, in milliseconds. Scheduling noise (a CI
+--- runner under load) only ever adds time, so the minimum is what the code
+--- costs; the regressions the timing specs exist for are a hundred times that.
+---@param fn fun()
+---@param runs? integer
+---@return number
+local function best_ms(fn, runs)
+  local best = math.huge
+  for _ = 1, runs or 5 do
+    local t0 = uv.hrtime()
+    fn()
+    best = math.min(best, (uv.hrtime() - t0) / 1e6)
+  end
+  return best
+end
+
 ---@param path string
 ---@return string
 local function real(path)
@@ -422,9 +438,9 @@ describe("lsp.core.env_links", function()
     ---@param col integer
     ---@return number ms
     local function time_target_at(line, col)
-      local t0 = uv.hrtime()
-      links.target_at(line, col)
-      return (uv.hrtime() - t0) / 1e6
+      return best_ms(function()
+        links.target_at(line, col)
+      end)
     end
 
     it("stays fast on a line of nothing but `[`", function()
@@ -520,6 +536,199 @@ describe("lsp.core.env_links", function()
     end)
   end)
 
+  -- A link target is whatever the document says, and the file a link points at
+  -- is whatever happens to be there: what is resolved, stat-ed and read on the
+  -- strength of one has to hold up against both.
+  describe("resolve: untrusted input", function()
+    it("refuses a target that decodes to a path with a control byte", function()
+      assert.is_nil(links.resolve("$LSPTEST_ENV_ROOT/notes/a.md%00.txt"))
+      assert.is_nil(links.resolve("$LSPTEST_ENV_ROOT/a%0Ab.md"))
+      assert.is_nil(links.resolve("~/a%1Fb.md"))
+    end)
+
+    it("leaves `exists` unknown for a path it was not allowed to stat", function()
+      local asked = {}
+      local r = links.resolve("$LSPTEST_ENV_ROOT/notes/a.md", {
+        stat = function(path)
+          asked[#asked + 1] = path
+          return nil
+        end,
+      })
+      assert.is_nil(r.exists)
+      assert.are.same({ root .. "/notes/a.md" }, asked)
+    end)
+
+    it("takes the answer of the stat it is given", function()
+      local r = links.resolve("$LSPTEST_ENV_ROOT/nope.md", {
+        stat = function()
+          return true
+        end,
+      })
+      assert.is_true(r.exists)
+    end)
+  end)
+
+  -- gopath reads a wider grammar than a link target has. The built-in resolver
+  -- is the reference, so where the two differ gopath is not asked, or not heard.
+  describe("resolve: gopath's wider grammar", function()
+    local asked
+
+    before_each(function()
+      asked = {}
+      package.preload["gopath"] = nil
+      package.loaded["gopath"] = {
+        -- What gopath does with `report(1).md`: `(1)` is a position, the path
+        -- is cut back to `report`.
+        resolve_text = function(text)
+          asked[#asked + 1] = text
+          if text:find("(1)", 1, true) then
+            return { kind = "file", path = root .. "/report", range = { line = 1 } }
+          end
+          return { kind = "file", path = root .. "/notes/a.md" }
+        end,
+      }
+    end)
+
+    it("does not ask for `${VAR}foo`, which is not a folder below VAR", function()
+      assert.is_nil(links.resolve("${LSPTEST_ENV_ROOT}notes/a.md"))
+      assert.are.same({}, asked)
+    end)
+
+    it("does not ask for a target with a long run of blanks", function()
+      local r = links.resolve("$LSPTEST_ENV_ROOT/a" .. (" "):rep(8) .. "b.md")
+      assert.are.same({}, asked)
+      assert.are.equal("builtin", r.source)
+    end)
+
+    -- Measured against gopath's own parser: 4000 blanks inside a `<...>` target
+    -- cost about 100 ms per link, and a document can hold two thousand of them.
+    it("is not slowed down by a very long run of blanks", function()
+      local ms = best_ms(function()
+        links.resolve("$LSPTEST_ENV_ROOT/a" .. (" "):rep(4000) .. "b.md")
+      end)
+      assert.is_true(ms < 100, ("%.1f ms"):format(ms))
+    end)
+
+    it("takes the built-in answer when gopath read a position into the name", function()
+      write_file(root .. "/report(1).md", "# R\n")
+      local r = links.resolve("$LSPTEST_ENV_ROOT/report(1).md")
+      assert.are.equal(root .. "/report(1).md", r.path)
+      assert.is_true(r.exists)
+      assert.are.equal("builtin", r.source)
+    end)
+
+    it("still uses gopath for an ordinary target", function()
+      local r = links.resolve("$LSPTEST_ENV_ROOT/notes/a.md")
+      assert.are.equal("gopath", r.source)
+      assert.are.same({ "$LSPTEST_ENV_ROOT/notes/a.md" }, asked)
+    end)
+  end)
+
+  describe("what is read on the strength of a link", function()
+    it("never reads a path with a NUL, which the OS would cut short", function()
+      write_file(root .. "/secret", "# Not a document\n")
+      local path = root .. "/secret" .. string.char(0) .. ".md"
+      assert.is_nil(links.heading_index(path))
+      assert.is_nil(links.preview(path, 3))
+    end)
+
+    it("judges the file a symlink points at, not the link's own name", function()
+      write_file(root .. "/key", "# looks like a heading\n")
+      write_file(root .. "/real.md", "# Real\n")
+      local evil = vim.uv.fs_symlink(root .. "/key", root .. "/evil.md")
+      local fine = vim.uv.fs_symlink(root .. "/real.md", root .. "/fine.md")
+      if not (evil and fine) then
+        return pending("cannot create symlinks here")
+      end
+      assert.is_nil(links.heading_index(root .. "/evil.md"))
+      assert.is_nil(links.preview(root .. "/evil.md", 3))
+      -- ... and a link to a document is still one.
+      assert.are.equal(0, links.heading_line(root .. "/fine.md", "real"))
+      assert.are.same({ "# Real" }, links.preview(root .. "/fine.md", 3))
+    end)
+
+    it("does not raise on a NUL in a fragment or in a file", function()
+      local nul = string.char(0)
+      write_file(
+        root .. "/n.md",
+        "# A" .. nul .. "B\n" .. '<a name="x' .. nul .. 'y"></a>\n## Fine\n'
+      )
+      local idx = links.heading_index(root .. "/n.md")
+      assert.is_table(idx)
+      assert.are.equal(2, links.heading_lookup(idx, "fine"))
+      assert.has_no.errors(function()
+        links.heading_lookup(idx, "%00")
+        links.heading_lookup(idx, "a%00b")
+        links.heading_line(root .. "/n.md", "%00")
+      end)
+      assert.is_nil(links.heading_lookup(idx, "%00"))
+    end)
+  end)
+
+  -- Diagnostics ask for the same few target files on every keystroke.
+  describe("heading_index cache", function()
+    local reads, orig_read
+
+    before_each(function()
+      reads = {}
+      orig_read = require("lib.nvim.fs.read")
+      package.loaded["lib.nvim.fs.read"] = function(path)
+        reads[#reads + 1] = path
+        return orig_read(path)
+      end
+    end)
+
+    after_each(function()
+      package.loaded["lib.nvim.fs.read"] = orig_read
+    end)
+
+    it("returns the same index, without reading again, while the file is unchanged", function()
+      write_file(root .. "/c.md", "# One\n")
+      local a = links.heading_index(root .. "/c.md")
+      local b = links.heading_index(root .. "/c.md")
+      assert.are.equal(a, b)
+      assert.are.equal(1, #reads)
+    end)
+
+    it("builds a new index when the file changed", function()
+      write_file(root .. "/c.md", "# One\n")
+      local a = links.heading_index(root .. "/c.md")
+      write_file(root .. "/c.md", "# One\n## Two, which is longer\n")
+      local b = links.heading_index(root .. "/c.md")
+      assert.are_not.equal(a, b)
+      assert.are.equal(1, links.heading_lookup(b, "two-which-is-longer"))
+      assert.are.equal(2, #reads)
+    end)
+
+    it("does not cache a file it cannot judge", function()
+      write_file(root .. "/x.lua", "# One\n")
+      assert.is_nil(links.heading_index(root .. "/x.lua"))
+      assert.is_nil(links.heading_index(root .. "/gone.md"))
+      assert.are.equal(0, #reads)
+    end)
+
+    it("keeps no more than INDEX_CACHE_SIZE indexes, the oldest go first", function()
+      links.INDEX_CACHE_SIZE = 3
+      for i = 1, 5 do
+        write_file(("%s/f%d.md"):format(root, i), "# F" .. i .. "\n")
+        links.heading_index(("%s/f%d.md"):format(root, i))
+      end
+      assert.are.equal(5, #reads)
+      links.heading_index(root .. "/f5.md") -- the newest is still there
+      assert.are.equal(5, #reads)
+      links.heading_index(root .. "/f1.md") -- the oldest is not
+      assert.are.equal(6, #reads)
+    end)
+
+    it("forgets everything on clear_cache", function()
+      write_file(root .. "/c.md", "# One\n")
+      links.heading_index(root .. "/c.md")
+      links.clear_cache()
+      links.heading_index(root .. "/c.md")
+      assert.are.equal(2, #reads)
+    end)
+  end)
+
   -- `target_at` answers for one column; `links` for the whole line, with the
   -- span of each target (what a diagnostic underlines).
   describe("links", function()
@@ -589,9 +798,9 @@ describe("lsp.core.env_links", function()
         ("[" .. ("]("):rep(2)):rep(n / 5),
       }
       for _, line in ipairs(lines) do
-        local t0 = uv.hrtime()
-        links.links(line)
-        local ms = (uv.hrtime() - t0) / 1e6
+        local ms = best_ms(function()
+          links.links(line)
+        end)
         assert.is_true(ms < 100, ("%.1f ms on %q"):format(ms, line:sub(1, 12)))
       end
     end)
@@ -633,9 +842,10 @@ describe("lsp.core.env_links", function()
         parts[#parts + 1] = ("`"):rep(k) .. "x"
       end
       local line = table.concat(parts):rep(3):sub(1, links.MAX_LINE_BYTES)
-      local t0 = uv.hrtime()
-      links.mask_code_spans(line)
-      assert.is_true((uv.hrtime() - t0) / 1e6 < 100)
+      local ms = best_ms(function()
+        links.mask_code_spans(line)
+      end)
+      assert.is_true(ms < 100, ("%.1f ms"):format(ms))
     end)
   end)
 
@@ -822,9 +1032,14 @@ describe("lsp.core.env_links", function()
         ("[a]("):rep(width / 8) .. ("](x "):rep(width / 8),
         ("<a "):rep(width / 3),
         ("{#"):rep(width / 2),
-        ("a "):rep(width / 2) .. "{#x}",
+        ("a "):rep((width - 4) / 2) .. "{#x}",
         ("]("):rep(width / 2),
       }
+      -- A shape over the cap is rejected before any title step runs, and would
+      -- measure nothing: every one has to be a heading line that is read.
+      for _, shape in ipairs(shapes) do
+        assert.is_true(#("## " .. shape) <= links.MAX_HEADING_BYTES, #shape)
+      end
       local lines = {}
       for _ = 1, 100 do
         for _, shape in ipairs(shapes) do
@@ -833,10 +1048,13 @@ describe("lsp.core.env_links", function()
       end
       write_file(root .. "/hostile.md", table.concat(lines, "\n"))
 
-      local t0 = uv.hrtime()
-      links.heading_index(root .. "/hostile.md")
-      local ms = (uv.hrtime() - t0) / 1e6
-      assert.is_true(ms < 1000, ("took %.0f ms"):format(ms))
+      -- Under the 2 MB read cap, or the index would be nil and measure nothing.
+      assert.is_table(links.heading_index(root .. "/hostile.md"))
+      local ms = best_ms(function()
+        links.clear_cache()
+        links.heading_index(root .. "/hostile.md")
+      end, 3)
+      assert.is_true(ms < 250, ("took %.0f ms"):format(ms))
     end)
   end)
 
@@ -965,11 +1183,11 @@ describe("lsp.core.env_links", function()
       local over_cap = "# a" .. (" "):rep(links.MAX_HEADING_BYTES * 10) .. "x"
       write_file(root .. "/s.md", table.concat({ within_cap, over_cap, "## Real" }, "\n"))
 
-      local t0 = uv.hrtime()
-      local line = links.heading_line(root .. "/s.md", "real")
-      local ms = (uv.hrtime() - t0) / 1e6
-
-      assert.are.equal(2, line)
+      assert.are.equal(2, links.heading_line(root .. "/s.md", "real"))
+      local ms = best_ms(function()
+        links.clear_cache() -- the cache would answer every run after the first
+        links.heading_line(root .. "/s.md", "real")
+      end)
       assert.is_true(ms < 300, ("took %.0f ms"):format(ms))
     end)
   end)
@@ -1465,6 +1683,10 @@ describe("lsp.core.env_links_server", function()
     it("does not judge the fragment of a file that is not Markdown", function()
       write_file(root .. "/code.lua", "-- x\n")
       assert.are.same({}, items_of("[c]($LSPTEST_ENV_ROOT/code.lua#L10)\n"))
+      -- A text file is read (a hover quotes it), but its anchors are unknown:
+      -- only this one is decided by `is_markdown`, the guard in `problem`.
+      write_file(root .. "/plain.txt", "x\n")
+      assert.are.same({}, items_of("[t]($LSPTEST_ENV_ROOT/plain.txt#L10)\n"))
       assert.are.same({}, items_of("[d]($LSPTEST_ENV_ROOT#anything)\n"))
     end)
 
@@ -1517,6 +1739,79 @@ describe("lsp.core.env_links_server", function()
       local before = #vim.api.nvim_list_bufs()
       server.diagnostics({ textDocument = { uri = vim.uri_from_fname(root .. "/ghost.md") } })
       assert.are.equal(before, #vim.api.nvim_list_bufs())
+    end)
+
+    it("does not print what a variable holds that is not a path", function()
+      vim.env.LSPTEST_SECRET = "sk-secret-token"
+      local items = items_of("[x]($LSPTEST_SECRET/a.md)\n")
+      vim.env.LSPTEST_SECRET = nil
+      assert.are.equal(1, #items)
+      assert.is_nil(items[1].message:find("sk-secret", 1, true), items[1].message)
+      assert.is_truthy(items[1].message:find("$LSPTEST_SECRET/a.md", 1, true))
+    end)
+
+    it("quotes a fragment without its control bytes, and not at any length", function()
+      local tab = string.char(9)
+      local items =
+        items_of("[x](<$LSPTEST_ENV_ROOT/target.md#a" .. tab .. "b" .. ("z"):rep(500) .. ">)\n")
+      assert.are.equal(1, #items)
+      assert.is_nil(items[1].message:find(tab, 1, true))
+      assert.is_true(#items[1].message < 400, #items[1].message)
+    end)
+
+    it("does not look at a network path", function()
+      vim.env.LSPTEST_UNC = "//192.0.2.1/share"
+      local stats = {}
+      local real_stat = vim.uv.fs_stat
+      vim.uv.fs_stat = function(path, ...)
+        if tostring(path):find("192.0.2.1", 1, true) then
+          stats[#stats + 1] = path
+        end
+        return real_stat(path, ...)
+      end
+      local ok, items = pcall(items_of, "[u]($LSPTEST_UNC/x.md)\n[v]($LSPTEST_UNC/y.md#h)\n")
+      vim.uv.fs_stat = real_stat
+      vim.env.LSPTEST_UNC = nil
+      assert.is_true(ok, tostring(items))
+      assert.are.same({}, stats)
+      assert.are.same({}, items)
+    end)
+
+    it("looks at a path once per pull, however many links name it", function()
+      local stats = 0
+      local real_stat = vim.uv.fs_stat
+      vim.uv.fs_stat = function(path, ...)
+        if path == root .. "/gone.md" then
+          stats = stats + 1
+        end
+        return real_stat(path, ...)
+      end
+      local text = ("[g]($LSPTEST_ENV_ROOT/gone.md)\n"):rep(5)
+      local ok, items = pcall(items_of, text)
+      vim.uv.fs_stat = real_stat
+      assert.is_true(ok, tostring(items))
+      assert.are.equal(5, #items)
+      assert.are.equal(1, stats)
+    end)
+
+    it("reports the other links when one of them makes the code raise", function()
+      require("lsp.core.env_links").heading_index = function()
+        error("boom")
+      end
+      local items =
+        items_of("[a]($LSPTEST_ENV_ROOT/target.md#deep-section)\n[b]($LSPTEST_ENV_ROOT/gone.md)\n")
+      assert.are.equal(1, #items)
+      assert.are.equal("missing-file", items[1].code)
+    end)
+
+    it("builds the heading index of only so many files in one pull", function()
+      local lines = {}
+      for i = 1, server.MAX_INDEXED_FILES + 8 do
+        write_file(("%s/many%d.md"):format(root, i), "# Only\n")
+        lines[#lines + 1] = ("[l]($LSPTEST_ENV_ROOT/many%d.md#nope)"):format(i)
+      end
+      local items = items_of(table.concat(lines, "\n") .. "\n")
+      assert.are.equal(server.MAX_INDEXED_FILES, #items)
     end)
   end)
 
@@ -1712,7 +2007,16 @@ describe("lsp.core.env_links_server", function()
         return #ours() == 1
       end))
 
+      -- Nothing but the trigger may clear it: wait out the debounce and the
+      -- pulls that follow an attach, and make sure it is still there.
+      vim.wait(800, function()
+        return false
+      end)
       write_file(root .. "/later.md", "# Later\n")
+      vim.wait(800, function()
+        return false
+      end)
+      assert.are.equal(1, #ours(), "the warning went away without a trigger")
       vim.api.nvim_exec_autocmds("BufWritePost", { buffer = buf })
       assert.is_true(
         vim.wait(3000, function()
@@ -1734,6 +2038,232 @@ describe("lsp.core.env_links_server", function()
       assert.is_true(vim.wait(3000, function()
         return not server.active()
       end))
+    end)
+
+    it("re-checks when Neovim regains focus, too", function()
+      server.setup({ env_links = true })
+      local buf = open_markdown(root .. "/doc.md", "[n]($LSPTEST_ENV_ROOT/later.md)\n")
+      local function ours()
+        return vim.tbl_filter(function(d)
+          return d.source == server.NAME
+        end, vim.diagnostic.get(buf))
+      end
+      assert.is_true(vim.wait(3000, function()
+        return #ours() == 1
+      end))
+
+      -- Nothing but the trigger may clear it: wait out the debounce and the
+      -- pulls that follow an attach, and make sure it is still there.
+      vim.wait(800, function()
+        return false
+      end)
+      write_file(root .. "/later.md", "# Later\n")
+      vim.wait(800, function()
+        return false
+      end)
+      assert.are.equal(1, #ours(), "the warning went away without a trigger")
+      vim.api.nvim_exec_autocmds("FocusGained", {})
+      assert.is_true(
+        vim.wait(3000, function()
+          return #ours() == 0
+        end),
+        "the warning stayed after the target was created and Neovim regained focus"
+      )
+    end)
+
+    -- Neovim pulls after a change only for a buffer that is shown: a change
+    -- made to a hidden one leaves its diagnostics stale until it is shown.
+    it("pulls for a hidden Markdown buffer that changed, when it is shown", function()
+      server.setup({ env_links = true })
+      write_file(root .. "/hidden.md", "[g]($LSPTEST_ENV_ROOT/gone.md)\n")
+      open_markdown(root .. "/shown.md", "# x\n")
+      local hidden = vim.fn.bufadd(root .. "/hidden.md")
+      vim.fn.bufload(hidden)
+      vim.bo[hidden].filetype = "markdown"
+      local function ours()
+        return vim.tbl_filter(function(d)
+          return d.source == server.NAME
+        end, vim.diagnostic.get(hidden))
+      end
+      assert.is_true(vim.wait(3000, function()
+        return #ours() == 1
+      end))
+
+      vim.api.nvim_buf_set_lines(hidden, 0, 1, false, { "[t]($LSPTEST_ENV_ROOT/target.md)" })
+      vim.wait(800, function()
+        return false
+      end)
+      assert.are.equal(1, #ours(), "a hidden buffer was pulled without being shown")
+
+      vim.api.nvim_set_current_buf(hidden)
+      assert.is_true(
+        vim.wait(3000, function()
+          return #ours() == 0
+        end),
+        "the stale diagnostic stayed once the buffer was shown"
+      )
+    end)
+
+    -- Neovim clears a client's pulled diagnostics on detach only when no other
+    -- pull-capable client stays on the buffer.
+    it("takes its diagnostics with it when another pull client stays on the buffer", function()
+      local function pull_server()
+        return function(dispatchers)
+          local srv = {}
+          function srv.request(method, _, callback, notify_reply)
+            if method == "initialize" then
+              callback(nil, {
+                capabilities = {
+                  textDocumentSync = { openClose = true, change = 2 },
+                  diagnosticProvider = {
+                    identifier = "other",
+                    interFileDependencies = false,
+                    workspaceDiagnostics = false,
+                  },
+                },
+              })
+            elseif method == "textDocument/diagnostic" then
+              callback(nil, { kind = "full", items = {} })
+            elseif method == "shutdown" then
+              callback(nil, nil)
+            else
+              callback({ code = -32601, message = "unsupported" }, nil)
+            end
+            if notify_reply then
+              notify_reply(1)
+            end
+            return true, 1
+          end
+          function srv.notify(method)
+            if method == "exit" then
+              dispatchers.on_exit(0, 0)
+            end
+            return true
+          end
+          function srv.is_closing()
+            return false
+          end
+          function srv.terminate() end
+          return srv
+        end
+      end
+
+      server.setup({ env_links = true })
+      local buf = open_markdown(root .. "/doc.md", "[g]($LSPTEST_ENV_ROOT/gone.md)\n")
+      vim.lsp.start({ name = "lsp-test-pull-other", cmd = pull_server(), root_dir = root }, {
+        bufnr = buf,
+      })
+      local function ours()
+        return vim.tbl_filter(function(d)
+          return d.source == server.NAME
+        end, vim.diagnostic.get(buf))
+      end
+      assert.is_true(vim.wait(3000, function()
+        return #ours() == 1
+          and #vim.lsp.get_clients({ bufnr = buf, name = "lsp-test-pull-other" }) > 0
+      end))
+
+      server.detach()
+      assert.is_true(
+        vim.wait(3000, function()
+          return #ours() == 0
+        end),
+        "the stopped client's diagnostics stayed"
+      )
+      for _, c in ipairs(vim.lsp.get_clients({ name = "lsp-test-pull-other" })) do
+        c:stop()
+      end
+    end)
+
+    -- marksman publishes for every file of the workspace; the client answers for
+    -- the buffers it is attached to. Its own message is dropped only where the
+    -- client answers, and a broken link is never reported by nobody.
+    describe("and marksman reports the same broken link", function()
+      local message = "Link to non-existent document '$LSPTEST_ENV_ROOT/gone.md'"
+
+      ---@param uri string
+      ---@return table[] delivered
+      local function marksman_pushes(uri)
+        local get_client = vim.lsp.get_client_by_id
+        local default = vim.lsp.handlers["textDocument/publishDiagnostics"]
+        local got
+        vim.lsp.get_client_by_id = function()
+          return { name = "marksman" }
+        end
+        vim.lsp.handlers["textDocument/publishDiagnostics"] = function(_, result)
+          got = result
+        end
+        package.loaded["lsp.servers.marksman.diagnostics_handler"] = nil
+        local handler = require("lsp.servers.marksman.diagnostics_handler").make_handler()
+        local ok, err = pcall(handler, nil, {
+          uri = uri,
+          diagnostics = {
+            {
+              range = { start = { line = 0, character = 0 }, ["end"] = { line = 0, character = 1 } },
+              severity = 2,
+              message = message,
+            },
+          },
+        }, { client_id = 1 }, {})
+        vim.lsp.get_client_by_id = get_client
+        vim.lsp.handlers["textDocument/publishDiagnostics"] = default
+        package.loaded["lsp.servers.marksman.diagnostics_handler"] = nil
+        assert.is_true(ok, tostring(err))
+        return got and got.diagnostics or {}
+      end
+
+      before_each(function()
+        require("lsp.config").setup({})
+      end)
+
+      it("drops marksman's message for a document the client is attached to", function()
+        server.setup({ env_links = true })
+        local buf = open_markdown(root .. "/doc.md", "[g]($LSPTEST_ENV_ROOT/gone.md)\n")
+        assert.is_true(vim.wait(3000, function()
+          return #vim.lsp.get_clients({ bufnr = buf, name = server.NAME }) > 0
+        end))
+        assert.are.same({}, marksman_pushes(vim.uri_from_bufnr(buf)))
+      end)
+
+      it("keeps it, annotated, for a document nobody has open", function()
+        server.setup({ env_links = true })
+        local buf = open_markdown(root .. "/doc.md", "# x\n")
+        assert.is_true(vim.wait(3000, function()
+          return #vim.lsp.get_clients({ bufnr = buf, name = server.NAME }) > 0
+        end))
+        local got = marksman_pushes(vim.uri_from_fname(root .. "/other.md"))
+        assert.are.equal(1, #got)
+        assert.is_truthy(got[1].message:find("(resolved to " .. root .. "/gone.md)", 1, true))
+      end)
+
+      it("keeps it for a loaded buffer the client is not attached to", function()
+        server.setup({ env_links = true })
+        local buf = open_markdown(root .. "/doc.md", "# x\n")
+        assert.is_true(vim.wait(3000, function()
+          return #vim.lsp.get_clients({ bufnr = buf, name = server.NAME }) > 0
+        end))
+        -- (Whether `bufload` attaches depends on filetype detection: detach to be sure.)
+        write_file(root .. "/loaded.md", "[g]($LSPTEST_ENV_ROOT/gone.md)\n")
+        local loaded = vim.fn.bufadd(root .. "/loaded.md")
+        vim.fn.bufload(loaded)
+        vim.wait(300, function()
+          return false
+        end)
+        for _, c in ipairs(vim.lsp.get_clients({ bufnr = loaded, name = server.NAME })) do
+          vim.lsp.buf_detach_client(loaded, c.id)
+        end
+        assert.are.equal(0, #vim.lsp.get_clients({ bufnr = loaded, name = server.NAME }))
+        local got = marksman_pushes(vim.uri_from_bufnr(loaded))
+        assert.are.equal(1, #got)
+      end)
+
+      -- The annotation used to be lost whenever nothing else was dropped from
+      -- the push: only a changed *count* made the handler pass the filtered list on.
+      it("annotates it when the client is not running, with nothing else dropped", function()
+        local got = marksman_pushes(vim.uri_from_fname(root .. "/doc.md"))
+        assert.are.equal(1, #got)
+        assert.is_truthy(got[1].message:find("(resolved to " .. root .. "/gone.md)", 1, true))
+      end)
     end)
   end)
 end)

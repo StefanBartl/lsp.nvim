@@ -42,7 +42,7 @@ local M = {}
 
 ---@class LspNvim.EnvLink.Resolved
 ---@field path string # Absolute, forward slashes.
----@field exists boolean # Whether `path` is on disk (a directory counts).
+---@field exists boolean|nil # Whether `path` is on disk (a directory counts); nil when it was not looked at (see `opts.stat`).
 ---@field fragment string|nil # The `#anchor` of the target, without the `#`.
 ---@field source "gopath"|"builtin"
 
@@ -176,31 +176,66 @@ local function resolve_gopath(path)
   if not gopath or type(gopath.resolve_text) ~= "function" then
     return nil
   end
+  -- gopath reads a wider grammar than a link target has, and the built-in
+  -- resolver (which answers when this returns nil) is the reference:
+  --   * `${VAR}foo` is the value with `foo` glued on in a shell, not a folder
+  --     below it (see `resolve_builtin`), but gopath takes the separator as
+  --     optional;
+  --   * a long run of blanks (allowed inside `<...>`) makes gopath's location
+  --     parser quadratic: about 100 ms per link at 4000 blanks, measured, and
+  --     no real path has one.
+  if path:match("^%${[%w_]+}[^/\\]") or path:find("%s%s%s%s%s%s%s%s") then
+    return nil
+  end
   local called, res = pcall(gopath.resolve_text, path)
   if not called or type(res) ~= "table" or type(res.path) ~= "string" or res.kind == "url" then
     return nil
   end
+  -- A `:12`, `(3)` or `+4` at the end is a position for gopath, but it may
+  -- just as well be the name of the file (`report(1).md`): a link target is
+  -- a path as written, so the answer is the built-in resolver's.
+  if res.range ~= nil then
+    return nil
+  end
   return (res.path:gsub("\\", "/"))
+end
+
+---@class LspNvim.EnvLink.ResolveOpts
+---@field stat? fun(path: string): boolean|nil # Whether `path` is on disk; nil = not looked at. Default: `fs_stat`.
+
+---@internal
+--- Whether `path` is on disk, by `fs_stat`.
+---@param path string
+---@return boolean
+local function on_disk(path)
+  return vim.uv.fs_stat(path) ~= nil
 end
 
 --- Resolve a link target.
 ---
 --- nil when the target is not an env/home reference at all, or names a
 --- variable nothing defines -- the caller then leaves the link alone, which
---- is the right answer for "cannot tell".
+--- is the right answer for "cannot tell". Also nil for a target that decodes
+--- to a path holding a control byte (`%00`): no file has one, and a NUL would
+--- cut the path short in every call that hands it to the OS.
 ---@param target string
+---@param opts? LspNvim.EnvLink.ResolveOpts
 ---@return LspNvim.EnvLink.Resolved|nil
-function M.resolve(target)
+function M.resolve(target, opts)
   if not M.is_env_target(target) then
     return nil
   end
   local path, fragment = M.split(target)
+  if path:find("[%z\1-\31]") then
+    return nil
+  end
+  local stat = opts and opts.stat or on_disk
 
   local home = resolve_home(path)
   if home then
     return {
       path = home,
-      exists = vim.uv.fs_stat(home) ~= nil,
+      exists = stat(home),
       fragment = fragment,
       source = "builtin",
     }
@@ -210,7 +245,7 @@ function M.resolve(target)
   if via then
     return {
       path = via,
-      exists = vim.uv.fs_stat(via) ~= nil,
+      exists = stat(via),
       fragment = fragment,
       source = "gopath",
     }
@@ -222,7 +257,7 @@ function M.resolve(target)
   end
   return {
     path = resolved,
-    exists = vim.uv.fs_stat(resolved) ~= nil,
+    exists = stat(resolved),
     fragment = fragment,
     source = "builtin",
   }
@@ -696,16 +731,44 @@ M.MAX_PREVIEW_LINE_BYTES = 200
 local TEXT_DOC_EXT = { md = true, markdown = true, mdx = true, txt = true }
 
 ---@internal
---- Is `path` a small regular Markdown/text file -- one it is fine to read?
+--- The file `path` really is, when it is a small regular Markdown/text file --
+--- one it is fine to read; nil otherwise.
+---
+--- Every check is made on the file that would be opened, not on how the link
+--- spells it: a symlink named `x.md` that points at `~/.ssh/id_rsa` has the
+--- extension of a document and the content of a key, and `x%00.md` decodes to
+--- a path the OS cuts short at the NUL. So the path is resolved first, and its
+--- extension, type and size are what count.
 ---@param path string
----@return boolean
-local function is_text_doc(path)
-  local ext = path:match("%.(%w+)$")
-  if not ext or not TEXT_DOC_EXT[ext:lower()] then
-    return false
+---@return string|nil real
+---@return table|nil stat # `vim.uv.fs_stat` of `real`.
+local function text_doc(path)
+  if path:find("[%z\1-\31]") then
+    return nil
   end
-  local st = vim.uv.fs_stat(path)
-  return st ~= nil and st.type == "file" and st.size <= M.MAX_READ_BYTES
+  local real = vim.uv.fs_realpath(path)
+  if not real then
+    return nil
+  end
+  local ext = real:match("%.(%w+)$")
+  if not ext or not TEXT_DOC_EXT[ext:lower()] then
+    return nil
+  end
+  local st = vim.uv.fs_stat(real)
+  if not st or st.type ~= "file" or st.size > M.MAX_READ_BYTES then
+    return nil
+  end
+  return real, st
+end
+
+---@internal
+--- Lowercase `s`, multibyte-aware. A NUL is dropped first: `vim.fn.tolower`
+--- raises on one (E976), and the text comes from a link fragment or from a file
+--- this module does not control.
+---@param s string
+---@return string
+local function lower(s)
+  return vim.fn.tolower((s:gsub("%z", "")))
 end
 
 ---@internal
@@ -716,7 +779,7 @@ end
 ---@param title string
 ---@return string
 local function slug(title)
-  local s = vim.fn.tolower(title):gsub("[^%w%s%-_\128-\255]", "")
+  local s = lower(title):gsub("[^%w%s%-_\128-\255]", "")
   return (s:gsub("%s", "-"))
 end
 
@@ -886,6 +949,28 @@ end
 
 ---@class LspNvim.EnvLink.HeadingIndex : table<string, integer>
 
+---@class LspNvim.EnvLink.IndexCacheEntry
+---@field size integer
+---@field sec integer
+---@field nsec integer
+---@field index LspNvim.EnvLink.HeadingIndex
+
+--- How many heading indexes are kept between calls.
+---@type integer
+M.INDEX_CACHE_SIZE = 32
+
+---@type table<string, LspNvim.EnvLink.IndexCacheEntry>
+local index_cache = {}
+---@type string[] # Keys of `index_cache`, oldest first.
+local index_cache_order = {}
+
+--- Forget every cached heading index.
+---@return nil
+function M.clear_cache()
+  index_cache = {}
+  index_cache_order = {}
+end
+
 --- The anchors of the Markdown file at `path`, each with the 0-based line it
 --- names: a heading's GitHub-style slug (a repeated heading `x` is `x`, `x-1`,
 --- `x-2`, ...), its `{#custom-id}`, and the `id`/`name` of an HTML anchor.
@@ -893,13 +978,24 @@ end
 ---
 --- nil when the file cannot be judged: not Markdown or text, too large, or
 --- unreadable. That is "cannot tell", not "no anchors".
+---
+--- Diagnostics ask for the same few files on every keystroke, so an index is
+--- kept (`INDEX_CACHE_SIZE` of them, by the file's real path) for as long as
+--- the file's size and modification time stay the same: one `fs_stat` instead of
+--- a read and a parse, and the case variants of a path on a case-insensitive
+--- file system are one file. The returned table is shared: do not change it.
 ---@param path string
 ---@return LspNvim.EnvLink.HeadingIndex|nil
 function M.heading_index(path)
-  if not is_text_doc(path) then
+  local real, st = text_doc(path)
+  if not real or not st then
     return nil
   end
-  local content = require("lib.nvim.fs.read")(path)
+  local hit = index_cache[real]
+  if hit and hit.size == st.size and hit.sec == st.mtime.sec and hit.nsec == st.mtime.nsec then
+    return hit.index
+  end
+  local content = require("lib.nvim.fs.read")(real)
   if not content then
     return nil
   end
@@ -935,18 +1031,24 @@ function M.heading_index(path)
           end
         end
         if id then
-          add(vim.fn.tolower(id), n)
+          add(lower(id), n)
         end
       end
       if line:find("<", 1, true) then
         for _, attr in ipairs({ "id", "name" }) do
           for value in line:gmatch("%s" .. attr .. "%s*=%s*[\"']([^\"']+)[\"']") do
-            add(vim.fn.tolower(value), n)
+            add(lower(value), n)
           end
         end
       end
     end
     n = n + 1
+  end
+
+  index_cache[real] = { size = st.size, sec = st.mtime.sec, nsec = st.mtime.nsec, index = index }
+  index_cache_order[#index_cache_order + 1] = real
+  while #index_cache_order > M.INDEX_CACHE_SIZE do
+    index_cache[table.remove(index_cache_order, 1)] = nil
   end
   return index
 end
@@ -965,7 +1067,7 @@ function M.heading_lookup(index, fragment)
   if not ok then
     decoded = fragment
   end
-  return index[slug(decoded)] or index[vim.fn.tolower(decoded)]
+  return index[slug(decoded)] or index[lower(decoded)]
 end
 
 --- The 0-based line of the heading whose anchor is `fragment` in the file at
@@ -993,10 +1095,11 @@ end
 ---@param max_lines integer
 ---@return string[]|nil
 function M.preview(path, max_lines)
-  if not is_text_doc(path) then
+  local real = text_doc(path)
+  if not real then
     return nil
   end
-  local ok, lines = pcall(vim.fn.readfile, path, "", max_lines)
+  local ok, lines = pcall(vim.fn.readfile, real, "", max_lines)
   if not ok then
     return nil
   end

@@ -601,7 +601,9 @@ hid that, and every genuinely broken link along with it.
   the source: it says nothing at all about a link that carries a `#fragment`
   (measured, relative links too), and for the others it only knows the target as
   a folder name. So marksman's own "Link to non-existent document" about an env
-  link is dropped while the client runs; when the client is off, it is *checked*
+  link is dropped while the client runs *in that document's buffer* (marksman
+  also publishes for files nobody has open, and there its message stays); when the
+  client is off, it is *checked*
   the way it used to be (dropped when the file exists, **kept** with the path it
   was looked up at when it does not, even though the blanket rule would have
   hidden it). Ordinary links keep the blanket rule exactly as before. A link
@@ -617,6 +619,15 @@ hid that, and every genuinely broken link along with it.
   links and are not reported. Diagnostics follow the document as it is edited,
   and are re-checked when any file is written or Neovim regains focus, so a
   target that is created later clears its warning.
+
+  The message names the path a link was looked up at only when that path is
+  absolute: a variable can hold anything (`$API_TOKEN/a.md` resolves to
+  `<the token>/a.md`), and a document must not be able to put such a value on
+  the screen. Network paths (`//host/share/...`) are not looked at -- a stat on
+  one that does not answer blocks Neovim for the OS timeout -- and one pull
+  spends at most about 50 ms on `fs_stat`; links it did not get to are left
+  alone until the next pull. The heading index of a target file is cached
+  (by real path, validated by size and modification time) between pulls.
 - **Definition and hover.** A small in-process client, `lsp.nvim-envlinks`
   (the same shape as the gitsigns one, attached to Markdown buffers), answers
   `textDocument/definition` -- the file, at the heading when the target carries
@@ -649,8 +660,8 @@ these is a length a hand-written Markdown line reaches.
 
 Link text may hold balanced brackets and escaped ones, so the badge pattern
 `[![alt]($REPOS_DIR/a.png)]($REPOS_DIR/doc.md)` answers on both its targets.
-Neovim 0.12 has no `textDocument/documentLink` support yet, so `gx` on an env
-link is not covered.
+`gx` on an env link is not covered: the client does not answer
+`textDocument/documentLink`, which Neovim 0.12's `gx` would ask.
 
 `languages.env_links = false` switches the client and the diagnostics filter off
 together. It may also be set from `.nvim-lsp.json`, since `languages` is one of

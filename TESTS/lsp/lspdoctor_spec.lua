@@ -359,6 +359,53 @@ describe("lsp.lspdoctor", function()
         assert.is_truthy(rendered:find("`lua_ls`", 1, true), rendered)
       end)
     end)
+
+    -- `lsp.nvim-envlinks` pulls diagnostics for `$VAR` links only; it is no
+    -- language server, so it must not count as a diagnostics provider that
+    -- overlaps with a real one.
+    describe("diagnostics providers", function()
+      local saved_get_clients
+
+      before_each(function()
+        saved_get_clients = vim.lsp.get_clients
+      end)
+
+      after_each(function()
+        vim.lsp.get_clients = saved_get_clients
+      end)
+
+      ---@param names string[]
+      local function with_pull_clients(names)
+        vim.lsp.get_clients = function()
+          local out = {}
+          for i, name in ipairs(names) do
+            out[#out + 1] = {
+              id = i,
+              name = name,
+              offset_encoding = "utf-16",
+              server_capabilities = { diagnosticProvider = { identifier = name } },
+            }
+          end
+          return out
+        end
+      end
+
+      it("does not count lsp.nvim's own in-process client", function()
+        with_pull_clients({ "lsp.nvim-envlinks", "pullstub" })
+        local mod = inspect()
+        mod.setup({ show_conflicts = true })
+        local lines = mod.capabilities(vim.api.nvim_get_current_buf())
+        assert.is_nil(table.concat(lines, "\n"):find("Diagnostics providers overlap", 1, true))
+      end)
+
+      it("still reports two language servers that both pull", function()
+        with_pull_clients({ "pullstub", "otherstub" })
+        local mod = inspect()
+        mod.setup({ show_conflicts = true })
+        local lines = mod.capabilities(vim.api.nvim_get_current_buf())
+        assert.is_truthy(table.concat(lines, "\n"):find("Diagnostics providers overlap", 1, true))
+      end)
+    end)
   end)
 
   -- The semantic-tokens line used to go through `lsp.buf_request_sync`, which
