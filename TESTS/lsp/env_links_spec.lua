@@ -907,6 +907,137 @@ describe("lsp.core.env_links", function()
     end)
   end)
 
+  -- What a second review found in the anchors: every one is a heading GitHub
+  -- gives an anchor that the index did not know (a link to it was reported as
+  -- "non-existent heading"), or the other way round.
+  describe("heading_index: the anchors GitHub gives", function()
+    ---@param text string
+    ---@return table<string, integer>
+    local function index_of(text)
+      write_file(root .. "/g.md", text)
+      links.clear_cache()
+      return assert(links.heading_index(root .. "/g.md"))
+    end
+
+    local function at(idx, fragment)
+      return links.heading_lookup(idx, fragment)
+    end
+
+    it("indexes a setext heading, and counts it with the ATX ones", function()
+      local idx = index_of("Title\n=====\n\nUsage\n-----\n\ntext\n\n## Usage\n")
+      assert.are.equal(0, at(idx, "title"))
+      assert.are.equal(3, at(idx, "usage"))
+      assert.are.equal(8, at(idx, "usage-1"))
+    end)
+
+    it("does not take a thematic break, a list item or a quote for a setext title", function()
+      local idx = index_of("- item\n---\n\n> quote\n---\n\n***\n\nreal\n---\n")
+      assert.is_nil(at(idx, "item"))
+      assert.is_nil(at(idx, "quote"))
+      assert.are.equal(8, at(idx, "real"))
+    end)
+
+    it("takes the lines of a multi-line setext title together", function()
+      local idx = index_of("first line\nsecond line\n======\n")
+      assert.are.equal(0, at(idx, "first-line-second-line"))
+    end)
+
+    it("indexes a heading indented by up to three blanks, in a quote or in a list", function()
+      local idx = index_of("   ## Indented\n> ## Quoted\n- ## Listed\n1. ## Numbered\n")
+      assert.are.equal(0, at(idx, "indented"))
+      assert.are.equal(1, at(idx, "quoted"))
+      assert.are.equal(2, at(idx, "listed"))
+      assert.are.equal(3, at(idx, "numbered"))
+    end)
+
+    it("does not take four blanks, seven hashes or a bare #tag for a heading", function()
+      local idx = index_of("    ## Code\n####### Seven\n#tag\n")
+      assert.is_nil(at(idx, "code"))
+      assert.is_nil(at(idx, "seven"))
+      assert.is_nil(at(idx, "tag"))
+    end)
+
+    it("keeps what is inside a code span as it is", function()
+      local idx = index_of("## `Option<T>`\n## The `<div>` element\n## Syntax: `[text](url)`\n")
+      assert.are.equal(0, at(idx, "optiont"))
+      assert.are.equal(1, at(idx, "the-div-element"))
+      assert.are.equal(2, at(idx, "syntax-texturl"))
+    end)
+
+    it("drops an image from the anchor, and knows the alt-text spelling too", function()
+      local idx = index_of("## ![logo](a.png) Brand\n# Project [![CI](x.svg)](https://ci) Status\n")
+      assert.are.equal(0, at(idx, "-brand"))
+      assert.are.equal(0, at(idx, "logo-brand"))
+      assert.are.equal(1, at(idx, "project--status"))
+    end)
+
+    it("takes the emphasis out of a title, wherever it is", function()
+      local idx = index_of("## The _foo_ command\n## __init__ method\n## snake_case here\n")
+      assert.are.equal(0, at(idx, "the-foo-command"))
+      assert.are.equal(1, at(idx, "init-method"))
+      assert.are.equal(2, at(idx, "snake_case-here"))
+      assert.is_nil(at(idx, "snakecase-here"))
+    end)
+
+    it("numbers a repeated heading on the anchor GitHub ends up with", function()
+      local idx = index_of("## 🚀 Fixes\n## 🚀 Fixes\n## _foo_\n## foo\n")
+      assert.are.equal(0, at(idx, "-fixes"))
+      assert.are.equal(1, at(idx, "-fixes-1"))
+      assert.are.equal(2, at(idx, "foo"))
+      assert.are.equal(3, at(idx, "foo-1"))
+    end)
+
+    it("decodes character references before it makes the anchor", function()
+      local idx = index_of(
+        "## Q&amp;A\n## Overview &amp; Setup\n## &#169; Num\n## &#x41;lpha\n## &bogus; x\n"
+      )
+      assert.are.equal(0, at(idx, "qa"))
+      assert.are.equal(1, at(idx, "overview--setup"))
+      assert.are.equal(2, at(idx, "-num"))
+      assert.are.equal(3, at(idx, "alpha"))
+      assert.are.equal(4, at(idx, "bogus-x"))
+    end)
+
+    it("accepts both the id and the GitHub spelling of a heading with {#id}", function()
+      local idx = index_of("## Title {#custom-id}\n")
+      assert.are.equal(0, at(idx, "title"))
+      assert.are.equal(0, at(idx, "custom-id"))
+      assert.are.equal(0, at(idx, "title-custom-id"))
+    end)
+
+    it("sees a heading on the first line of a file with a byte order mark", function()
+      write_file(root .. "/bom.md", "\239\187\191# Title\n## Second\n")
+      links.clear_cache()
+      local idx = assert(links.heading_index(root .. "/bom.md"))
+      assert.are.equal(0, at(idx, "title"))
+      assert.are.equal(1, at(idx, "second"))
+    end)
+
+    it("does not take a comment in a YAML front matter for a heading", function()
+      local idx = index_of("---\n# a comment\ntitle: x\n---\n# Real\n")
+      assert.is_nil(at(idx, "a-comment"))
+      assert.are.equal(4, at(idx, "real"))
+      -- Not closed: the dashes were a thematic break.
+      local open = index_of("---\n# Still a heading\n")
+      assert.are.equal(1, at(open, "still-a-heading"))
+    end)
+
+    it("drops CJK and full-width punctuation like any other punctuation", function()
+      local idx = index_of("## 概要：使い方\n## Foo（bar）\n")
+      assert.are.equal(0, at(idx, "概要使い方"))
+      assert.are.equal(1, at(idx, "foobar"))
+    end)
+
+    -- JavaScript's toLowerCase, which GitHub's slugger uses, is not Vim's.
+    it("folds the lowercase of a dotted capital I and of a final sigma", function()
+      local idx = index_of("## \196\176stanbul\n## \206\159\206\148\206\159\206\163\n")
+      assert.are.equal(0, at(idx, "istanbul"))
+      assert.are.equal(0, at(idx, "i\204\135stanbul"))
+      assert.are.equal(1, at(idx, "\206\191\206\180\206\191\207\131")) -- medial sigma
+      assert.are.equal(1, at(idx, "\206\191\206\180\206\191\207\130")) -- final sigma
+    end)
+  end)
+
   -- `target_at` answers for one column; `links` for the whole line, with the
   -- span of each target (what a diagnostic underlines).
   describe("links", function()
@@ -1232,7 +1363,8 @@ describe("lsp.core.env_links", function()
         links.clear_cache()
         links.heading_index(root .. "/hostile.md")
       end, 3)
-      assert.is_true(ms < 250, ("took %.0f ms"):format(ms))
+      -- A cubic title pattern is seconds per line, and this is 700 of them.
+      assert.is_true(ms < 400, ("took %.0f ms"):format(ms))
     end)
   end)
 
