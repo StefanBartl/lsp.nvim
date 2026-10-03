@@ -1175,11 +1175,14 @@ describe("lsp.core.env_links", function()
 
     it("does not stat a network path, whoever asks", function()
       vim.env.LSPTEST_UNC = "//192.0.2.1/share"
+      local was_windows = require("lsp.core.env_links").windows
+      require("lsp.core.env_links").windows = true
       local stats, restore = counting_stat()
       local resolved = links.resolve("$LSPTEST_UNC/a.md")
       local verdict = links.verdict("Link to non-existent document '$LSPTEST_UNC/a.md'")
       restore()
       vim.env.LSPTEST_UNC = nil
+      require("lsp.core.env_links").windows = was_windows
       assert.is_nil(resolved.exists)
       assert.is_nil(verdict, "not looked at is no verdict")
       assert.are.same({}, stats)
@@ -1346,6 +1349,26 @@ describe("lsp.core.env_links", function()
       assert.are.same({ "$A/x.md" }, scanned({ "1. press `", "2. [x]($A/x.md) and `y` ok" }))
       assert.are.same({}, scanned({ "1. a `", "2. use `[x]($A/x.md)` here" }))
       assert.are.same({}, scanned({ "the syntax is `[x]($A/ex.md)", "2. more` text" }))
+    end)
+
+    it("stats a double-slash path where that is an ordinary local path", function()
+      vim.env.LSPTEST_DBL = "//192.0.2.1/share"
+      local was_windows = links.windows
+      links.windows = false
+      local stats = {}
+      local real_stat = vim.uv.fs_stat
+      vim.uv.fs_stat = function(path)
+        if tostring(path):find("192.0.2.1", 1, true) then
+          stats[#stats + 1] = path
+        end
+        return nil
+      end
+      local resolved = links.resolve("$LSPTEST_DBL/a.md")
+      vim.uv.fs_stat = real_stat
+      links.windows = was_windows
+      vim.env.LSPTEST_DBL = nil
+      assert.is_false(resolved.exists)
+      assert.are.equal(1, #stats)
     end)
 
     it("takes a double slash for a network path on Windows only", function()
@@ -2092,6 +2115,8 @@ describe("lsp.servers.marksman.diagnostics_handler with env links", function()
 
   it("does not stat a network path to judge a message", function()
     vim.env.LSPTEST_UNC = "//192.0.2.1/share"
+    local was_windows = require("lsp.core.env_links").windows
+    require("lsp.core.env_links").windows = true
     local stats = {}
     local real_stat = vim.uv.fs_stat
     vim.uv.fs_stat = function(path, ...)
@@ -2105,6 +2130,7 @@ describe("lsp.servers.marksman.diagnostics_handler with env links", function()
     }, false)
     vim.uv.fs_stat = real_stat
     vim.env.LSPTEST_UNC = nil
+    require("lsp.core.env_links").windows = was_windows
     assert.is_true(ok, tostring(got))
     assert.are.same({}, stats)
     -- No verdict: the old rules apply (the blanket rule hides it).
@@ -2532,6 +2558,8 @@ describe("lsp.core.env_links_server", function()
 
     it("does not look at a network path", function()
       vim.env.LSPTEST_UNC = "//192.0.2.1/share"
+      local was_windows = require("lsp.core.env_links").windows
+      require("lsp.core.env_links").windows = true
       local stats = {}
       local real_stat = vim.uv.fs_stat
       vim.uv.fs_stat = function(path, ...)
@@ -2543,6 +2571,7 @@ describe("lsp.core.env_links_server", function()
       local ok, items = pcall(items_of, "[u]($LSPTEST_UNC/x.md)\n[v]($LSPTEST_UNC/y.md#h)\n")
       vim.uv.fs_stat = real_stat
       vim.env.LSPTEST_UNC = nil
+      require("lsp.core.env_links").windows = was_windows
       assert.is_true(ok, tostring(items))
       assert.are.same({}, stats)
       assert.are.same({}, items)
@@ -2587,6 +2616,8 @@ describe("lsp.core.env_links_server", function()
 
     it("does not stat a network path for a hover, and says so", function()
       vim.env.LSPTEST_UNC = "//192.0.2.1/share"
+      local was_windows = require("lsp.core.env_links").windows
+      require("lsp.core.env_links").windows = true
       local stats = {}
       local real_stat = vim.uv.fs_stat
       vim.uv.fs_stat = function(path, ...)
@@ -2606,6 +2637,7 @@ describe("lsp.core.env_links_server", function()
       })
       vim.uv.fs_stat = real_stat
       vim.env.LSPTEST_UNC = nil
+      require("lsp.core.env_links").windows = was_windows
       assert.is_true(ok, tostring(hover))
       assert.are.same({}, stats)
       assert.is_nil(definition)
