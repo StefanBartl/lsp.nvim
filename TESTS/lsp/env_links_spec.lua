@@ -1389,6 +1389,44 @@ describe("lsp.core.env_links", function()
     end)
   end)
 
+  describe("after the fourth review", function()
+    ---@param lines string[]
+    ---@return string[]
+    local function scanned(lines)
+      local out = {}
+      for _, l in ipairs(links.scan(lines)) do
+        out[#out + 1] = l.target
+      end
+      return out
+    end
+
+    -- `/` and `C:/` always exist: a value that is nothing but a secret that starts
+    -- with a slash used to pass the "its directory exists" rule.
+    it("does not show a path that sits directly below a root", function()
+      assert.is_nil(links.displayable_path("/9f2Kx+Qm7vT3rLw8aZpYc0Hn5bUeDg1J"))
+      assert.is_nil(links.displayable_path("//abc"))
+      assert.is_nil(links.displayable_path("C:/secret"))
+      assert.is_nil(links.displayable_path("C:/"))
+      assert.are.equal(root .. "/ok.md", links.displayable_path(root .. "/ok.md"))
+    end)
+
+    -- A quote that starts before the item's content is a quote of its own.
+    it("ends a list-item fence at a quote that starts before the item's content", function()
+      assert.are.same({ "$A/q.md" }, scanned({ "- ```", "  code", ">   [q]($A/q.md)" }))
+      assert.are.same({ "$A/d.md" }, scanned({ "> - ```md", "> >   [d]($A/d.md)" }))
+      -- a `>` at the item's content column is code
+      assert.are.same({}, scanned({ "- ```", "  > [c]($A/c.md)", "  ```" }))
+    end)
+
+    it("does not index a setext heading that starts on a list-item line", function()
+      write_file(root .. "/sl.md", "- Title\n  ===\n\nPlain\n=====\n")
+      links.clear_cache()
+      local idx = assert(links.heading_index(root .. "/sl.md"))
+      assert.is_nil(links.heading_lookup(idx, "title"))
+      assert.are.equal(3, links.heading_lookup(idx, "plain"))
+    end)
+  end)
+
   -- `target_at` answers for one column; `links` for the whole line, with the
   -- span of each target (what a diagnostic underlines).
   describe("links", function()
@@ -2441,6 +2479,17 @@ describe("lsp.core.env_links_server", function()
       assert.is_nil(items[1].message:find("sk-secret", 1, true), items[1].message)
       assert.is_truthy(items[1].message:find("$LSPTEST_SECRET/a.md", 1, true))
     end)
+
+    it(
+      "does not print a secret that is the whole value of a variable and starts with a slash",
+      function()
+        vim.env.LSPTEST_TOK = "/9f2Kx+Qm7vT3rLw8aZpYc0Hn5bUeDg1J"
+        local items = items_of("[x]($LSPTEST_TOK)\n")
+        vim.env.LSPTEST_TOK = nil
+        assert.are.equal(1, #items)
+        assert.is_nil(items[1].message:find("9f2Kx", 1, true), items[1].message)
+      end
+    )
 
     it("quotes a fragment without its control bytes, and not at any length", function()
       local tab = string.char(9)
