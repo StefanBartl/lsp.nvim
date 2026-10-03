@@ -203,6 +203,10 @@ end
 ---@class LspNvim.EnvLink.ResolveOpts
 ---@field stat? fun(path: string): boolean|nil # Whether `path` is on disk; nil = not looked at. Default: `fs_stat`.
 
+--- Whether this is Windows (a spec sets it to test the network-path rules anywhere).
+---@type boolean
+M.windows = vim.fn.has("win32") == 1
+
 --- Whether `path` is a Windows network path (`//host/share`, `\\host\share`). Only
 --- there does a stat on a host that does not answer block for the OS connect
 --- timeout; on POSIX `//data` is an ordinary local path (the same as `/data`).
@@ -211,7 +215,7 @@ end
 ---@return boolean
 function M.is_network_path(path, win)
   if win == nil then
-    win = vim.fn.has("win32") == 1
+    win = M.windows
   end
   return win and (path:find("^//[^/]") ~= nil or path:find("^\\\\") ~= nil)
 end
