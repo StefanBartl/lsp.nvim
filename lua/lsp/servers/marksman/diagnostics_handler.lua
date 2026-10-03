@@ -46,6 +46,16 @@ local function env_links_enabled()
   return type(languages) ~= "table" or languages.env_links ~= false
 end
 
+--- Whether the in-process env-link client is running. While it is, it reports
+--- the broken env links itself (`lsp.core.env_links_server`, which also covers
+--- the ones marksman never reports), so marksman's own message about one would
+--- be a second diagnostic on the same range. A failed load means "not running".
+--- @return boolean
+local function env_client_active()
+  local ok, server = pcall(require, "lsp.core.env_links_server")
+  return ok and type(server.active) == "function" and server.active() == true
+end
+
 --- Helper: safe conversion of diag.code to string for comparison
 --- @param code any
 --- @return string
@@ -209,6 +219,7 @@ function M.filter_diagnostics(diagnostics)
   -- Once per push, not per diagnostic: a workspace push carries hundreds, and
   -- each `env_links_enabled()` is a `require` and a config read.
   local env_links_on = env_links_enabled()
+  local env_client = env_links_on and env_client_active()
 
   local out = {}
   for i = 1, #diagnostics do
@@ -228,8 +239,9 @@ function M.filter_diagnostics(diagnostics)
     elseif verdict == "keep" then
       -- A genuinely broken env link. Shown even though the blanket
       -- `suppress_missing_doc_links` would hide it, now that it is known to be
-      -- true -- with the path it was looked up at.
-      suppressed = false
+      -- true -- with the path it was looked up at. The in-process client says
+      -- the same, in its own words, when it is running: then only it does.
+      suppressed = env_client
     else
       suppressed = suppressed_by_rules(msg, diag_code)
     end
@@ -241,7 +253,7 @@ function M.filter_diagnostics(diagnostics)
 
     -- If not suppressed, keep diagnostic
     if not suppressed then
-      if verdict == "keep" and resolved_env then
+      if verdict == "keep" and resolved_env and not env_client then
         d = vim.tbl_extend("force", {}, d, {
           message = ("%s (resolved to %s)"):format(msg, resolved_env.path),
         })

@@ -550,11 +550,11 @@ languages.enable      (boolean)   Apply the filetype-specific setup under
 languages.env_links   (boolean)   Resolve `$VAR/...`, `${VAR}/...` and `~/...`
                                   Markdown link targets, which marksman cannot:
                                   definition and hover through an in-process
-                                  `lsp.nvim-envlinks` client, and marksman's
-                                  "Link to non-existent document" checked
-                                  against the disk (dropped when the file
-                                  exists, kept with its resolved path when it
-                                  does not). Resolved through gopath.nvim's
+                                  `lsp.nvim-envlinks` client, which also
+                                  warns about env links whose file or
+                                  `#heading` is missing (marksman reports no
+                                  link that carries a `#fragment`).
+                                  Resolved through gopath.nvim's
                                   `resolve_text` when installed, built-in
                                   otherwise. On by default.
 completion.personal_names.enable (boolean)

@@ -594,12 +594,29 @@ hid that, and every genuinely broken link along with it.
 `languages.env_links` (default `true`) resolves `$VAR/...`, `${VAR}/...` and
 `~/...` targets and fixes both halves:
 
-- **Diagnostics.** "Link to non-existent document" about an env link is
-  *checked*: dropped when the file it names exists, **kept** when it does not --
-  with the path it was looked up at (`... (resolved to E:/repos/x/gone.md)`),
-  even though the blanket rule would have hidden it. Ordinary links keep the
-  blanket rule exactly as before. A link whose variable is not defined is left
-  to the old rules: "cannot tell" is not "broken".
+- **Diagnostics.** The in-process client (below) reports the env links that lead
+  nowhere, as warnings on the target: the file is not there (`Link to
+  non-existent document '$REPOS_DIR/x/gone.md' (resolved to E:/repos/x/gone.md)`),
+  or -- for a Markdown file -- the `#fragment` names no heading. marksman is not
+  the source: it says nothing at all about a link that carries a `#fragment`
+  (measured, relative links too), and for the others it only knows the target as
+  a folder name. So marksman's own "Link to non-existent document" about an env
+  link is dropped while the client runs; when the client is off, it is *checked*
+  the way it used to be (dropped when the file exists, **kept** with the path it
+  was looked up at when it does not, even though the blanket rule would have
+  hidden it). Ordinary links keep the blanket rule exactly as before. A link
+  whose variable is not defined is never reported: "cannot tell" is not
+  "broken", and neither is an anchor in a file that is not Markdown or too large
+  to read.
+
+  An anchor is matched the way GitHub spells it: lowercase, punctuation dropped,
+  a repeated heading numbered (`#same`, `#same-1`), the text of a link in a
+  heading (`## [1.2.0](url)` is `#120`), `{#custom-id}`, HTML `id`/`name`
+  anchors, and a heading's emoji dropped (`## 🚀 Features` is `#-features`).
+  Links inside fenced code blocks, code spans and a YAML front matter are not
+  links and are not reported. Diagnostics follow the document as it is edited,
+  and are re-checked when any file is written or Neovim regains focus, so a
+  target that is created later clears its warning.
 - **Definition and hover.** A small in-process client, `lsp.nvim-envlinks`
   (the same shape as the gitsigns one, attached to Markdown buffers), answers
   `textDocument/definition` -- the file, at the heading when the target carries
@@ -632,6 +649,8 @@ these is a length a hand-written Markdown line reaches.
 
 Link text may hold balanced brackets and escaped ones, so the badge pattern
 `[![alt]($REPOS_DIR/a.png)]($REPOS_DIR/doc.md)` answers on both its targets.
+Neovim 0.12 has no `textDocument/documentLink` support yet, so `gx` on an env
+link is not covered.
 
 `languages.env_links = false` switches the client and the diagnostics filter off
 together. It may also be set from `.nvim-lsp.json`, since `languages` is one of
