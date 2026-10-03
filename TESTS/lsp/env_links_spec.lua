@@ -2858,7 +2858,12 @@ describe("lsp.core.env_links_server", function()
       local braced = complete({ "[a](${LSPTEST_E" })
       assert.are.equal("${LSPTEST_ENV_ROOT}/", braced.items[1].textEdit.newText)
       -- the config directory has no real variable behind it
-      assert.is_truthy(vim.tbl_contains(labels(complete({ "[a]($NVIM_CONF" })), "$NVIM_CONFIG_DIR"))
+      -- (only when that directory exists: a CI runner may have no config at all)
+      local has_config = vim.fn.isdirectory(vim.fn.stdpath("config")) == 1
+      assert.are.equal(
+        has_config,
+        vim.tbl_contains(labels(complete({ "[a]($NVIM_CONF" })), "$NVIM_CONFIG_DIR")
+      )
       -- a variable typed in full is offered once more, with its slash
       assert.are.same({ "$LSPTEST_ENV_ROOT" }, labels(complete({ "[a]($LSPTEST_ENV_ROOT" })))
     end)
