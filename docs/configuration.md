@@ -65,6 +65,26 @@ names the layer the value came from -- `(from setup())`, `(from preset "lean")`,
 into a fix. A value that nothing supplied gets no suffix; there is no layer to
 name.
 
+### Unknown keys are warned about, not dropped
+
+The merge keeps every key it is handed, so a misspelled option used to sit in
+the resolved config looking as if it took: `mason.ensure_installing = true`
+does nothing, because the option is `mason.ensure_install`. `setup()` now
+compares what you wrote (your `setup()` options and a `.nvim-lsp.json`, never a
+preset) against the documented option tree and records one warning per unknown
+key, with a "did you mean" when a known key is close:
+
+```
+mason.ensure_installing: unknown option, ignored by every consumer -- did you mean "ensure_install"? (from setup())
+```
+
+It is a warning and nothing else: the value is kept, nothing is raised, and
+there is no strict switch. Free-form tables are never checked below their
+root: lists (`servers`, `workspace.markers`), empty-default maps
+(`inlay_hints.filetypes`, `keymaps.map`, ...) and the maps that carry a default
+but take your own keys (`winbar.max_symbols`, `peek.keys`, `implement.kinds`,
+`mason.overrides`).
+
 ## preset: one word for twenty fields
 
 `preset = "lean" | "default" | "full"`. `lean` exists for the machine where

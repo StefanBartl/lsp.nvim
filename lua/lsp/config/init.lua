@@ -41,6 +41,7 @@ local DEFAULTS = require("lsp.config.DEFAULTS")
 local KEYMAPS = require("lsp.config.KEYMAPS")
 local PRESETS = require("lsp.config.PRESETS")
 local project = require("lsp.config.project")
+local unknown = require("lsp.config.unknown")
 
 local M = {}
 
@@ -721,6 +722,17 @@ function M.setup(user_opts)
     table.insert(_layers, 1, { label = layer.label, data = layer.data })
     _sources.project = layer.path
     cfg = vim.tbl_deep_extend("force", cfg, vim.deepcopy(layer.data))
+  end
+
+  -- The merge above keeps every key it is given, so a misspelled option would
+  -- sit in the resolved config looking as if it took. Only the layers a person
+  -- wrote are checked: a preset is ours, and `DEFAULTS` is the reference.
+  for _, l in ipairs(_layers) do
+    if l.label ~= ("preset %q"):format(preset) then
+      for _, finding in ipairs(unknown.scan(l.data, DEFAULTS)) do
+        _warnings[#_warnings + 1] = unknown.message(finding, l.label)
+      end
+    end
   end
 
   normalize_keymaps(cfg)
