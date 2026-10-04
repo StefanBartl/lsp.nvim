@@ -672,17 +672,23 @@ hid that, and every genuinely broken link along with it.
   written with (a secret in the environment is not one), and `$NVIM_CONFIG_DIR`,
   which has no real variable behind it. The trigger characters are `/`, `$` and
   `{`. Nothing is offered in code blocks, code spans (also ones that wrap over a
-  line break) or a front matter, for a network path or a link that leads to one
-  (such a link is listed as a plain file and never stat-ed), for a variable
-  nothing defines, or after a `#fragment` (the headings of the target are not
-  completed). One answer holds at most 300 entries (`isIncomplete` past that;
-  folders are kept first) and looks at no more than 50000 directory entries.
+  line break) or a front matter, for a network path or a path that leads to one
+  through a link in *any* of its components (`~/nas/notes/` with `nas` a link to
+  a share; such an entry of a listing is shown as a plain file and never
+  stat-ed), for a variable nothing defines, or after a `#fragment` (the
+  headings of the target are not completed). A name typed so far that starts no
+  entry of the directory offers the whole directory (`isIncomplete`), so the
+  engine's own matcher can still find it in the middle of a name. One answer
+  holds at most 300 entries (`isIncomplete` past that; folders are kept first,
+  also those that are links) and looks at no more than 50000 directory entries.
   Any engine that asks the language servers (blink, cmp, `omnifunc`) gets the
   answer. blink's and cmp's own path sources expand `$VAR/` and `~/` as well and
   would list every entry a second time, raw: lsp.nvim's blink pack mutes blink's
-  path source exactly where this client answers; with a hand-written source list
-  (or nvim-cmp's `path` source) add the same guard, `lsp.core.env_links_server`'s
-  `answers_at_cursor()`, to its `enabled` / `entry_filter`.
+  path source exactly where this client answers (and where there is nothing to
+  list at an env target, which the engine's source could not list either); with
+  a hand-written source list (or nvim-cmp's `path` source) add the same guard,
+  `lsp.core.env_links_server`'s `answers_at_cursor()`, to its `enabled` /
+  `entry_filter`. The guard reads the buffer once per change, not once per call.
 
 Resolution goes to **gopath.nvim first** when it is installed and has
 `resolve_text` (its public text API): it owns the variable rules -- `$VAR`,

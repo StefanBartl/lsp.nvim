@@ -224,30 +224,57 @@ end
 ---@type integer
 M.MAX_LINK_HOPS = 8
 
---- Does the symbolic link at `path` lead to a network path? Read link by link,
---- not followed: a stat follows them and blocks for the OS connect timeout on a
---- share that does not answer (21 s measured), and the string of `path` alone
---- says nothing about where it leads. A path that is no link is not one that
---- leads to a share, as far as its last component goes.
+--- Does `path` lead to a network path through a symbolic link? Every component
+--- is read from the root down, never traversed: a link anywhere in the path
+--- (`~/nas/notes/x.md` with `nas` a link to a share) is found before a stat
+--- would follow it, and a stat that follows one to a share that does not answer
+--- blocks Neovim for the OS connect timeout (21 s measured). Link by link, up to
+--- `MAX_LINK_HOPS`; the string of `path` alone says nothing about where it leads.
+---
+--- `known` is an optional memo of the prefixes found not to be links (`false`):
+--- hand the same table to every call of one pull and the shared parent
+--- directories are read once.
 ---@param path string
+---@param known? table<string, false>
 ---@return boolean
-function M.leads_to_network(path)
-  for _ = 1, M.MAX_LINK_HOPS do
-    local target = vim.uv.fs_readlink(path)
-    if not target then
-      return false -- not a link (any more): a stat is safe from here
-    end
-    target = (target:gsub(string.char(92), "/"))
-    if M.is_network_path(target) or target:find("^//%?/UNC/") or target:find("^/%?%?/UNC/") then
-      return true
-    end
-    if not (target:find("^/") or target:find("^%a:")) then
-      -- relative to the link's folder (`dirname` of `X:/l` keeps the slash: `X:/`)
-      target = ((vim.fs.dirname(path) or "."):gsub("/+$", "")) .. "/" .. target
-    end
-    path = target
+function M.leads_to_network(path, known)
+  path = (path:gsub(string.char(92), "/"))
+  if M.is_network_path(path) then
+    return true
   end
-  return true -- a loop, or a chain this deep: not worth a stat
+  local hops, from = 0, 1
+  while true do
+    local sep = path:find("/", from + 1, true)
+    local prefix = sep and path:sub(1, sep - 1) or path
+    local target ---@type string|nil
+    if prefix ~= "" and not prefix:find("^%a:$") and not (known and known[prefix] == false) then
+      target = vim.uv.fs_readlink(prefix)
+      if not target and known then
+        known[prefix] = false
+      end
+    end
+    if target then
+      hops = hops + 1
+      if hops > M.MAX_LINK_HOPS then
+        return true -- a loop, or a chain this deep: not worth a stat
+      end
+      target = (target:gsub(string.char(92), "/"))
+      if M.is_network_path(target) or target:find("^/%?%?/UNC/") then
+        return true
+      end
+      if not (target:find("^/") or target:find("^%a:")) then
+        -- relative to the link's folder (`dirname` of `X:/l` keeps the slash: `X:/`)
+        target = ((vim.fs.dirname(prefix) or "."):gsub("/+$", "")) .. "/" .. target
+      end
+      -- Carry on with the rest of the path below what the link names.
+      path = target:gsub("/+$", "") .. (sep and path:sub(sep) or "")
+      from = 1
+    elseif not sep then
+      return false
+    else
+      from = sep
+    end
+  end
 end
 
 ---@internal
@@ -1031,7 +1058,9 @@ end
 ---@param col any
 ---@return LspNvim.EnvLink.Typing|nil
 function M.typing_at(line, col)
-  if type(line) ~= "string" or type(col) ~= "number" or #line > M.MAX_LINE_BYTES then
+  -- (The bracket rule below appends up to 3 bytes to ask `target_at`, which
+  -- refuses a line over `MAX_LINE_BYTES`: the same limit for every spelling.)
+  if type(line) ~= "string" or type(col) ~= "number" or #line + 3 > M.MAX_LINE_BYTES then
     return nil
   end
   local before = line:sub(1, col - 1)
