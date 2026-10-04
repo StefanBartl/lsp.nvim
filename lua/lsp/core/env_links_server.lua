@@ -277,6 +277,7 @@ M.INDEX_BUDGET_NS = 250 * 1000 * 1000
 ---@return fun(path: string): boolean|nil
 local function pull_stat()
   local seen = {} ---@type table<string, boolean|"unknown">
+  local plain = {} ---@type table<string, false> # prefixes that are no link (`leads_to_network`)
   local spent = 0 -- nanoseconds spent inside fs_stat so far
   return function(path)
     local known = seen[path]
@@ -285,7 +286,7 @@ local function pull_stat()
     elseif known ~= nil then
       return known --[[@as boolean]]
     end
-    if links.is_network_path(path) or spent > STAT_BUDGET_NS then
+    if links.leads_to_network(path, plain) or spent > STAT_BUDGET_NS then
       seen[path] = "unknown"
       return nil
     end
@@ -481,9 +482,10 @@ end
 --- link that leads to one (a stat on one that does not answer blocks Neovim),
 --- and there.
 ---@param path string
+---@param plain? table<string, false> # Memo for `leads_to_network`.
 ---@return boolean
-local function is_directory(path)
-  if links.is_network_path(path) or links.leads_to_network(path) then
+local function is_directory(path, plain)
+  if links.leads_to_network(path, plain) then
     return false
   end
   local st = vim.uv.fs_stat(path)
@@ -497,7 +499,13 @@ end
 ---@param value string
 ---@return boolean
 local function is_absolute(value)
-  return value:find("^/") ~= nil or value:find("^%a:[/\\]") ~= nil
+  if value:find("^/") == nil and value:find("^%a:[/\\]") == nil then
+    return false
+  end
+  -- A bare root (`/`, `C:\`) joins to `` or `C:` once its separator is taken off:
+  -- `$VAR/` cannot be listed for it the way it reads.
+  local trimmed = value:gsub("[/\\]+$", "")
+  return trimmed ~= "" and trimmed:find("^%a:$") == nil
 end
 
 ---@internal
@@ -557,8 +565,9 @@ local function variable_items(typing, lnum, line, col)
     },
   }
   local items = {}
+  local plain = {} ---@type table<string, false>
   for name, value in pairs(names) do
-    if is_directory(value) then
+    if is_directory(value, plain) then
       local label = braced and ("${" .. name .. "}") or ("$" .. name)
       items[#items + 1] = {
         label = label,
@@ -582,7 +591,10 @@ end
 ---
 --- Folders first: the entries are kept in a bucket per kind, so a late folder is
 --- not crowded out by many files, and what is cut at `MAX_COMPLETION_ITEMS` is
---- the end of the list.
+--- the end of the list. When what is typed is the start of no name at all, the
+--- whole directory is offered (`isIncomplete`): the engine's own matcher then
+--- gets to match in the middle of a name, and the engine's path source, which
+--- `answers_at_cursor` mutes here, has nothing it would have shown that is lost.
 ---@param typing LspNvim.EnvLink.Typing
 ---@param lnum integer
 ---@param line string
@@ -600,10 +612,6 @@ local function path_items(typing, lnum, line, col)
     return nil, nil
   end
 
-  local handle = vim.uv.fs_scandir(resolved.path)
-  if not handle then
-    return nil, nil
-  end
   local decoded_ok, decoded = pcall(vim.uri_decode, partial)
   local want = fold(decoded_ok and decoded or partial)
   local typed = fold(partial)
@@ -613,43 +621,69 @@ local function path_items(typing, lnum, line, col)
   -- A folder's text ends in a slash: swallow the one the target goes on with.
   local past_slash =
     { line = lnum, character = lsp_column(line, col - 1 + tail_after_cursor(line, col, false)) }
-
   local limit = M.MAX_COMPLETION_ITEMS
-  local folders, files, symlinks = {}, {}, {} ---@type string[], string[], string[]
-  local incomplete = false
-  local scanned = 0
-  while true do
-    local name, kind = vim.uv.fs_scandir_next(handle)
-    if not name then
-      break
+
+  --- The names of the directory that start with `prefix`, in a bucket per kind.
+  ---@param prefix string # Already folded.
+  ---@return string[]|nil folders
+  ---@return string[]|nil files
+  ---@return string[]|nil symlinks
+  ---@return boolean incomplete
+  local function collect(prefix)
+    local handle = vim.uv.fs_scandir(resolved.path)
+    if not handle then
+      return nil, nil, nil, false
     end
-    scanned = scanned + 1
-    if scanned > M.MAX_COMPLETION_SCAN then
-      incomplete = true
-      break
-    end
-    if
-      (show_hidden or name:sub(1, 1) ~= ".")
-      and not name:find("%c")
-      and (want == "" or fold(name):find(want, 1, true) == 1)
-    then
-      local bucket = kind == "directory" and folders or kind == "link" and symlinks or files
-      if #bucket < limit then
-        bucket[#bucket + 1] = name
-      else
+    local folders, files, symlinks = {}, {}, {} ---@type string[], string[], string[]
+    local incomplete, scanned = false, 0
+    while true do
+      local name, kind = vim.uv.fs_scandir_next(handle)
+      if not name then
+        break
+      end
+      scanned = scanned + 1
+      if scanned > M.MAX_COMPLETION_SCAN then
         incomplete = true
+        break
+      end
+      if
+        (show_hidden or name:sub(1, 1) ~= ".")
+        and not name:find("%c")
+        and (prefix == "" or fold(name):find(prefix, 1, true) == 1)
+      then
+        local bucket = kind == "directory" and folders or kind == "link" and symlinks or files
+        if #bucket < limit then
+          bucket[#bucket + 1] = name
+        else
+          incomplete = true
+        end
       end
     end
+    return folders, files, symlinks, incomplete
   end
 
-  -- A link is classified last, and only the ones that make it into the answer:
-  -- each is a stat.
+  local folders, files, symlinks, incomplete = collect(want)
+  if not folders or not files or not symlinks then
+    return nil, nil
+  end
+  if #folders + #files + #symlinks == 0 and want ~= "" then
+    folders, files, symlinks = collect("")
+    if not folders or not files or not symlinks then
+      return nil, nil
+    end
+    incomplete = true
+  end
+
+  -- A link is classified last, and never followed by a stat that could block
+  -- (`is_directory` reads where it leads first). Folders are looked for among
+  -- all of them: a file link may be classified and then cut below.
+  local plain = {} ---@type table<string, false>
   for _, name in ipairs(symlinks) do
-    if #folders + #files >= limit then
+    if #folders >= limit then
       incomplete = true
       break
     end
-    local bucket = is_directory(resolved.path .. "/" .. name) and folders or files
+    local bucket = is_directory(resolved.path .. "/" .. name, plain) and folders or files
     bucket[#bucket + 1] = name
   end
 
@@ -709,9 +743,32 @@ local function env_typing(line, col)
 end
 
 ---@internal
+--- The line `lnum` as `scan` sees it (see `links.masked_line_at`), of the last
+--- buffer text asked about: the engines call `answers_at_cursor` several times
+--- per keystroke, and each call would otherwise walk the whole buffer again. The
+--- buffer's change tick is the key, so an edit, an undo or a reload invalidates it.
+---@type { buf: integer, tick: integer, lnum: integer, text: string|false }|nil
+local masked_memo = nil
+
+---@internal
+---@param bufnr integer
+---@param lnum integer # 0-based
+---@return string|nil
+local function masked_line(bufnr, lnum)
+  local tick = api.nvim_buf_get_changedtick(bufnr)
+  local memo = masked_memo
+  if memo and memo.buf == bufnr and memo.tick == tick and memo.lnum == lnum then
+    return memo.text or nil
+  end
+  local text = links.masked_line_at(api.nvim_buf_get_lines(bufnr, 0, -1, false), lnum + 1)
+  masked_memo = { buf = bufnr, tick = tick, lnum = lnum, text = text or false }
+  return text
+end
+
+---@internal
 --- Is the typed target document text, and not in a code span (also one that wraps
---- over a line break), a code block or a front matter? Reads the whole buffer:
---- ask it after `env_typing`.
+--- over a line break), a code block or a front matter? Reads the whole buffer
+--- (once per change): ask it after `env_typing`.
 ---@param bufnr integer
 ---@param lnum integer # 0-based
 ---@param line string
@@ -719,7 +776,7 @@ end
 ---@param typing LspNvim.EnvLink.Typing
 ---@return boolean
 local function in_text(bufnr, lnum, line, col, typing)
-  local masked = links.masked_line_at(api.nvim_buf_get_lines(bufnr, 0, -1, false), lnum + 1)
+  local masked = masked_line(bufnr, lnum)
   return masked ~= nil and masked:sub(typing.start, col - 1) == line:sub(typing.start, col - 1)
 end
 

@@ -1571,6 +1571,119 @@ describe("lsp.core.env_links", function()
       assert.are.same({}, stats)
     end)
 
+    -- Every component of the path is read, never traversed: a link in the middle
+    -- of it leads to the share as well, and a stat through it blocks.
+    it("finds a link in the middle of a path, and stops reading at the first one", function()
+      local was_windows = links.windows
+      links.windows = true
+      local real_readlink = vim.uv.fs_readlink
+      local read = {}
+      local map = {
+        ["X:/nas"] = "//192.0.2.1/share",
+        ["X:/loc"] = "X:/dir",
+        ["X:/m"] = "X:/n", -- a link in the middle, leading to a folder with a link in it
+        ["X:/n/sub"] = "//192.0.2.1/share",
+      }
+      vim.uv.fs_readlink = function(path)
+        read[#read + 1] = path
+        return map[path]
+      end
+      local ok, err = pcall(function()
+        assert.is_true(links.leads_to_network("X:/nas/notes/x.md"))
+        assert.are.same({ "X:/nas" }, read) -- the first link decides: nothing below it is read
+        read = {}
+        assert.is_false(links.leads_to_network("X:/loc/notes/x.md"))
+        assert.is_true(#read >= 3, "every component is read")
+        assert.is_false(vim.tbl_contains(read, "X:"), "a drive letter alone is no folder to read")
+        -- what is left of the path is carried on below what the link names
+        assert.is_true(links.leads_to_network("X:/m/sub/x.md"))
+        -- a memo spares the shared parents the second time
+        local plain = {}
+        links.leads_to_network("X:/a/b/c.md", plain)
+        read = {}
+        links.leads_to_network("X:/a/b/d.md", plain)
+        assert.are.same({ "X:/a/b/d.md" }, read)
+      end)
+      vim.uv.fs_readlink = real_readlink
+      links.windows = was_windows
+      assert.is_true(ok, tostring(err))
+    end)
+
+    it("does not stat a path through a link to a network path", function()
+      local was_windows = links.windows
+      links.windows = true
+      local real_readlink, real_stat = vim.uv.fs_readlink, vim.uv.fs_stat
+      local stats = {}
+      vim.uv.fs_readlink = function(path, ...)
+        if path == root .. "/nas" then
+          return "//192.0.2.1/share"
+        end
+        return real_readlink(path, ...)
+      end
+      vim.uv.fs_stat = function(path, ...)
+        if tostring(path):find("/nas", 1, true) then
+          stats[#stats + 1] = path
+        end
+        return real_stat(path, ...)
+      end
+      local ok, resolved = pcall(links.resolve, "$LSPTEST_ENV_ROOT/nas/notes/x.md")
+      vim.uv.fs_readlink, vim.uv.fs_stat = real_readlink, real_stat
+      links.windows = was_windows
+      assert.is_true(ok, tostring(resolved))
+      assert.is_nil(resolved.exists)
+      assert.are.same({}, stats)
+    end)
+
+    it("follows a link chain up to the hop limit, and reads `\\??\\UNC\\` as a share", function()
+      local was_windows = links.windows
+      links.windows = true
+      local real_readlink = vim.uv.fs_readlink
+      local map = {
+        ["X:/u"] = string.char(92)
+          .. "??"
+          .. string.char(92)
+          .. "UNC"
+          .. string.char(92)
+          .. "srv"
+          .. string.char(92)
+          .. "share",
+      }
+      for i = 1, 7 do
+        map["X:/c" .. i] = "c" .. (i + 1) -- 7 hops, the last one leads nowhere
+      end
+      for i = 1, 9 do
+        map["X:/d" .. i] = "d" .. (i + 1) -- 9 hops: more than the limit
+      end
+      vim.uv.fs_readlink = function(path)
+        return map[path]
+      end
+      local ok, err = pcall(function()
+        assert.is_true(links.leads_to_network("X:/u"))
+        assert.is_false(links.leads_to_network("X:/c1"))
+        assert.is_true(links.leads_to_network("X:/d1"), "a chain this deep is not worth a stat")
+      end)
+      vim.uv.fs_readlink = real_readlink
+      links.windows = was_windows
+      assert.is_true(ok, tostring(err))
+    end)
+
+    it("applies the same line limit to every spelling of a target being typed", function()
+      local pad = ("a"):rep(links.MAX_LINE_BYTES - 3 - #"[a](~/")
+      assert.is_truthy(links.typing_at(pad .. "[a](~/", #pad + #"[a](~/" + 1))
+      local angled = ("a"):rep(links.MAX_LINE_BYTES - 3 - #"[a](<~/") .. "[a](<~/"
+      assert.is_truthy(links.typing_at(angled, #angled + 1))
+      local over = ("a"):rep(links.MAX_LINE_BYTES - #"[a](~/" + 1) .. "[a](~/"
+      assert.is_nil(links.typing_at(over, #over + 1))
+      -- The limit is on the line, not on what is before the cursor: the bracket
+      -- rule appends 3 bytes to the text before the cursor, and a cursor near
+      -- the start of a long line must not get another answer than one at its end.
+      local head = "[a](~/"
+      local fits = head .. ("a"):rep(links.MAX_LINE_BYTES - 3 - #head)
+      local too_long = head .. ("a"):rep(links.MAX_LINE_BYTES - 2 - #head)
+      assert.is_truthy(links.typing_at(fits, #head + 1))
+      assert.is_nil(links.typing_at(too_long, #head + 1))
+    end)
+
     it("knows a fence, a fence line and a front matter", function()
       local lines = { "---", "title: x", "---", "text", "```", "code", "```", "text" }
       for lnum, want in ipairs({ true, true, true, false, true, true, true, false }) do
@@ -2708,6 +2821,32 @@ describe("lsp.core.env_links_server", function()
       assert.are.same({}, items)
     end)
 
+    it("does not stat a link to a network path in a pull, and says nothing about it", function()
+      local was_windows = require("lsp.core.env_links").windows
+      require("lsp.core.env_links").windows = true
+      local real_readlink, real_stat = vim.uv.fs_readlink, vim.uv.fs_stat
+      local stats = {}
+      vim.uv.fs_readlink = function(path, ...)
+        if path == root .. "/netlink" then
+          return "//192.0.2.1/share"
+        end
+        return real_readlink(path, ...)
+      end
+      vim.uv.fs_stat = function(path, ...)
+        if tostring(path):find("netlink", 1, true) then
+          stats[#stats + 1] = path
+        end
+        return real_stat(path, ...)
+      end
+      local ok, items =
+        pcall(items_of, "[a]($LSPTEST_ENV_ROOT/netlink)\n[b]($LSPTEST_ENV_ROOT/netlink/sub/x.md)\n")
+      vim.uv.fs_readlink, vim.uv.fs_stat = real_readlink, real_stat
+      require("lsp.core.env_links").windows = was_windows
+      assert.is_true(ok, tostring(items))
+      assert.are.same({}, stats)
+      assert.are.same({}, items, "not looked at is no false 'non-existent document'")
+    end)
+
     it("looks at a path once per pull, however many links name it", function()
       local stats = 0
       local real_stat = vim.uv.fs_stat
@@ -2964,7 +3103,6 @@ describe("lsp.core.env_links_server", function()
         ["a file, not a directory"] = { "[a]($LSPTEST_ENV_ROOT/target.md/" },
         fence = { "```", "[a]($LSPTEST_ENV_ROOT/notes/", "```" },
         ["front matter"] = { "---", "x: [a]($LSPTEST_ENV_ROOT/notes/", "---" },
-        ["no match"] = { "[a]($LSPTEST_ENV_ROOT/notes/zzz" },
       }) do
         local lnum = name == "fence" and 1 or name == "front matter" and 1 or nil
         assert.is_nil(complete(lines, lnum), name)
@@ -3310,6 +3448,82 @@ describe("lsp.core.env_links_server", function()
       assert.is_truthy(vim.tbl_contains(labels(r), "$NVIM_CONFIG_DIR"))
     end)
 
+    -- A typed prefix that is the start of no name: the engine's (fuzzy) matcher
+    -- gets the whole list, as its own path source is muted here.
+    it("offers the whole directory when what is typed starts no name", function()
+      write_file(root .. "/notes/zeta_file.md", "x\n")
+      local r = complete({ "[a]($LSPTEST_ENV_ROOT/notes/zta" })
+      assert.is_true(r.isIncomplete)
+      assert.is_truthy(vim.tbl_contains(labels(r), "zeta_file.md"))
+      -- a prefix that does match stays exact and complete
+      local exact = complete({ "[a]($LSPTEST_ENV_ROOT/notes/ze" })
+      assert.are.same({ "zeta_file.md" }, labels(exact))
+      assert.is_false(exact.isIncomplete)
+    end)
+
+    it("keeps a folder link although files fill the limit", function()
+      local made = vim.uv.fs_symlink(root .. "/notes/sub", root .. "/notes/linkdir", { dir = true })
+      if not made then
+        return pending("cannot create symlinks here")
+      end
+      for i = 1, 5 do
+        write_file(("%s/notes/m%d.md"):format(root, i), "x\n")
+      end
+      local saved = server.MAX_COMPLETION_ITEMS
+      server.MAX_COMPLETION_ITEMS = 3
+      local ok, r = pcall(complete, { "[a]($LSPTEST_ENV_ROOT/notes/" })
+      server.MAX_COMPLETION_ITEMS = saved
+      assert.is_true(ok, tostring(r))
+      assert.are.equal(3, #r.items)
+      assert.are.same({ "linkdir/", "sub/" }, { r.items[1].label, r.items[2].label })
+      assert.is_true(r.isIncomplete)
+    end)
+
+    it("does not offer a variable that holds a drive root", function()
+      local fs_root = (root:match("^%a:[/\\]") or "/")
+      vim.env.LSPTEST_ENV_FSROOT = fs_root
+      local ok, r = pcall(complete, { "[a]($LSPTEST_ENV_FSR" })
+      vim.env.LSPTEST_ENV_FSROOT = nil
+      assert.is_true(ok, tostring(r))
+      assert.is_falsy(r and vim.tbl_contains(labels(r), "$LSPTEST_ENV_FSROOT"))
+      -- the same name holding a folder below it is offered
+      vim.env.LSPTEST_ENV_FSROOT = root
+      local ok2, folder = pcall(complete, { "[a]($LSPTEST_ENV_FSR" })
+      vim.env.LSPTEST_ENV_FSROOT = nil
+      assert.is_true(ok2, tostring(folder))
+      assert.are.same({ "$LSPTEST_ENV_FSROOT" }, labels(folder))
+    end)
+
+    it("looks at no link once the folders alone fill the limit", function()
+      vim.fn.mkdir(root .. "/notes/d1", "p")
+      vim.fn.mkdir(root .. "/notes/d2", "p")
+      local real_next, real_stat = vim.uv.fs_scandir_next, vim.uv.fs_stat
+      local fake = { { "l1", "link" }, { "l2", "link" }, { "l3", "link" } }
+      local stats = 0
+      vim.uv.fs_scandir_next = function(handle)
+        local nxt = table.remove(fake, 1)
+        if nxt then
+          return nxt[1], nxt[2]
+        end
+        return real_next(handle)
+      end
+      vim.uv.fs_stat = function(path, ...)
+        if tostring(path):find("/notes/l%d$") then
+          stats = stats + 1
+        end
+        return real_stat(path, ...)
+      end
+      local saved = server.MAX_COMPLETION_ITEMS
+      server.MAX_COMPLETION_ITEMS = 3 -- sub, d1 and d2 fill it
+      local ok, r = pcall(complete, { "[a]($LSPTEST_ENV_ROOT/notes/" })
+      server.MAX_COMPLETION_ITEMS = saved
+      vim.uv.fs_scandir_next, vim.uv.fs_stat = real_next, real_stat
+      assert.is_true(ok, tostring(r))
+      assert.are.equal(0, stats, "a link that could not be shown is not looked at")
+      assert.are.same({ "d1/", "d2/", "sub/" }, labels(r))
+      assert.is_true(r.isIncomplete)
+    end)
+
     it("does not raise on a position that names no line", function()
       assert.is_nil(server.completion(nil))
       assert.is_nil(server.completion({
@@ -3597,6 +3811,111 @@ describe("lsp.core.env_links_server", function()
         return not server.active()
       end))
       assert.is_false(at(1), "no client, nothing to step aside for")
+    end)
+
+    it("walks the buffer once per change, however often the engine asks", function()
+      server.setup({ env_links = true })
+      local buf = open_markdown(
+        root .. "/doc.md",
+        table.concat({ "intro", "[a]($LSPTEST_ENV_ROOT/n" }, string.char(10)) .. string.char(10)
+      )
+      assert.is_true(vim.wait(3000, function()
+        return #vim.lsp.get_clients({ bufnr = buf, name = server.NAME }) > 0
+      end))
+      local env_links = require("lsp.core.env_links")
+      local original, calls = env_links.masked_line_at, 0
+      env_links.masked_line_at = function(...)
+        calls = calls + 1
+        return original(...)
+      end
+      local ok, err = pcall(function()
+        vim.api.nvim_win_set_cursor(0, { 2, #"[a]($LSPTEST_ENV_ROOT/n" })
+        for _ = 1, 4 do
+          assert.is_true(server.answers_at_cursor())
+        end
+        assert.are.equal(1, calls)
+        -- An edit above opens a fence over the very same row: only the change
+        -- tick tells the memo it is stale.
+        vim.api.nvim_buf_set_lines(buf, 0, 1, false, { "```" })
+        assert.is_false(server.answers_at_cursor())
+        assert.are.equal(2, calls)
+        -- and undoing it opens the row again
+        vim.api.nvim_buf_set_lines(buf, 0, 1, false, { "intro" })
+        assert.is_true(server.answers_at_cursor())
+        assert.are.equal(3, calls)
+      end)
+      env_links.masked_line_at = original
+      assert.is_true(ok, tostring(err))
+    end)
+
+    -- The mute of the engine's path source and the answer must agree: wherever
+    -- the client lists entries, the engine's own source steps aside (else every
+    -- entry shows twice). Where there is nothing to list -- an undefined variable,
+    -- a directory that does not exist, a `#fragment` -- the source is muted as
+    -- well, and loses nothing: it expands the same variable and finds the same
+    -- nothing. In code and in an ordinary link it is left alone.
+    it("mutes the engine's path source wherever the client answers", function()
+      server.setup({ env_links = true })
+      vim.fn.mkdir(root .. "/notes", "p")
+      write_file(root .. "/notes/zeta_file.md", "x\n")
+      write_file(root .. "/notes/a.md", "# a\n")
+      local rows = {
+        { "[a]($LSPTEST_ENV_ROOT/notes/", true, true },
+        { "[b]($LSPTEST_ENV_ROOT/notes/ze", true, true },
+        { "[c]($LSPTEST_ENV_ROOT/notes/zta", true, true },
+        { "[d]($LSPTEST_NOT_DEFINED/x", true, false },
+        { "[e]($LSPTEST_ENV_ROOT/notes/a.md#he", true, false },
+        { "`[f]($LSPTEST_ENV_ROOT/notes/` x", false, false },
+        { "[g](./notes/", false, false },
+        { "[h]($LSPTEST_ENV_ROOT/nope/", true, false },
+      }
+      local text = {}
+      for i, row in ipairs(rows) do
+        text[i] = row[1]
+      end
+      local buf =
+        open_markdown(root .. "/doc.md", table.concat(text, string.char(10)) .. string.char(10))
+      assert.is_true(vim.wait(3000, function()
+        return #vim.lsp.get_clients({ bufnr = buf, name = server.NAME }) > 0
+      end))
+      for lnum, row in ipairs(rows) do
+        local line, mutes, lists = row[1], row[2], row[3]
+        -- the code span row is asked inside the span, the others at the line's end
+        local byte = lnum == 6 and #"`[f]($LSPTEST_ENV_ROOT/notes/" or #line
+        vim.api.nvim_win_set_cursor(0, { lnum, byte })
+        local answer = server.completion({
+          textDocument = { uri = vim.uri_from_bufnr(buf) },
+          position = { line = lnum - 1, character = byte },
+        })
+        local muted = server.answers_at_cursor()
+        assert.are.equal(lists, answer ~= nil, "lists, line " .. lnum .. ": " .. line)
+        assert.are.equal(mutes, muted, "mutes, line " .. lnum .. ": " .. line)
+        assert.is_true(muted or answer == nil, "an answer is never shown twice, line " .. lnum)
+      end
+    end)
+
+    it("reads the cursor column right: not before the dollar, yes after it", function()
+      server.setup({ env_links = true })
+      local line = "[a]($LSPTEST_ENV_ROOT/n"
+      local buf = open_markdown(root .. "/doc.md", line .. string.char(10))
+      assert.is_true(vim.wait(3000, function()
+        return #vim.lsp.get_clients({ bufnr = buf, name = server.NAME }) > 0
+      end))
+      local real_cursor = vim.api.nvim_win_get_cursor
+      local function at(byte)
+        vim.api.nvim_win_get_cursor = function()
+          return { 1, byte }
+        end
+        return server.answers_at_cursor()
+      end
+      local ok, err = pcall(function()
+        assert.is_false(at(#"[a]("), "before the dollar nothing is typed")
+        assert.is_true(at(#"[a]($"), "right after the dollar")
+        assert.is_false(at(#"[a]"), "outside the link")
+        assert.is_true(at(#line), "at the end")
+      end)
+      vim.api.nvim_win_get_cursor = real_cursor
+      assert.is_true(ok, tostring(err))
     end)
 
     it("says whether it is running", function()
