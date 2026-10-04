@@ -130,7 +130,9 @@ local function check_plugin()
     health.info(("preset: %q (config/PRESETS.lua)"):format(layers.preset))
   end
   if layers.project ~= nil then
-    health.info(("project override: %s"):format(layers.project))
+    health.info(
+      ("project override: %s"):format(require("lsp.config.unknown").sanitize(layers.project, 300))
+    )
     health.info(
       "  merged over your setup() options; allowed keys: servers, "
         .. "diagnostics, formatter, inlay_hints, lightbulb, attach, "

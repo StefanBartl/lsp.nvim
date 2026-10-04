@@ -37,6 +37,18 @@
 
 local M = {}
 
+--- How many findings of one layer become warnings; the rest is one summary line.
+M.MAX_PER_LAYER = 20
+
+--- Longest key path echoed into a warning.
+local MAX_PATH = 80
+
+--- Longest warning that is kept whole. Warnings are built from what a layer
+--- supplied (key names, values, paths), so none is allowed to be unbounded.
+--- Generous: the longest legitimate warning measured, a refused-key line with
+--- a deep checkout path, is well under half of it.
+M.MAX_WARNING = 1000
+
 --- Maps with a non-empty default, where the user may add keys of their own.
 ---@type table<string, true>
 local FREE_FORM = {
@@ -130,6 +142,9 @@ end
 ---@param path string
 ---@param found { path: string, suggestion: string|nil }[]
 local function walk(layer, defaults, path, found)
+  -- A suggestion costs a bounded edit distance against every known key, and
+  -- `messages()` only ever prints the first `MAX_PER_LAYER` findings, so the
+  -- rest is not worth computing -- a file of 100k junk keys stays cheap.
   local known = known_keys(defaults, path)
   local keys = {}
   for k in pairs(layer) do
@@ -143,7 +158,10 @@ local function walk(layer, defaults, path, found)
     local full = path == "" and name or (path .. "." .. name)
     local default = defaults[key]
     if default == nil and not NIL_DEFAULT[full] then
-      found[#found + 1] = { path = full, suggestion = suggest(name, known) }
+      found[#found + 1] = {
+        path = full,
+        suggestion = #found < M.MAX_PER_LAYER and suggest(name, known) or nil,
+      }
     elseif type(layer[key]) == "table" and is_struct(default) and not FREE_FORM[full] then
       walk(layer[key], default, full, found)
     end
@@ -162,25 +180,35 @@ function M.scan(layer, defaults)
   return found
 end
 
---- Longest key path echoed into a warning.
-local MAX_PATH = 80
-
---- How many findings of one layer become warnings; the rest is one summary line.
-local MAX_PER_LAYER = 20
-
 --- Make text of unknown origin safe to put in a warning: control characters
 --- (a newline breaks the scratch buffer `:Lsp status` writes into, an escape
 --- sequence reaches the terminal through `:checkhealth`) become `\xNN`, and
---- anything longer than `max` is cut.
+--- anything longer than `max` bytes is cut, on a character boundary.
 ---@param text string
 ---@param max integer
 ---@return string
 function M.sanitize(text, max)
+  -- Cut before escaping: escaping never shortens, so `max + 1` raw bytes are
+  -- enough to decide the cut, and a multi-megabyte key is not walked in full.
+  if #text > max + 1 then
+    text = text:sub(1, max + 1)
+  end
   text = text:gsub("%c", function(c)
     return ("\\x%02x"):format(c:byte())
   end)
   if #text > max then
-    text = text:sub(1, max - 3) .. "..."
+    local cut = max - 3
+    -- Never inside a multi-byte character: step back while the first dropped
+    -- byte is a continuation byte.
+    while cut > 0 do
+      local byte = text:byte(cut + 1)
+      if byte ~= nil and byte >= 0x80 and byte < 0xC0 then
+        cut = cut - 1
+      else
+        break
+      end
+    end
+    text = text:sub(1, cut) .. "..."
   end
   return text
 end
@@ -200,19 +228,19 @@ function M.message(finding, label)
   )
 end
 
---- The warnings for one layer's findings, capped at `MAX_PER_LAYER` plus one
+--- The warnings for one layer's findings, capped at `M.MAX_PER_LAYER` plus one
 --- summary line, so a file full of junk keys cannot flood `:checkhealth lsp`.
 ---@param findings { path: string, suggestion: string|nil }[]
 ---@param label string
 ---@return string[]
 function M.messages(findings, label)
   local out = {}
-  for i = 1, math.min(#findings, MAX_PER_LAYER) do
+  for i = 1, math.min(#findings, M.MAX_PER_LAYER) do
     out[i] = M.message(findings[i], label)
   end
-  if #findings > MAX_PER_LAYER then
+  if #findings > M.MAX_PER_LAYER then
     out[#out + 1] = ("... and %d more unknown options (from %s)"):format(
-      #findings - MAX_PER_LAYER,
+      #findings - M.MAX_PER_LAYER,
       label
     )
   end

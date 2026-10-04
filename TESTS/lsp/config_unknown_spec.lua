@@ -183,6 +183,72 @@ describe("lsp.config unknown keys", function()
       assert.are.equal(21, #out)
       assert.is_truthy(out[21]:find("and 30 more", 1, true))
     end)
+
+    it("cap boundary: 20 findings print in full, 21 add a summary of one", function()
+      local findings = {}
+      for i = 1, 20 do
+        findings[i] = { path = "k" .. i }
+      end
+      assert.are.equal(20, #unknown.messages(findings, "setup()"))
+
+      findings[21] = { path = "k21" }
+      local out = unknown.messages(findings, "setup()")
+      assert.are.equal(21, #out)
+      assert.is_truthy(out[21]:find("and 1 more", 1, true))
+      assert.are.same({}, unknown.messages({}, "setup()"))
+    end)
+
+    it("says what it means: unknown, not 'ignored by every consumer'", function()
+      local text = unknown.message({ path = "mason.x" }, "setup()")
+      assert.is_truthy(text:find("not in the documented option tree", 1, true))
+      assert.is_nil(text:find("ignored by every consumer", 1, true))
+    end)
+
+    it("computes suggestions only for the findings that are printed", function()
+      local mason = {}
+      for i = 1, 100 do
+        mason[("ensure_installing%03d"):format(i)] = true
+      end
+      local found = unknown.scan({ mason = mason }, DEFAULTS)
+      assert.are.equal(100, #found)
+      assert.are.equal("ensure_install", found[1].suggestion)
+      assert.are.equal("ensure_install", found[unknown.MAX_PER_LAYER].suggestion)
+      assert.is_nil(found[unknown.MAX_PER_LAYER + 1].suggestion)
+    end)
+
+    describe("sanitize()", function()
+      it("cuts to exactly the limit, with an ellipsis", function()
+        local out = unknown.sanitize(string.rep("x", 500), 80)
+        assert.are.equal(80, #out)
+        assert.are.equal("...", out:sub(-3))
+      end)
+
+      it("leaves text at the limit alone", function()
+        local text = string.rep("x", 80)
+        assert.are.equal(text, unknown.sanitize(text, 80))
+      end)
+
+      it("never cuts inside a multi-byte character", function()
+        for max = 20, 24 do
+          local out = unknown.sanitize(string.rep("\195\164", 100), max) -- 100 x "ä"
+          local body = out:sub(1, -4)
+          assert.are.equal(string.rep("\195\164", #body / 2), body, max)
+        end
+      end)
+
+      it("escapes the control characters, including NUL and DEL", function()
+        assert.are.equal("a\\x00b\\x7fc\\x0a", unknown.sanitize("a\0b\127c\n", 80))
+      end)
+
+      it("does not walk a huge input in full", function()
+        local huge = string.rep("\n", 20 * 1000 * 1000)
+        local start = vim.uv.hrtime()
+        local out = unknown.sanitize(huge, 80)
+        local elapsed_ms = (vim.uv.hrtime() - start) / 1e6
+        assert.are.equal(80, #out)
+        assert.is_true(elapsed_ms < 500, elapsed_ms)
+      end)
+    end)
   end)
 
   describe("setup()", function()
@@ -254,15 +320,13 @@ describe("lsp.config unknown keys", function()
       end
     end)
 
-    it("cannot put control characters or an unbounded flood into the warnings", function()
+    --- Write `body` as the project file, run `setup()` from inside that
+    --- directory, and hand back the module and its warnings.
+    ---@param body string
+    ---@return table config, string[] warnings
+    local function setup_in_project(body)
       dir = vim.fn.tempname()
       vim.fn.mkdir(dir, "p")
-      local keys = { '"evil\\nINJECTED\\u001b[31m": 1' }
-      for i = 1, 200 do
-        keys[#keys + 1] = ('"junk%d": 1'):format(i)
-      end
-      -- `formatter` is on the project allowlist, so its keys are scanned.
-      local body = '{ "formatter": { ' .. table.concat(keys, ", ") .. " } }"
       vim.fn.writefile({ body }, dir .. "/.nvim-lsp.json")
 
       -- Loaded before the chdir: afterwards the runtimepath no longer resolves
@@ -272,13 +336,66 @@ describe("lsp.config unknown keys", function()
       assert.has_no.errors(function()
         config.setup({})
       end)
+      return config, config.warnings()
+    end
 
-      local warnings = config.warnings()
-      assert.is_true(#warnings <= 25)
+    ---@param warnings string[]
+    local function assert_safe(warnings)
+      assert.is_true(#warnings > 0)
       for _, w in ipairs(warnings) do
         assert.is_nil(w:find("%c"), w)
+        assert.is_true(#w <= unknown.MAX_WARNING, #w)
       end
+    end
+
+    it("cannot put control characters or an unbounded flood into the warnings", function()
+      local keys = { '"evil\\nINJECTED\\u001b[31m": 1' }
+      for i = 1, 200 do
+        keys[#keys + 1] = ('"junk%d": 1'):format(i)
+      end
+      -- `formatter` is on the project allowlist, so its keys are scanned.
+      local _, warnings =
+        setup_in_project('{ "formatter": { ' .. table.concat(keys, ", ") .. " } }")
+
+      assert.is_true(#warnings <= 25)
+      assert_safe(warnings)
       assert.is_true(has(warnings, "more unknown options"))
+    end)
+
+    it("sanitizes the warning for a key the project file may not set", function()
+      -- This warning is built in `project.lua`, not by `lsp.config.unknown`.
+      local _, warnings = setup_in_project(
+        '{ "evil\\nINJECTED\\u001b[31m": 1, "' .. string.rep("L", 3000) .. '": 2 }'
+      )
+      assert.is_true(has(warnings, "cannot be set from a project file"))
+      assert_safe(warnings)
+    end)
+
+    it("lists at most a handful of refused keys, keeping the explanation", function()
+      local keys = {}
+      for i = 1, 30 do
+        keys[i] = ('"refused%02d": 1'):format(i)
+      end
+      local _, warnings = setup_in_project("{ " .. table.concat(keys, ", ") .. " }")
+      assert.is_true(has(warnings, "and 22 more"))
+      -- The sentence after the key list is the part that tells the user what to do.
+      assert.is_true(has(warnings, "(allowed: "))
+      assert_safe(warnings)
+    end)
+
+    it("sanitizes warnings about VALUES the project file supplies", function()
+      -- Built by `warn()` with `%q`/`vim.inspect`, i.e. from the value itself.
+      local _, warnings = setup_in_project(
+        '{ "lightbulb": { "render": "a\\nb\\u001b[31m' .. string.rep("x", 3000) .. '" } }'
+      )
+      assert.is_true(has(warnings, "lightbulb.render"))
+      assert_safe(warnings)
+    end)
+
+    it("drops a server name with a control character", function()
+      local config, warnings = setup_in_project('{ "servers": ["lua_ls", "evil\\nname"] }')
+      assert_safe(warnings)
+      assert.are.same({ "lua_ls" }, config.get().servers)
     end)
   end)
 end)
