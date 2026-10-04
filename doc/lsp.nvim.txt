@@ -638,6 +638,14 @@ the layer the value came from: `(from setup())`, `(from preset "lean")`, `(from
 Every enum is checked this way, and so is every numeric field, every list and
 every filetype map. The numeric rule has no exceptions: the set is derived from
 `DEFAULTS` rather than listed by hand, so a field cannot be added without one.
+
+A key that `DEFAULTS` does not know at all -- `mason.ensure_installing` for
+`mason.ensure_install` -- is warned about too, with a "did you mean" when a
+known key is close: `mason.ensure_installing: unknown option, ignored by every
+consumer -- did you mean "ensure_install"? (from setup())`. Only what you wrote
+is checked (`setup()` and `.nvim-lsp.json`, not a preset), the value is kept,
+and free-form tables (lists, empty-default maps, `winbar.max_symbols`,
+`peek.keys`, `implement.kinds`, `mason.overrides`) are not looked into.
 Six of the twelve used to have no check and reached `:Lsp status` unaltered --
 `lightbulb.priority`, `formatter.timeout_ms`, `lspdoctor.list_limit`,
 `lspdoctor.probe_timeout`, `lspdoctor.scratch_threshold` and

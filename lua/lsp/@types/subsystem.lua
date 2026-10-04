@@ -25,6 +25,7 @@
 --- Writing the documented spelling is silently ineffective: the config merge
 --- keeps unknown keys and raises no warning, so `mason.ensure_installing` ends
 --- up sitting in the resolved config next to `ensure_install = false`, looking
---- like it took.
+--- like it took. Since 2026-10-04 `lsp.config.unknown` reports such a key in
+--- `config.warnings()` and `:checkhealth lsp`; the value is still kept.
 
 return {}
