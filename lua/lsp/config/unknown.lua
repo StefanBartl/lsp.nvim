@@ -16,7 +16,19 @@
 --- * a list (`servers`, `lightbulb.kinds`, `workspace.markers`, ...),
 --- * an empty default table (`inlay_hints.filetypes`, `keymaps.map`, ...) --
 ---   an empty default is how a free-form map is spelled,
---- * the paths in `FREE_FORM`, which are maps whose defaults are not empty.
+--- * the paths in `FREE_FORM`, which are maps whose defaults are not empty, or
+---   (`diagnostics`) tables that are only partly ours: the rest is handed to
+---   `vim.diagnostic.config()` and is a legitimate, documented override.
+---
+--- A key that `DEFAULTS` cannot list because its default is `nil`
+--- (`completion.personal_names.labels`) is carved out in `NIL_DEFAULT`. Any
+--- option a consumer reads must be in `DEFAULTS` or in one of those two tables,
+--- or a valid config is blamed for it.
+---
+--- The key text comes from the user's layers, and a `.nvim-lsp.json` in a
+--- cloned repository is one of them, so it is data, not a message: `message()`
+--- escapes control characters and truncates, and `messages()` caps how many
+--- findings one layer can turn into warnings.
 ---
 --- Pure: no `vim.notify`, no state. The caller decides what a finding costs.
 ---
@@ -32,6 +44,9 @@ local FREE_FORM = {
   ["implement.kinds"] = true,
   ["peek.keys"] = true,
   ["mason.overrides"] = true,
+  -- Only `ui` and `debounce_ms` are ours; everything else is a
+  -- `vim.diagnostic.config()` option that `core.diagnostics.apply` merges last.
+  ["diagnostics"] = true,
 }
 
 --- Fields whose default is `nil`, so they are absent from `DEFAULTS` although
@@ -147,18 +162,61 @@ function M.scan(layer, defaults)
   return found
 end
 
+--- Longest key path echoed into a warning.
+local MAX_PATH = 80
+
+--- How many findings of one layer become warnings; the rest is one summary line.
+local MAX_PER_LAYER = 20
+
+--- Make text of unknown origin safe to put in a warning: control characters
+--- (a newline breaks the scratch buffer `:Lsp status` writes into, an escape
+--- sequence reaches the terminal through `:checkhealth`) become `\xNN`, and
+--- anything longer than `max` is cut.
+---@param text string
+---@param max integer
+---@return string
+function M.sanitize(text, max)
+  text = text:gsub("%c", function(c)
+    return ("\\x%02x"):format(c:byte())
+  end)
+  if #text > max then
+    text = text:sub(1, max - 3) .. "..."
+  end
+  return text
+end
+
 --- The warning text for one finding.
 ---@param finding { path: string, suggestion: string|nil }
 ---@param label string # Layer label, as in `source_of`.
 ---@return string
 function M.message(finding, label)
-  local hint = finding.suggestion ~= nil and (' -- did you mean "%s"?'):format(finding.suggestion)
+  local hint = finding.suggestion ~= nil
+      and (' -- did you mean "%s"?'):format(M.sanitize(finding.suggestion, MAX_PATH))
     or ""
-  return ("%s: unknown option, ignored by every consumer%s (from %s)"):format(
-    finding.path,
+  return ("%s: unknown option (not in the documented option tree)%s (from %s)"):format(
+    M.sanitize(finding.path, MAX_PATH),
     hint,
     label
   )
+end
+
+--- The warnings for one layer's findings, capped at `MAX_PER_LAYER` plus one
+--- summary line, so a file full of junk keys cannot flood `:checkhealth lsp`.
+---@param findings { path: string, suggestion: string|nil }[]
+---@param label string
+---@return string[]
+function M.messages(findings, label)
+  local out = {}
+  for i = 1, math.min(#findings, MAX_PER_LAYER) do
+    out[i] = M.message(findings[i], label)
+  end
+  if #findings > MAX_PER_LAYER then
+    out[#out + 1] = ("... and %d more unknown options (from %s)"):format(
+      #findings - MAX_PER_LAYER,
+      label
+    )
+  end
+  return out
 end
 
 return M
