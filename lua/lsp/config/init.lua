@@ -55,7 +55,7 @@ local _warnings = {}
 --- precedence first. Used for attribution only -- the merge itself is done by
 --- `vim.tbl_deep_extend` -- so this is the answer to "who set that", nothing
 --- more.
----@type { label: string, data: table }[]
+---@type { label: string, data: table, ours?: boolean }[]
 local _layers = {}
 
 ---@type LspNvim.ConfigLayers
@@ -705,6 +705,7 @@ function M.setup(user_opts)
     _layers[#_layers + 1] = {
       label = ("preset %q"):format(preset),
       data = PRESETS[preset],
+      ours = true,
     }
   end
 
@@ -717,7 +718,12 @@ function M.setup(user_opts)
 
   -- Stage two: the project file, merged over everything above.
   local layer, project_warnings = project.read(cfg.project)
-  vim.list_extend(_warnings, project_warnings)
+  -- The project file is the one layer that can come from a cloned repository,
+  -- and its warnings echo key names: a newline in one breaks the scratch buffer
+  -- `:Lsp status` writes into.
+  for _, w in ipairs(project_warnings) do
+    _warnings[#_warnings + 1] = unknown.sanitize(w, 400)
+  end
   if layer ~= nil then
     table.insert(_layers, 1, { label = layer.label, data = layer.data })
     _sources.project = layer.path
@@ -728,10 +734,8 @@ function M.setup(user_opts)
   -- sit in the resolved config looking as if it took. Only the layers a person
   -- wrote are checked: a preset is ours, and `DEFAULTS` is the reference.
   for _, l in ipairs(_layers) do
-    if l.label ~= ("preset %q"):format(preset) then
-      for _, finding in ipairs(unknown.scan(l.data, DEFAULTS)) do
-        _warnings[#_warnings + 1] = unknown.message(finding, l.label)
-      end
+    if not l.ours then
+      vim.list_extend(_warnings, unknown.messages(unknown.scan(l.data, DEFAULTS), l.label))
     end
   end
 

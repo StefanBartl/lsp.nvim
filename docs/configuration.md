@@ -75,15 +75,21 @@ preset) against the documented option tree and records one warning per unknown
 key, with a "did you mean" when a known key is close:
 
 ```
-mason.ensure_installing: unknown option, ignored by every consumer -- did you mean "ensure_install"? (from setup())
+mason.ensure_installing: unknown option (not in the documented option tree) -- did you mean "ensure_install"? (from setup())
 ```
 
 It is a warning and nothing else: the value is kept, nothing is raised, and
 there is no strict switch. Free-form tables are never checked below their
 root: lists (`servers`, `workspace.markers`), empty-default maps
-(`inlay_hints.filetypes`, `keymaps.map`, ...) and the maps that carry a default
+(`inlay_hints.filetypes`, `keymaps.map`, ...), the maps that carry a default
 but take your own keys (`winbar.max_symbols`, `peek.keys`, `implement.kinds`,
-`mason.overrides`).
+`mason.overrides`) and `diagnostics`, whose keys other than `ui` and
+`debounce_ms` go straight to `vim.diagnostic.config()`.
+
+The key text comes from your layers, and a `.nvim-lsp.json` in a cloned
+repository is one of them, so it is escaped and cut before it reaches a
+warning, and one layer yields at most twenty of these warnings plus a
+`... and N more unknown options` line.
 
 ## preset: one word for twenty fields
 

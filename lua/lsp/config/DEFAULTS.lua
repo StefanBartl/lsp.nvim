@@ -384,6 +384,14 @@ local DEFAULTS = {
     scratch_filetype = "markdown",
     auto_open_scratch = true,
     scratch_threshold = 20,
+    -- Sections of `:LspDoctor`'s reports. Listed here although
+    -- `lsp.lspdoctor` carries the same defaults itself: the config layer has
+    -- to know every option the module reads, or `lsp.config.unknown` blames a
+    -- valid config for it.
+    show_capabilities = true,
+    show_workspace = true,
+    show_tools = true,
+    show_conflicts = true,
   },
 
   tools = {

@@ -639,19 +639,24 @@ Every enum is checked this way, and so is every numeric field, every list and
 every filetype map. The numeric rule has no exceptions: the set is derived from
 `DEFAULTS` rather than listed by hand, so a field cannot be added without one.
 
-A key that `DEFAULTS` does not know at all -- `mason.ensure_installing` for
-`mason.ensure_install` -- is warned about too, with a "did you mean" when a
-known key is close: `mason.ensure_installing: unknown option, ignored by every
-consumer -- did you mean "ensure_install"? (from setup())`. Only what you wrote
-is checked (`setup()` and `.nvim-lsp.json`, not a preset), the value is kept,
-and free-form tables (lists, empty-default maps, `winbar.max_symbols`,
-`peek.keys`, `implement.kinds`, `mason.overrides`) are not looked into.
 Six of the twelve used to have no check and reached `:Lsp status` unaltered --
 `lightbulb.priority`, `formatter.timeout_ms`, `lspdoctor.list_limit`,
 `lspdoctor.probe_timeout`, `lspdoctor.scratch_threshold` and
 `lspdoctor.semantic_tokens_timeout`. Nothing raised, because the consumers
 defend themselves, but the report then showed what you typed rather than what
 was running, which is the one thing a status report must not do.
+
+A key that `DEFAULTS` does not know at all -- `mason.ensure_installing` for
+`mason.ensure_install` -- is warned about too, with a "did you mean" when a
+known key is close: `mason.ensure_installing: unknown option (not in the
+documented option tree) -- did you mean "ensure_install"? (from setup())`.
+Only what you wrote is checked (`setup()` and `.nvim-lsp.json`, not a preset),
+the value is kept, and nothing below a free-form table is looked at: lists,
+empty-default maps, `winbar.max_symbols`, `peek.keys`, `implement.kinds`,
+`mason.overrides`, and `diagnostics`, which hands everything but `ui` and
+`debounce_ms` on to `vim.diagnostic.config()`. Key text from a project file is
+escaped and cut, and one layer yields at most twenty such warnings plus a
+summary line.
 
 `integrations` is the one option in this document's history that never
 arrived: nothing reads it, and a default nothing reads is a promise the plugin
