@@ -121,6 +121,25 @@ end
 --- warning wording. `"empty"` is deliberately absent: a placeholder file is
 --- not a mistake worth reporting, so it is handled inline in `M.read`
 --- instead of routed through here.
+--- Key names from the file, as one bounded line. They are the part of a
+--- warning that the repository -- not the user -- wrote, so each is escaped and
+--- cut, and a file of thousands of them cannot push the explanation at the end
+--- of the sentence out of the warning.
+---@param keys string[]
+---@return string
+local function key_list(keys)
+  local sanitize = require("lsp.config.unknown").sanitize
+  local shown = {}
+  for i = 1, math.min(#keys, 8) do
+    shown[i] = sanitize(keys[i], 60)
+  end
+  local text = table.concat(shown, ", ")
+  if #keys > #shown then
+    text = ("%s, ... and %d more"):format(text, #keys - #shown)
+  end
+  return text
+end
+
 ---@param reason Lib.Config.RepoFile.Reason
 ---@param detail string|nil
 ---@param label string
@@ -234,7 +253,8 @@ function M.read(opts, start)
     return nil, {}
   end
 
-  local label = display(path)
+  -- A path: any ancestor directory name can carry a control character.
+  local label = require("lsp.config.unknown").sanitize(display(path), 200)
   local result, reason, detail = require("lib.nvim.config.repo_file").load(path, M.ALLOWED)
   if not result then
     if reason == "empty" then
@@ -253,7 +273,7 @@ function M.read(opts, start)
     -- mistaken idea about this feature, not five separate problems.
     warnings[#warnings + 1] = ("%s: %s cannot be set from a project file, ignoring (allowed: %s)"):format(
       label,
-      table.concat(result.refused, ", "),
+      key_list(result.refused),
       table.concat(allowed, ", ")
     )
   end
@@ -262,7 +282,7 @@ function M.read(opts, start)
   if #outside > 0 then
     warnings[#warnings + 1] = ("%s: attach.workspace_diagnostics_projects may only name folders inside the repository, ignoring %s"):format(
       label,
-      table.concat(outside, ", ")
+      key_list(outside)
     )
   end
 

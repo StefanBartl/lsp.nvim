@@ -252,7 +252,9 @@ local function clean_names(list, label, key, field)
   ---@type string[]
   local clean = {}
   for _, name in ipairs(list) do
-    if type(name) == "string" and name ~= "" then
+    -- A control character in a name never resolves to a module, and a name is
+    -- printed verbatim by `:Lsp status` and the registry warnings.
+    if type(name) == "string" and name ~= "" and not name:find("%c") then
       clean[#clean + 1] = name
     else
       warn(("%s: ignoring non-string entry %s"):format(label, vim.inspect(name)), key, field)
@@ -718,12 +720,7 @@ function M.setup(user_opts)
 
   -- Stage two: the project file, merged over everything above.
   local layer, project_warnings = project.read(cfg.project)
-  -- The project file is the one layer that can come from a cloned repository,
-  -- and its warnings echo key names: a newline in one breaks the scratch buffer
-  -- `:Lsp status` writes into.
-  for _, w in ipairs(project_warnings) do
-    _warnings[#_warnings + 1] = unknown.sanitize(w, 400)
-  end
+  vim.list_extend(_warnings, project_warnings)
   if layer ~= nil then
     table.insert(_layers, 1, { label = layer.label, data = layer.data })
     _sources.project = layer.path
@@ -960,6 +957,16 @@ function M.setup(user_opts)
       return type(name) == "string" and name ~= "" and type(value) == "boolean"
     end
   )
+
+  -- The one choke point for warning text. Warnings echo what a layer supplied
+  -- (key names, values, paths), and the project layer can come from a cloned
+  -- repository: a newline in one breaks the scratch buffer `:Lsp status`
+  -- writes into, an escape sequence reaches the terminal through
+  -- `:checkhealth`, and an unbounded value floods both. Sanitizing here rather
+  -- than at each `warn()` call means a warning added later is covered too.
+  for i, w in ipairs(_warnings) do
+    _warnings[i] = unknown.sanitize(w, unknown.MAX_WARNING)
+  end
 
   _active = cfg
   return cfg

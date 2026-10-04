@@ -86,10 +86,17 @@ but take your own keys (`winbar.max_symbols`, `peek.keys`, `implement.kinds`,
 `mason.overrides`) and `diagnostics`, whose keys other than `ui` and
 `debounce_ms` go straight to `vim.diagnostic.config()`.
 
-The key text comes from your layers, and a `.nvim-lsp.json` in a cloned
-repository is one of them, so it is escaped and cut before it reaches a
-warning, and one layer yields at most twenty of these warnings plus a
+One layer yields at most twenty of these warnings plus a
 `... and N more unknown options` line.
+
+Warnings echo what a layer supplied -- key names, values, paths -- and a
+`.nvim-lsp.json` in a cloned repository is one of those layers. So no warning
+reaches `config.warnings()`, `:Lsp status` or `:checkhealth lsp` raw: control
+characters (a newline would break the buffer `:Lsp status` writes into, an
+escape sequence would reach the terminal) are written as `\xNN`, and a warning
+is cut at 1000 bytes, on a character boundary. The key lists in the project
+file's own warnings show at most eight keys and then `... and N more`, and a
+server name with a control character is dropped like any other malformed entry.
 
 ## preset: one word for twenty fields
 

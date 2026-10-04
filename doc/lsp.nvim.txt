@@ -654,9 +654,14 @@ Only what you wrote is checked (`setup()` and `.nvim-lsp.json`, not a preset),
 the value is kept, and nothing below a free-form table is looked at: lists,
 empty-default maps, `winbar.max_symbols`, `peek.keys`, `implement.kinds`,
 `mason.overrides`, and `diagnostics`, which hands everything but `ui` and
-`debounce_ms` on to `vim.diagnostic.config()`. Key text from a project file is
-escaped and cut, and one layer yields at most twenty such warnings plus a
-summary line.
+`debounce_ms` on to `vim.diagnostic.config()`. One layer yields at most twenty
+such warnings plus a summary line.
+
+No warning reaches |:Lsp-status| or |:checkhealth-lsp| raw, because a warning
+echoes what a layer supplied and `.nvim-lsp.json` can come from a cloned
+repository: control characters are written as `\xNN`, a warning is cut at 1000
+bytes (on a character boundary), the project file's key lists show at most
+eight keys, and a server name with a control character is dropped.
 
 `integrations` is the one option in this document's history that never
 arrived: nothing reads it, and a default nothing reads is a promise the plugin
