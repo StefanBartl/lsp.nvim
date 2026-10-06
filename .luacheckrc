@@ -20,7 +20,7 @@ files["scripts/"] = {
   read_globals = { "vim", "arg" },
 }
 
--- plenary.nvim's busted-style harness (describe/it/...) and luassert's
+-- The busted-style globals of the specs (describe/it/...) and luassert's
 -- runtime-extended `assert` (assert.has_no.errors, assert.are.same, ...) are
 -- only present under TESTS/, so scope them there rather than loosening checks
 -- plugin-wide.
