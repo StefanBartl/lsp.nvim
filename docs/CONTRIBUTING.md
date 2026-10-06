@@ -71,7 +71,7 @@ checkout completely. Nothing looks broken; it is simply not the code running.
 | `lua/lsp/bindings/`, `usercmds/` | Keymap registration and the `:Lsp` route tree |
 | `scripts/` | `gen_bindings.lua` (BINDINGS.md), `gen_map.lua` (module map and the layer rule) |
 | `doc/`, `docs/` | The vimdoc, and everything the README links to |
-| `TESTS/` | `lsp/` plenary specs, plus `smoke.lua` |
+| `TESTS/` | `lsp/` busted-style specs (run by testing.nvim), plus `smoke.lua` |
 
 ## Adding a server
 
@@ -112,28 +112,20 @@ CI runs the same script with `--check`. Never edit the generated tables in
 
 ## Tests
 
-Two suites, deliberately separate. The plenary specs stub their way around the
+Two suites, deliberately separate. The specs stub their way around the
 ecosystem so the core is exercised without a plugin manager; the smoke test
 runs the real `setup()` against the real modules, which is exactly what the
 stubs cannot check.
 
-The suite resolves plenary.nvim, lib.nvim and ui.nvim from environment
-variables rather than hardcoded paths, so the same command works locally and in
-CI. Without them `:PlenaryBustedDirectory` does not exist and `require("lsp")`
-never reaches lib.nvim.
+The suite is run by testing.nvim. `scripts/test.sh` resolves testing.nvim,
+lib.nvim and ui.nvim (`$<NAME>_DIR`, `.deps/<name>`, a sibling checkout or the
+plugin manager's directory) and exits 1 naming every place it looked when one
+is missing. Without lib.nvim `require("lsp")` never gets going.
 
 ```
-PLENARY_PATH=~/.local/share/nvim/lazy/plenary.nvim \
-LIB_NVIM_PATH=../lib.nvim \
-UI_NVIM_PATH=../ui.nvim \
-nvim --headless --noplugin -u TESTS/minimal_init.lua \
-  -c "PlenaryBustedDirectory TESTS/lsp { minimal_init = 'TESTS/minimal_init.lua', sequential = true }"
-```
-
-```
-nvim --headless -u NONE -c "set rtp^=." -c "set rtp^=/path/to/lib.nvim" \
-  -c "set rtp^=/path/to/ui.nvim" \
-  -c "luafile TESTS/smoke.lua" -c "qa!"
+bash scripts/test.sh                 # specs and smoke test
+bash scripts/test.sh --file _spec    # only the specs
+bash scripts/test.sh --file smoke    # only the smoke test
 ```
 
 [GitHub Actions](../.github/workflows/ci.yml) runs stylua, luacheck, the

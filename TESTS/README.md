@@ -4,27 +4,26 @@ Three layers, run by CI and all runnable locally.
 
 | What | File(s) | Needs |
 | ---- | ------- | ----- |
-| Spec suite | `TESTS/lsp/*_spec.lua` | plenary.nvim, lib.nvim, ui.nvim (`pack_spec.lua`) |
+| Spec suite | `TESTS/lsp/*_spec.lua` | testing.nvim, lib.nvim, ui.nvim (`pack_spec.lua`) |
 | Live probe gate | `TESTS/lsp/probe_live_spec.lua` | one of `lua-language-server`, `typescript-language-server`, `gopls` (+`go`) |
 | Smoke test | `TESTS/smoke.lua` | lib.nvim, ui.nvim (`step("lspdoctor", ...)` runs unconditionally) |
 
 ## Run
 
-The suite resolves plenary.nvim, lib.nvim and ui.nvim from environment
-variables, so the same command works locally and in CI:
+The suite is run by [testing.nvim](https://github.com/StefanBartl/testing.nvim),
+one Neovim per spec file. `scripts/test.sh` finds testing.nvim, lib.nvim and
+ui.nvim (in this order: `$<NAME>_DIR`, `.deps/<name>`, a sibling checkout,
+`stdpath("data")/lazy/<name>`) and exits 1 naming all four places when one is
+missing, so the same command works locally and in CI:
 
 ```sh
-PLENARY_PATH=~/.local/share/nvim/lazy/plenary.nvim \
-LIB_NVIM_PATH=../lib.nvim \
-UI_NVIM_PATH=../ui.nvim \
-nvim --headless --noplugin -u TESTS/minimal_init.lua \
-  -c "PlenaryBustedDirectory TESTS/lsp { minimal_init = 'TESTS/minimal_init.lua', sequential = true }"
+bash scripts/test.sh                   # the specs and the smoke test
+bash scripts/test.sh --file _spec      # only TESTS/lsp/*_spec.lua
+bash scripts/test.sh --file smoke      # only TESTS/smoke.lua
+bash scripts/test.sh --json ir.json    # also write the machine-readable result
 ```
 
-```sh
-nvim --headless -u NONE -c "set rtp^=." -c "set rtp^=../lib.nvim" -c "set rtp^=../ui.nvim" \
-  -c "luafile TESTS/smoke.lua" -c "qa!"
-```
+The configuration is `.testing.lua`.
 
 ## Lint
 
@@ -124,8 +123,8 @@ It needs a server, and not every machine has one. The skip is therefore built
 so it cannot be mistaken for a pass:
 
 - it names every candidate it looked for and what was missing about each,
-- it writes that to stderr as well as to plenary's `PENDING` line, because
-  plenary still tallies a pending case under `Success`,
+- it writes that to stderr as well as to the runner's pending (skip) line, so
+  the reason survives a runner that does not print it,
 - and under `CI` it **fails** instead of skipping -- the workflow installs
   `typescript-language-server` for this case, so "no server found" there means
   the workflow broke, not the machine,
