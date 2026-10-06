@@ -55,8 +55,12 @@ return {
   },
   guard_allow = {
     spawn = {
-      -- probe_live_spec.lua starts the real language server on deliberately broken content.
+      -- probe_live_spec.lua starts whichever real language server is installed (lua_ls locally; CI
+      -- installs ts_ls) on deliberately broken content; `npm root -g` locates the global typescript.
       "lua-language-server",
+      "typescript-language-server",
+      "gopls",
+      "npm",
       -- usercmds_impl_spec.lua registers fake servers with cmd = { "true" }: a no-op executable that
       -- vim.lsp.start() launches so that :Lsp start/restart/info have a running client to count.
       "true",
