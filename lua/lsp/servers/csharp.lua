@@ -4,7 +4,6 @@
 local notify = require("lib.nvim.notify").create("[lsp.servers.csharp]")
 
 local lsp = vim.lsp
-local executable = vim.fn.executable
 
 ---@class CsharpServer
 local M = {}
@@ -12,7 +11,7 @@ local M = {}
 ---@return string|nil
 local function find_omnisharp()
   -- 1. SYSTEM PATH CHECK
-  if executable("omnisharp") == 1 then
+  if vim.fn.executable("omnisharp") == 1 then
     return "omnisharp"
   end
 
@@ -92,6 +91,36 @@ local function csharp_root_dir(bufnr, on_dir)
   end
 end
 
+--- The resolved binary: `nil` until looked up, `false` once looked up and absent.
+---@type string|false|nil
+local resolved = nil
+
+---@internal
+--- Look the binary up on first use, and only once.
+---
+--- `vim.fn.executable("omnisharp")` walks every `PATH` entry (and `PATHEXT` on
+--- Windows) and costs ~100 ms on a long `PATH` when the name is absent -- far
+--- more than every other server's whole `setup()`. Doing it in `setup()` charged
+--- that to every start, C# project or not (LUA-92), so it runs when the first C#
+--- buffer asks for a root instead.
+---@return string|nil cmd
+local function resolve()
+  if resolved == nil then
+    resolved = find_omnisharp() or false
+    if not resolved then
+      notify.warn("C#: Omnisharp not found; skipping LSP")
+    end
+  end
+  return resolved or nil
+end
+
+---@internal
+--- Forget the lookup (tests, and a user who installed the server meanwhile).
+---@return nil
+function M._reset()
+  resolved = nil
+end
+
 ---@param shared {capabilities?:table,on_attach?:fun(client,bufnr),on_init?:fun(client,init_result):boolean}|nil
 ---@param opts { enable?: boolean }|nil
 ---@return nil
@@ -99,24 +128,30 @@ function M.setup(shared, opts)
   shared = shared or {}
   opts = opts or {}
 
-  local cmd = find_omnisharp()
-  if not cmd then
-    notify.warn("C#: Omnisharp not found; skipping LSP")
-    return
-  end
-
   -- Define config
   if type(lsp.config) == "table" then
     local config_ok, config_err = pcall(function()
       lsp.config("omnisharp", {
-        cmd = { cmd },
+        -- A function, so the binary is looked up when a client starts rather
+        -- than here; `root_dir` runs first and declines when it is absent.
+        cmd = function(dispatchers, config)
+          return vim.lsp.rpc.start({ resolve() }, dispatchers, {
+            cwd = config.cmd_cwd,
+            env = config.cmd_env,
+            detached = config.detached,
+          })
+        end,
         filetypes = { "cs" },
         capabilities = shared.capabilities,
         on_attach = shared.on_attach,
         on_init = shared.on_init,
         enable_roslyn_analyzers = true,
         organize_imports_on_format = true,
-        root_dir = csharp_root_dir,
+        root_dir = function(bufnr, on_dir)
+          if resolve() then
+            csharp_root_dir(bufnr, on_dir)
+          end
+        end,
       })
     end)
 
