@@ -28,6 +28,9 @@ return {
   -- diagnostics_severity_spec.lua:16 "treats nil and empty as 'all severities'"); the old runner passed them.
   -- Remove this line once they assert something.
   assertions = "warn",
+  -- servers_languages_spec.lua "stops collecting at max_files" writes 600 files and waits for the
+  -- word-cache scan (vim.wait up to 30 s); on the Windows CI runner that exceeds the default 10 s.
+  timeouts = { case_ms = 30000 },
   -- Safety nets (docs/GUARDS.md of testing.nvim). The suite passes fs, scheduled_error, prompt,
   -- deprecation and process_net cleanly, so they are errors; only the state guard keeps findings.
   guards = {
