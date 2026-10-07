@@ -241,20 +241,66 @@ describe("lsp.servers (the modules without their own spec)", function()
   ------------------------------------------------------------------------------
 
   describe("csharp", function()
+    local orig_executable = vim.fn.executable
+    ---@type string[]
+    local looked_up
+
+    before_each(function()
+      looked_up = {}
+      vim.fn.executable = function(name)
+        looked_up[#looked_up + 1] = name
+        return name == "omnisharp" and 1 or orig_executable(name)
+      end
+    end)
+
+    after_each(function()
+      vim.fn.executable = orig_executable
+    end)
+
     ---@return table cfg
     local function register()
       forget("omnisharp")
-      local orig = vim.fn.executable
-      vim.fn.executable = function(name)
-        return name == "omnisharp" and 1 or orig(name)
-      end
       local ok, err = pcall(function()
-        fresh("lsp.servers.csharp").setup(shared, { enable = false })
+        local mod = fresh("lsp.servers.csharp")
+        mod._reset()
+        mod.setup(shared, { enable = false })
       end)
-      vim.fn.executable = orig
       assert.is_true(ok, tostring(err))
       return vim.lsp.config["omnisharp"]
     end
+
+    -- Failed before the fix: `setup()` called `vim.fn.executable("omnisharp")`,
+    -- which walks every PATH entry and cost ~100 ms on a long PATH -- a third of
+    -- the whole plugin's startup, paid whether or not a C# file was ever opened
+    -- (LUA-92).
+    it("does not look the binary up in setup()", function()
+      register()
+      assert.are.same({}, looked_up)
+    end)
+
+    it("looks the binary up once, when the first C# buffer asks for a root", function()
+      local cfg = register()
+      local _, bufnr = tree({ "p/App.csproj", "p/Q.cs" }, "p/Q.cs")
+      resolve_root(cfg, bufnr)
+      resolve_root(cfg, bufnr)
+      assert.are.same({ "omnisharp" }, looked_up)
+    end)
+
+    it("declines to start when the binary is absent", function()
+      local cfg = register()
+      vim.fn.executable = function()
+        return 0
+      end
+      local data = vim.fn.stdpath("data")
+      if
+        vim.uv.fs_stat(data .. "/mason/bin/omnisharp")
+        or vim.uv.fs_stat(data .. "/mason/bin/omnisharp.CMD")
+      then
+        return
+      end
+      local _, bufnr = tree({ "p/App.csproj", "p/Q.cs" }, "p/Q.cs")
+      assert.is_nil(resolve_root(cfg, bufnr))
+    end)
 
     -- Failed before the fix: the module declared
     --   root_markers = { ".git", ".sln", ".csproj" }
