@@ -1356,15 +1356,24 @@ describe("lsp.core.env_links", function()
       local was_windows = links.windows
       links.windows = false
       local stats = {}
-      local real_stat = vim.uv.fs_stat
+      local real_stat, real_readlink = vim.uv.fs_stat, vim.uv.fs_readlink
       vim.uv.fs_stat = function(path)
         if tostring(path):find("192.0.2.1", 1, true) then
           stats[#stats + 1] = path
         end
         return nil
       end
-      local resolved = links.resolve("$LSPTEST_DBL/a.md")
-      vim.uv.fs_stat = real_stat
+      -- The link walk reads every prefix, `//192.0.2.1` included: on Windows
+      -- that is a real SMB connect (21 s timeout). The spec stays offline.
+      vim.uv.fs_readlink = function(path, ...)
+        if tostring(path):find("192.0.2.1", 1, true) then
+          return nil
+        end
+        return real_readlink(path, ...)
+      end
+      local ok, resolved = pcall(links.resolve, "$LSPTEST_DBL/a.md")
+      vim.uv.fs_stat, vim.uv.fs_readlink = real_stat, real_readlink
+      assert(ok, resolved)
       links.windows = was_windows
       vim.env.LSPTEST_DBL = nil
       assert.is_false(resolved.exists)

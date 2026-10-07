@@ -8,8 +8,11 @@
 describe("lazy executable resolution", function()
   local native ---@type integer
   local real_exepath, real_executable
+  local real_path ---@type string|nil
 
   before_each(function()
+    -- `formatter.conform` setup() prepends mason/bin to $PATH.
+    real_path = vim.env.PATH
     native = 0
     real_exepath, real_executable = vim.fn.exepath, vim.fn.executable
     vim.fn.exepath = function(...)
@@ -25,6 +28,7 @@ describe("lazy executable resolution", function()
 
   after_each(function()
     vim.fn.exepath, vim.fn.executable = real_exepath, real_executable
+    vim.env.PATH = real_path
     package.loaded["conform"] = nil
     require("lib.nvim.cross.executable").clear()
   end)

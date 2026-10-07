@@ -144,6 +144,20 @@ local entries = {
     rhs = vim.lsp.buf.signature_help,
     desc = "Signature help",
   },
+  -- Moved here from `tools/lsp_signature`, which bound it unconditionally: a
+  -- key outside the catalogue ignored `keymaps.enable = false`, the presets
+  -- and `keymaps.map`, and was missing from docs/BINDINGS.md. The tool itself
+  -- (`tools.lsp_signature.enable`) still gates it, see `bindings/keymaps.lua`.
+  signature_toggle = {
+    lhs = "<C-b>",
+    mode = { "i", "n" },
+    rhs = function()
+      vim.schedule(function()
+        require("lsp.tools.lsp_signature.request_and_show")()
+      end)
+    end,
+    desc = "[LSP] Show signature or hover (floating toggle)",
+  },
 
   -- ------------------------------------------------------------ rename
   -- One action, two keys. `grn` and `<leader>rn` used to run *different*
@@ -546,6 +560,7 @@ local presets = {
   default = vim.tbl_keys(entries),
   minimal = {
     "signature_help",
+    "signature_toggle",
     "rename_leader",
     "format_toggle",
     "format_buffer",

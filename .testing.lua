@@ -28,8 +28,6 @@ return {
   -- diagnostics_severity_spec.lua:16 "treats nil and empty as 'all severities'"); the old runner passed them.
   -- Remove this line once they assert something.
   assertions = "warn",
-  -- One case of env_links_spec.lua touches an SMB share and takes about 21 s.
-  timeouts = { case_ms = 30000 },
   -- Safety nets (docs/GUARDS.md of testing.nvim). The suite passes fs, scheduled_error, prompt,
   -- deprecation and process_net cleanly, so they are errors; only the state guard keeps findings.
   guards = {
@@ -39,15 +37,8 @@ return {
     deprecation = "error",
     -- Real processes are started on purpose (see guard_allow.spawn); anything else is an error.
     process_net = "error",
-    -- warn, not off: three REAL leaks are visible only through this guard (the run stays green).
-    --   * package.preload: integrations_quality_spec.lua restores package.preload from a table that
-    --     skips nil values, so six "lsp.integrations.*" stubs (blink, cmp, lazydev, menu, nvchad,
-    --     trouble) stay behind for the next spec file in the same editor.
-    --   * env: lazy_resolution_spec.lua calls formatter.conform setup(), which prepends mason/bin to
-    --     PATH; the spec does not restore it.
-    --   * lua_globals: languages_spec.lua and servers_languages_spec.lua leave
-    --     _G.__lsp_nvim_completion_specs behind.
-    -- The other ~1550 warnings are plugin setup() state (autocmds, user commands, keymaps, buffers,
+    -- warn, not off: the package.preload, env and lua_globals leaks the guard found are fixed. The
+    -- ~1550 remaining warnings are plugin setup() state (autocmds, user commands, keymaps, buffers,
     -- windows, highlight groups, vim.g._lsp_enabled_* of vim.lsp.enable()) that the specs create by
     -- design; `isolated = "file"` contains it per spec file. A per-category switch is not available
     -- in .testing.lua (only a mode string per guard), so that noise cannot be filtered out here.

@@ -277,7 +277,7 @@ require("lsp.@types.subsystem")
 ---@field tools? LspNvim.ToolsOpts
 ---@field languages? LspNvim.LanguagesOpts
 ---@field rename? LspNvim.RenameOpts
----@field keymaps? LspNvim.KeymapsOpts
+---@field keymaps? LspNvim.KeymapsOpts|boolean # `false` = `{ enable = false }`
 ---@field usrcmds? LspNvim.UsrcmdsOpts
 ---@field which_key? LspNvim.WhichKeyOpts
 ---@field menu? LspNvim.MenuOpts

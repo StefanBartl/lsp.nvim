@@ -22,7 +22,7 @@ two pairs of them owned twice over. One catalogue, one owner.
 
 | Config | Effect |
 | ------ | ------ |
-| `keymaps.enable = false` | Bind nothing at all |
+| `keymaps = false` / `keymaps.enable = false` | Bind nothing at all (`<C-b>` included) |
 | `keymaps.preset` | `"default"`, `"minimal"` or `"none"` |
 | `keymaps.map.<action> = "<lhs>"` | Bind that action to a different key |
 | `keymaps.map.<action> = false` | Drop that action's mapping |
@@ -63,7 +63,7 @@ Two things worth knowing about the left-hand sides:
 
 <!-- BEGIN GENERATED KEYMAPS -->
 
-The `default` preset binds all 58 entries below. `minimal` binds the 33
+The `default` preset binds all 59 entries below. `minimal` binds the 34
 marked in the last column; `none` binds nothing.
 
 | action | lhs | mode | needs | minimal | description |
@@ -110,6 +110,7 @@ marked in the last column; `none` binds nothing.
 | `rename_leader` | `<leader>rn` | n | — | yes | Rename symbol (leader variant) |
 | `root_scope_pick` | `<leader>lsp` | n | — | yes | Pick root scope (cwd / git root / file path) |
 | `signature_help` | `<M-s>` | i | — | yes | Signature help |
+| `signature_toggle` | `<C-b>` | i, n | — | yes | [LSP] Show signature or hover (floating toggle) |
 | `trouble_all` | `<leader>xx` | n | `trouble` | yes | Trouble: all diagnostics |
 | `trouble_buffer` | `<leader>xd` | n | `trouble` | yes | Trouble: buffer diagnostics |
 | `trouble_definitions` | `<leader>xld` | n | `trouble` | — | Trouble: definitions |
@@ -242,6 +243,38 @@ building a second one.
 Report output goes to a scratch split rather than a notification: it is
 multi-line and meant to be read and copied from.
 
+## Commands of the subsystems
+
+Not part of the `:Lsp` family and not aliases: each belongs to one subsystem and
+is registered with it. The format-on-save pair is also reachable as
+`:Lsp format`; the legacy table above lists that route.
+
+| Command | Effect |
+| ------- | ------ |
+| `:LspFormatOn` / `:LspFormatOff` / `:LspFormatToggle` | Enable, disable or toggle format-on-save |
+| `:LspFormatStatus` | Show the format-on-save state |
+| `:LspFormatWhich` | Show the formatter chain and its availability for the current buffer |
+| `:LintAndFormat` | Run `eslint_d --fix`, then `prettier --write`, on the current file |
+| `:CmpReloadWords` | Reload `extra.lua` and the personal-plugin list of the word completion without restarting |
+| `:LspWorkspaceDiagnosticsOn` / `:LspWorkspaceDiagnosticsOff` / `:LspWorkspaceDiagnosticsToggle` | Enable, disable or toggle the workspace-wide diagnostics populate on attach |
+| `:LspWorkspaceDiagnosticsStatus` / `:LspWorkspaceDiagnosticsNow` | Show the state, or populate now regardless of the toggle |
+| `:EslintFix` / `:PrettierFormat` / `:ToggleLintFormatOnSave` | `eslint_d --fix` or `prettier --write` on the current file; toggle lint + format on save |
+| `:MdFormat` / `:MdFormatPrettier` | Format Markdown (`mdformat` preferred), or format via Prettier |
+| `:MdRebuildWords` / `:MdSetRoot [dir]` / `:MdWordStats` | Rebuild the project word cache, set its root (empty = cwd), show its statistics |
+| `:LuaLsReloadLibrary` / `:LuaLsInspectLibrary` / `:LuaLsSetProfile {minimal\|normal\|full}` | Reload, inspect or choose the lua_ls workspace library |
+| `:TypeDefGoTo` / `:TypeDefPeek` / `:TypeDefPick` | Go to, peek or pick a type definition (default: the word under the cursor) |
+| `:TypeDefFindInNodeModules` / `:TypeDefAttachNoiceKeys` | Search a symbol in `node_modules`; attach the type lookup keys to a Noice buffer |
+| `:AstroBuild` | Build the Astro project |
+| `:AstroPreview` | Preview the Astro build |
+| `:AstroDevStop` | Stop the Astro dev server (`:AstroDevStart` starts it) |
+| `:AstroNewComponent [name]` / `:AstroNewPage [name]` | Create a component or a page |
+| `:AstroListComponents` | List the Astro components of the project |
+| `:AstroFindUsage` | Find where a component is used |
+| `:AstroCheckStructure` | Check the Astro project structure |
+
+The Astro commands exist once an Astro buffer has been opened; see
+[the Astro command page](../lua/lsp/languages/webdev/astro/COMMANDS.md).
+
 ## Autocommands
 
 Four augroups belong to the binding layer proper, five more to the indicators
@@ -266,3 +299,7 @@ their own groups (format-on-save, per-filetype setup, the signature popup's
 per-window group, lua_ls's root recompute). They are not listed here because
 they are not bindings — the complete inventory is [autocmds.md](autocmds.md),
 kept as a separate page so a second copy here does not need to stay in sync.
+
+The groups that page describes include `AstroQoL` (`BufWritePre`), `LangTs` (`BufWritePre`),
+`MasonEslintPrettier` (`BufWritePost`), `DeprecatedHelpBufCache` (`BufDelete`),
+`MdWordsDirChanged` (`DirChanged`) and `lsp_nvim_env_links` (`BufWritePost`, `FocusGained`).

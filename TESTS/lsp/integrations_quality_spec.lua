@@ -77,9 +77,13 @@ describe("lsp.integrations", function()
   -- of the same broken state impossible to diff.
   it("reports load failures in the order the adapters are declared", function()
     local saved = {}
+    -- `package.preload` is saved too, nil included: a key that held nothing has
+    -- to hold nothing again, or the stub stays for the next file in the editor.
+    local saved_preload = {}
     for _, name in ipairs({ "trouble", "blink", "cmp", "lazydev", "menu", "nvchad" }) do
       local key = "lsp.integrations." .. name
       saved[key] = package.loaded[key]
+      saved_preload[key] = package.preload[key]
       -- A module that raises on require is recorded as a load failure.
       package.loaded[key] = nil
       package.preload[key] = function()
@@ -109,14 +113,16 @@ describe("lsp.integrations", function()
       return names
     end
 
-    local first = failure_order()
-    local second = failure_order()
+    local ok, first, second = pcall(function()
+      return failure_order(), failure_order()
+    end)
 
     for key, value in pairs(saved) do
-      package.preload[key] = nil
+      package.preload[key] = saved_preload[key]
       package.loaded[key] = value
     end
     package.loaded["lsp.integrations"] = nil
+    assert(ok, first)
 
     assert.is_true(#first > 1, "the case needs more than one failure to say anything")
     assert.are.same(first, second, "two runs of the same state printed a different order")

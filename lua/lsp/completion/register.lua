@@ -69,16 +69,20 @@ local M = {}
 --- after that reports "Reloaded" and changes nothing a user can see, same
 --- shape as the bug this table's sibling guard already fixed once.
 ---
---- Anchored on `_G` rather than on `cmp`, because blink has no analogous host
---- this module could reach into -- `_G` is the one thing neither engine's
---- reload story touches.
+--- Anchored on `package.loaded` rather than on `cmp`, because blink has no
+--- analogous host this module could reach into -- an entry outside the `lsp.`
+--- namespace is the one thing neither engine's reload story touches.
 ---@return table<string, LspNvim.CompletionSource>
 local function specs_table()
+  -- Not `_G`: a plugin must not add a global (it is visible to every other
+  -- plugin and to the user's code). `package.loaded` is already shared state, and
+  -- the key is deliberately not under `lsp.`, so the module clearing a reload does
+  -- (every `lsp.*` entry) leaves it alone.
   local key = "__lsp_nvim_completion_specs"
-  local t = rawget(_G, key)
+  local t = package.loaded[key]
   if type(t) ~= "table" then
     t = {}
-    rawset(_G, key, t)
+    package.loaded[key] = t
   end
   return t
 end

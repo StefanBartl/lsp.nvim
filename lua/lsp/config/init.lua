@@ -104,6 +104,16 @@ end
 ---@return nil
 local function normalize_keymaps(cfg)
   local km = cfg.keymaps
+  -- `keymaps = false` is the conventional "no keymaps at all" spelling across
+  -- the plugins here; it means `keymaps = { enable = false }`. `true` is the
+  -- defaults. Neither is a mistake worth a warning.
+  if km == false then
+    cfg.keymaps = vim.tbl_extend("force", vim.deepcopy(DEFAULTS.keymaps), { enable = false })
+    return
+  elseif km == true then
+    cfg.keymaps = vim.deepcopy(DEFAULTS.keymaps)
+    return
+  end
   if type(km) ~= "table" then
     warn("keymaps: expected a table, using defaults", "keymaps")
     cfg.keymaps = vim.deepcopy(DEFAULTS.keymaps)
