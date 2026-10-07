@@ -220,6 +220,9 @@ keymaps = {
 },
 ```
 
+`keymaps = false` (or `keymaps = { enable = false }`) binds nothing at all, the
+`<C-b>` signature toggle included; `keymaps = true` is the defaults.
+
 `docs/BINDINGS.md` is generated from that same table by
 `scripts/gen_bindings.lua`, and CI checks it, so the documented list cannot
 drift from the bound one. [BINDINGS.md](BINDINGS.md) has the full catalogue and

@@ -166,9 +166,36 @@ describe("lsp.config", function()
     end)
 
     it("recovers when keymaps is replaced by a non-table", function()
-      local cfg = reload().setup({ keymaps = false })
+      local config = reload()
+      local cfg = config.setup({ keymaps = 42 })
       assert.is_true(cfg.keymaps.enable)
       assert.are.equal("default", cfg.keymaps.preset)
+      assert.is_true(#config.warnings() > 0)
+    end)
+
+    -- `keymaps = false` is the plugins' common spelling of "no keymaps"; it
+    -- used to be read as a mistake and replaced by the defaults, so a user who
+    -- wrote it still got every key bound (testing.nvim conformance K3).
+    it("reads keymaps = false as keymaps.enable = false, without a warning", function()
+      local config = reload()
+      local cfg = config.setup({ keymaps = false })
+      assert.is_false(cfg.keymaps.enable)
+      assert.are.equal("default", cfg.keymaps.preset)
+      assert.are.same({}, cfg.keymaps.map)
+      assert.are.same({}, config.warnings())
+    end)
+
+    it("reads keymaps = true as the defaults", function()
+      local cfg = reload().setup({ keymaps = true })
+      assert.is_true(cfg.keymaps.enable)
+      assert.are.equal("default", cfg.keymaps.preset)
+    end)
+
+    it("binds no key at all under keymaps = false, <C-b> included", function()
+      reload().setup({ keymaps = false })
+      local registered = require("lsp.bindings.keymaps").setup(require("lsp.config").get())
+      assert.are.same({}, registered)
+      assert.are.equal("", vim.fn.maparg("<C-b>", "n"))
     end)
   end)
 
@@ -248,14 +275,18 @@ describe("lsp.config", function()
       assert.are.same({ "servers" }, missing)
     end)
 
+    -- `keymaps = false` is a valid spelling (see the keymaps cases above), not a
+    -- value to degrade.
     for _, key in ipairs(KEYS) do
-      it(("degrades %s = false instead of raising"):format(key), function()
-        local config = reload()
-        local ok, cfg = pcall(config.setup, { [key] = false })
-        assert.is_true(ok, ("setup() raised on %s = false: %s"):format(key, tostring(cfg)))
-        assert.are.equal("table", type(cfg[key]), key .. " was not put back to a table")
-        assert.is_true(#config.warnings() > 0, "the bad value was accepted silently")
-      end)
+      if key ~= "keymaps" then
+        it(("degrades %s = false instead of raising"):format(key), function()
+          local config = reload()
+          local ok, cfg = pcall(config.setup, { [key] = false })
+          assert.is_true(ok, ("setup() raised on %s = false: %s"):format(key, tostring(cfg)))
+          assert.are.equal("table", type(cfg[key]), key .. " was not put back to a table")
+          assert.is_true(#config.warnings() > 0, "the bad value was accepted silently")
+        end)
+      end
     end
   end)
 

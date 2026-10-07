@@ -72,6 +72,12 @@ function M.setup(cfg)
     end
   end
 
+  -- The key belongs to the signature tool: without the tool it would open
+  -- nothing the user asked for. An explicit `keymaps.map` entry still wins.
+  if cfg.tools.lsp_signature.enable == false and user.signature_toggle == nil then
+    user.signature_toggle = false
+  end
+
   local bound = keymap.register("LSP", { order = names, actions = actions }, user, {
     bind = cfg.keymaps.enable ~= false,
   })

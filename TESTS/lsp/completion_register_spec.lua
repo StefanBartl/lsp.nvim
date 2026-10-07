@@ -17,12 +17,12 @@ describe("lsp.completion.register (nvim-cmp)", function()
       usage = package.loaded["lsp.completion.usage"],
       register = package.loaded["lsp.completion.register"],
     }
-    -- The specs registry now lives on `_G` (see `register.lua`), on purpose --
+    -- The specs registry now lives in `package.loaded` (see `register.lua`), on purpose --
     -- that survival is what the reload cases below exist to exercise. Which
     -- means it also survives *between test cases* unless something resets it,
     -- and every case here registers under names other tests reuse.
-    saved_specs_table = rawget(_G, "__lsp_nvim_completion_specs")
-    rawset(_G, "__lsp_nvim_completion_specs", nil)
+    saved_specs_table = package.loaded["__lsp_nvim_completion_specs"]
+    package.loaded["__lsp_nvim_completion_specs"] = nil
   end)
 
   after_each(function()
@@ -30,7 +30,7 @@ describe("lsp.completion.register (nvim-cmp)", function()
     package.loaded["lsp.config.pack"] = saved.pack
     package.loaded["lsp.completion.usage"] = saved.usage
     package.loaded["lsp.completion.register"] = saved.register
-    rawset(_G, "__lsp_nvim_completion_specs", saved_specs_table)
+    package.loaded["__lsp_nvim_completion_specs"] = saved_specs_table
   end)
 
   --- A cmp stand-in that records what is hooked onto its event bus, plus the
