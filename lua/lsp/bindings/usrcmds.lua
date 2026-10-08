@@ -734,14 +734,18 @@ function M.setup()
             type = "STRING",
             enum = { "qf", "loc" },
             optional = true,
-            desc = "Where next/prev move (default: loc)",
+            desc = "What next/prev step through (default: loc)",
+            -- `loc` never reads the location list: it is `vim.diagnostic.jump`
+            -- in this buffer, or Trouble's panel when `diagnostics.ui` resolves
+            -- to it (see `actions.diag_next`). The text must say that, not
+            -- what the name suggests.
             enum_desc = {
               qf = "Quickfix list entries",
-              loc = "Diagnostics, via the location list",
+              loc = "Diagnostics of this buffer (Trouble when it is the UI)",
             },
           },
         },
-        desc = "Diagnostics into a list, or move within one",
+        desc = "Diagnostics into a list, or jump to the next or previous one",
         run = function(ctx)
           local list = ctx.args.list or "loc"
           -- `1`, not the action's default: the navigation actions fall back to

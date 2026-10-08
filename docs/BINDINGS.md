@@ -188,7 +188,7 @@ unless `usrcmds.enable = false`.
 | `:Lsp force-restart` | `{server}` | Restart one server with a full cleanup first |
 | `:Lsp recover` | — | Auto-recover servers that should be running here |
 | `:Lsp format` | `[once\|on\|off\|toggle\|status\|which]` | Format once (default), or control format-on-save |
-| `:Lsp diag` | `{qf\|loc\|next\|prev} [qf\|loc]` | Diagnostics into a list, or move within one |
+| `:Lsp diag` | `{qf\|loc\|next\|prev} [qf\|loc]` | Diagnostics into a list, or jump to the next or previous one |
 | `:Lsp workspace` | `[on\|off\|toggle\|status\|now\|clear\|list] [project]` | Workspace-wide diagnostics: global, or for one project (`.`, a `$REPOS_DIR` folder, or a path). Default `status` |
 | `:Lsp root` | `[pick\|show\|add\|remove\|list]` | Roots and workspace folders (default `show`) |
 | `:Lsp hints` | `[toggle\|on\|off\|status\|clear] [filetype]` | Inlay hints, globally or for one filetype (default `toggle`) |
@@ -226,7 +226,7 @@ the same functions as the routes above. Switch them off with
 | `:LspWorkspaceDiagnostics{On,Off,Toggle,Status,Now}` | `:Lsp workspace [on\|off\|toggle\|status\|now]` |
 | `:DiagQF` / `:DiagLoc` | `:Lsp diag qf` / `:Lsp diag loc` |
 | `:DiagNextQF` / `:DiagPrevQF` | `:Lsp diag next qf` / `:Lsp diag prev qf` |
-| `:DiagNextLoc` / `:DiagPrevLoc` | `:Lsp diag next loc` / `:Lsp diag prev loc` |
+| `:DiagNextLoc` / `:DiagPrevLoc` | `:Lsp diag next loc` / `:Lsp diag prev loc` (the route follows `diagnostics.ui`, so it opens Trouble when that is the UI; the alias always jumps natively and takes a `[severity]`) |
 
 Two commands are **not** aliases and stay registered either way:
 
