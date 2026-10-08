@@ -481,6 +481,58 @@ describe("lsp.lspdoctor", function()
       end
     end)
 
+    -- A function `cmd` cannot be looked into, and the report answered "found"
+    -- for all of them: omnisharp, whose `root_dir` declines when the binary is
+    -- absent, showed "Executable: OK built dynamically" plus "Not started --
+    -- use :Lsp start", and the hint that names the real cause could not fire.
+    it("asks a function-cmd config's executable_probe instead of saying found", function()
+      local real = vim.lsp.config
+      local configs = {
+        nobin = {
+          cmd = function() end,
+          executable_probe = function()
+            return nil, "nobin-binary"
+          end,
+        },
+        hasbin = {
+          cmd = function() end,
+          executable_probe = function()
+            return "/opt/bin/hasbin", "hasbin"
+          end,
+        },
+        blind = { cmd = function() end },
+      }
+      ---@diagnostic disable-next-line: duplicate-set-field
+      vim.lsp.config = setmetatable({}, {
+        __index = function(_t, name)
+          return configs[name]
+        end,
+      })
+      vim.lsp.get_clients = function()
+        return {}
+      end
+      package.loaded["lsp.usercmds.start"] = {
+        get_servers_for_buffer = function()
+          return { "nobin", "hasbin", "blind" }
+        end,
+      }
+
+      package.loaded["lsp.lspdoctor.health"] = nil
+      local health = require("lsp.lspdoctor.health")
+      health.setup({ show_tools = true })
+
+      local ok, lines = pcall(health.check, vim.api.nvim_get_current_buf())
+      vim.lsp.config = real
+      assert.is_true(ok, tostring(lines))
+      local rendered = table.concat(lines, "\n")
+
+      assert.is_truthy(rendered:find("Executable: ❌ nobin-binary", 1, true), rendered)
+      assert.is_truthy(rendered:find("Executable not found - install it", 1, true), rendered)
+      assert.is_truthy(rendered:find("Executable: ✅ /opt/bin/hasbin", 1, true), rendered)
+      -- No probe, no claim either way: the old text stays for this one.
+      assert.is_truthy(rendered:find("built dynamically", 1, true), rendered)
+    end)
+
     it("asks the named client for semantic tokens, not the whole buffer", function()
       local went_buffer_wide = false
       ---@diagnostic disable-next-line: duplicate-set-field

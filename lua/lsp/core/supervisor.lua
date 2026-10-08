@@ -190,6 +190,61 @@ function M.config_for(name)
   return nil
 end
 
+--- Can the server's binary be found? Asked of a config whose `cmd` is a
+--- function, which no report can look into.
+---
+--- A list `cmd` names its binary, so `exepath` answers (`lspdoctor/health`
+--- does that). A function builds the command at start time; a server module
+--- that wants to be diagnosable says how to find its binary through the
+--- config's `executable_probe`, a function returning the path (or nil) and the
+--- name it looked for. Without one the answer is "cannot tell", never "found":
+--- the old blanket `true` is what made `:LspDoctor` report "Executable: OK"
+--- for an omnisharp that is not installed.
+---@param server table|nil # The resolved config of `name`.
+---@param name string
+---@return boolean|nil found # nil: this config offers no way to tell
+---@return string|nil detail # the path it resolves to, or the name that was looked for
+function M.probe_executable(server, name)
+  if type(server) ~= "table" or type(server.cmd) ~= "function" then
+    return nil
+  end
+  if type(server.executable_probe) ~= "function" then
+    return nil
+  end
+  local ok, path, wanted = pcall(server.executable_probe)
+  if not ok then
+    return nil
+  end
+  if type(path) == "string" and path ~= "" then
+    return true, path
+  end
+  return false, type(wanted) == "string" and wanted or name
+end
+
+---@internal
+--- The sentence for a binary that is not there.
+---@param wanted string
+---@return string
+local function missing_executable(wanted)
+  return ("executable '%s' not found -- install it (:Mason) or fix $PATH"):format(wanted)
+end
+
+--- Why a registered server cannot be started right now, or nil.
+---
+--- Only the one reason that can be told in advance: its binary is absent. A
+--- start that fails for it used to end in "vim.lsp.start refused the
+--- configuration" -- the config's `root_dir` declines without saying why -- and
+--- the recovery commands retried it. Said once, with the cause, instead.
+---@param name string
+---@return string|nil reason
+function M.unstartable(name)
+  local found, wanted = M.probe_executable(M.config_for(name), name)
+  if found == false then
+    return missing_executable(wanted or name)
+  end
+  return nil
+end
+
 --- Every server name registered with `vim.lsp.config` and enabled.
 ---
 --- There is no public enumeration on Neovim 0.12: `vim.lsp.config` is a table
@@ -276,6 +331,7 @@ end
 ---@param name string
 ---@param bufnr integer
 ---@return boolean started
+---@return string|nil reason # set when the start is refused for a known cause
 function M.start(name, bufnr)
   if type(name) ~= "string" or name == "" then
     return false
@@ -287,6 +343,13 @@ function M.start(name, bufnr)
   local server_config = M.config_for(name)
   if server_config == nil then
     return false
+  end
+
+  -- Before `root_dir`: a config whose binary is absent declines there without
+  -- a word, and the caller is left with a bare `false`.
+  local found, wanted = M.probe_executable(server_config, name)
+  if found == false then
+    return false, missing_executable(wanted or name)
   end
 
   local config = server_config

@@ -244,7 +244,13 @@ Two things live in `startup`, not here, though they read like capabilities:
   bounded by `semantic_tokens_timeout`. In `capabilities` semantic tokens are
   only the yes/no flag above.
 - **Tools** — whether each expected server's executable resolves, gated by
-  `show_tools`.
+  `show_tools`. A server whose `cmd` is a function (omnisharp's, for one) cannot
+  be looked into. One that wants a real answer carries an `executable_probe` in
+  its `vim.lsp.config` entry -- a function returning the resolved path, or `nil`
+  and the name it looked for -- and the report uses it, and so do `:Lsp start`
+  and `:Lsp recover`, which then say "executable ... not found" instead of
+  trying to start it. Without a probe the line reads "built dynamically" and
+  claims nothing either way.
 
 ---
 

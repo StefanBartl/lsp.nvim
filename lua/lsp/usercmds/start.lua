@@ -97,8 +97,15 @@ local function start_lsp(name, bufnr)
     return false
   end
 
-  if not supervisor.start(name, bufnr) then
-    notify.error(string.format("Failed to start LSP '%s' -- check :LspLog", name))
+  local started, reason = supervisor.start(name, bufnr)
+  if not started then
+    if reason then
+      -- A known cause (the binary is absent), which `:LspLog` would not show:
+      -- no client was ever created.
+      notify.error(string.format("Cannot start LSP '%s': %s", name, reason))
+    else
+      notify.error(string.format("Failed to start LSP '%s' -- check :LspLog", name))
+    end
     return false
   end
 
