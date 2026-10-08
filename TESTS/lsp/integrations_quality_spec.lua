@@ -71,6 +71,8 @@ describe("lsp.integrations.mason.ensure_install", function()
 end)
 
 describe("lsp.integrations", function()
+  local adapters = { "trouble", "blink", "cmp", "lazydev", "menu", "nvchad" }
+
   -- The load-failure warnings reach `:checkhealth lsp` and `:Lsp status`. They
   -- were built from `pairs(_failed)`, so two runs of an unchanged session
   -- printed the same warnings in a different order -- which makes two reports
@@ -79,8 +81,11 @@ describe("lsp.integrations", function()
     local saved = {}
     -- `package.preload` is saved too, nil included: a key that held nothing has
     -- to hold nothing again, or the stub stays for the next file in the editor.
+    -- Both are restored by walking `adapters`, not `pairs(saved)`: a `nil`
+    -- value leaves no entry in `saved`, so that walk skipped exactly the keys
+    -- that were not loaded before the case -- the ones the stubs go on.
     local saved_preload = {}
-    for _, name in ipairs({ "trouble", "blink", "cmp", "lazydev", "menu", "nvchad" }) do
+    for _, name in ipairs(adapters) do
       local key = "lsp.integrations." .. name
       saved[key] = package.loaded[key]
       saved_preload[key] = package.preload[key]
@@ -117,9 +122,12 @@ describe("lsp.integrations", function()
       return failure_order(), failure_order()
     end)
 
-    for key, value in pairs(saved) do
+    for _, name in ipairs(adapters) do
+      local key = "lsp.integrations." .. name
       package.preload[key] = saved_preload[key]
-      package.loaded[key] = value
+      -- Also clears the "previous error loading module" marker a failed
+      -- `require` leaves in `package.loaded` for a module that was not there.
+      package.loaded[key] = saved[key]
     end
     package.loaded["lsp.integrations"] = nil
     assert(ok, first)
@@ -134,5 +142,18 @@ describe("lsp.integrations", function()
     -- These are `ADAPTERS` order, which is the order the plugin declares its
     -- adapters in and the order the report has to follow.
     assert.are.same({ "nvchad", "cmp", "blink", "lazydev", "trouble" }, first)
+  end)
+
+  -- Runs after the case above (a file's cases run in declaration order). The
+  -- restore there used to walk `pairs(saved)`, which has no entry for a module
+  -- that was not loaded before, so all six refusing stubs stayed in
+  -- `package.preload` -- the leaks the state guard of testing.nvim reported, and
+  -- that `isolated = "file"` merely kept inside this file.
+  it("leaves no refusing stub in package.preload behind", function()
+    for _, name in ipairs(adapters) do
+      local key = "lsp.integrations." .. name
+      assert.is_nil(package.preload[key], key .. " is still stubbed in package.preload")
+      assert.is_nil(package.loaded[key], key .. " still holds a failed-require marker")
+    end
   end)
 end)
