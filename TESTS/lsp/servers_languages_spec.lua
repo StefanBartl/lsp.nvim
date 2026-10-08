@@ -122,9 +122,9 @@ describe("lsp.languages.documentation.markdown_words", function()
 
   -- `max_files` was tested once per *directory*, in the outer loop of the
   -- walk, so any single directory was drained in full however large. It is the
-  -- only bound on a scan that blocks the editor -- `rebuild_async` defers by a
-  -- tick and then reads every file synchronously, measured at 82ms for 400
-  -- small files -- so the cap has to hold per file, not per directory.
+  -- bound on how much a scan reads -- `rebuild_async` reads every collected
+  -- file synchronously (in slices; one pass used to take 82ms for 400 small
+  -- files) -- so the cap has to hold per file, not per directory.
   --
   -- 600 files in one directory against a cap of 500, each carrying one unique
   -- word, so the cached word count is the file count.
@@ -145,6 +145,66 @@ describe("lsp.languages.documentation.markdown_words", function()
     assert.are.equal(500, mw.stats().words, "the cap was ignored inside the directory")
 
     pcall(vim.fn.delete, dir, "rf")
+  end)
+
+  -- `max_files` counts only *matching* files, so a tree with few Markdown files
+  -- (a home directory, %TEMP%) used to be walked to its last directory: measured
+  -- 7176 directories and 32 000 entries for 501 files, one freeze of ~1.3 s up
+  -- to many seconds. `max_dirs` bounds the directories opened.
+  --
+  -- 20 sibling directories with one file each against a cap of 5: the root
+  -- counts as one, so four of the twenty are read.
+  it("stops walking at max_dirs even when few files match", function()
+    local dir = vim.fn.tempname()
+    vim.fn.mkdir(dir, "p")
+    for i = 1, 20 do
+      vim.fn.mkdir(("%s/d%02d"):format(dir, i), "p")
+      vim.fn.writefile({ ("dirword%02d"):format(i) }, ("%s/d%02d/n.md"):format(dir, i))
+    end
+
+    local mw = require("lsp.languages.documentation.markdown_words")
+    mw.setup({ max_dirs = 5 })
+    mw.set_root(dir)
+    local built = vim.wait(30000, function()
+      local s = mw.stats()
+      return s.cached and not s.building
+    end, 20)
+
+    assert.is_true(built, "the rebuild never finished")
+    assert.are.equal(4, mw.stats().words, "the walk ignored max_dirs")
+
+    pcall(vim.fn.delete, dir, "rf")
+  end)
+
+  -- A rebuild spans many event-loop ticks now. A root that arrives while one is
+  -- running has to *replace* it: the old guard dropped the request, which was
+  -- harmless while a rebuild fitted into one tick and would otherwise leave the
+  -- cache on the old root with nothing left to trigger the new one.
+  it("lets a new root replace a rebuild that is still running", function()
+    local big = vim.fn.tempname()
+    vim.fn.mkdir(big, "p")
+    for i = 1, 200 do
+      vim.fn.mkdir(("%s/d%03d"):format(big, i), "p")
+      vim.fn.writefile({ "bigword" .. i }, ("%s/d%03d/x.md"):format(big, i))
+    end
+    local small = vim.fn.tempname()
+    vim.fn.mkdir(small, "p")
+    vim.fn.writefile({ "smallonly alpha beta" }, small .. "/a.md")
+
+    local mw = require("lsp.languages.documentation.markdown_words")
+    mw.set_root(big)
+    mw.set_root(small) -- arrives while `big` is still building
+    local built = vim.wait(30000, function()
+      local s = mw.stats()
+      return s.cached and not s.building
+    end, 20)
+
+    assert.is_true(built, "the rebuild never finished")
+    assert.are.equal(vim.fs.normalize(small), vim.fs.normalize(mw.stats().root))
+    assert.are.equal(3, mw.stats().words, "the cache holds the superseded root's words")
+
+    pcall(vim.fn.delete, big, "rf")
+    pcall(vim.fn.delete, small, "rf")
   end)
 
   -- `set_root` used to pass its argument straight through `vim.fn.expand()`,

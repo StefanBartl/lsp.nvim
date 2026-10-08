@@ -69,6 +69,8 @@ local state = {
 
 ---@class MdWords.Config
 ---@field max_files    integer
+---@field max_dirs     integer
+---@field slice_ms     integer
 ---@field max_filesize integer
 ---@field min_word_len integer
 ---@field max_word_len integer
@@ -78,6 +80,12 @@ local state = {
 ---@type MdWords.Config
 local cfg = {
   max_files = 500,
+  -- Directories opened per scan. `max_files` only counts *matching* files, so a
+  -- tree with few Markdown files (a home directory, %TEMP%) is walked to the
+  -- last directory: measured 7176 directories / 32 000 entries for 501 files.
+  max_dirs = 3000,
+  -- Longest stretch the scan holds the editor before it yields to the event loop.
+  slice_ms = 8,
   max_filesize = 200 * 1024,
   min_word_len = 3,
   max_word_len = 60,
@@ -91,82 +99,98 @@ local cfg = {
 
 local uv = vim.uv or vim.loop
 
---- Collect all matching files under `root` up to `cfg.max_files`.
+---@type table<string,true>
+local IGNORE = {
+  [".git"] = true,
+  ["node_modules"] = true,
+  [".cache"] = true,
+  [".hg"] = true,
+  [".svn"] = true,
+  ["dist"] = true,
+  ["build"] = true,
+  ["target"] = true,
+  [".next"] = true,
+  [".nuxt"] = true,
+  ["vendor"] = true,
+}
+
+--- A directory walk that can be put down and picked up again.
+---
+--- One `walk_step` call does at most `cfg.slice_ms` of work, so the editor is
+--- never held for the length of the tree. Three bounds end a walk: `max_files`
+--- (matching files), `max_dirs` (directories opened -- the one that matters
+--- when a tree holds few Markdown files) and running out of directories.
+---@class MdWords.Walk
+---@field stack   string[]            # directories still to list
+---@field handle  userdata|nil        # the directory being drained, if any
+---@field dir     string|nil          # its path
+---@field files   string[]            # matches so far
+---@field dirs    integer             # directories opened so far
+---@field ext_set table<string,true>
+
 ---@param root string
----@return string[]
-local function collect_files(root)
-  local files = {}
-  local stack = { root }
-
-  local ignore = {
-    [".git"] = true,
-    ["node_modules"] = true,
-    [".cache"] = true,
-    [".hg"] = true,
-    [".svn"] = true,
-    ["dist"] = true,
-    ["build"] = true,
-    ["target"] = true,
-    [".next"] = true,
-    [".nuxt"] = true,
-    ["vendor"] = true,
-  }
-
-  -- Build extension set once from config (O(1) lookup in loop)
+---@return MdWords.Walk
+local function walk_new(root)
   local ext_set = {}
   for _, e in ipairs(cfg.filetypes) do
     ext_set[e] = true
   end
+  return { stack = { root }, files = {}, dirs = 0, ext_set = ext_set }
+end
 
-  while #stack > 0 and #files < cfg.max_files do
-    local dir = table.remove(stack)
-    local handle = uv.fs_scandir(dir)
-    if not handle then
-      goto continue
-    end
+--- Advance `walk` until it is finished or `deadline` (a `uv.hrtime()` value)
+--- has passed, whichever comes first.
+---@param walk     MdWords.Walk
+---@param deadline integer
+---@return boolean done
+local function walk_step(walk, deadline)
+  local files, stack, ext_set = walk.files, walk.stack, walk.ext_set
+  local seen = 0
 
-    while true do
-      local name, kind = uv.fs_scandir_next(handle)
+  while true do
+    local opened = false
+    if not walk.handle then
+      if #stack == 0 or #files >= cfg.max_files or walk.dirs >= cfg.max_dirs then
+        return true
+      end
+      walk.dir = table.remove(stack)
+      walk.dirs = walk.dirs + 1
+      walk.handle = uv.fs_scandir(walk.dir) -- nil when unreadable: next pass moves on
+      opened = true
+    else
+      local name, kind = uv.fs_scandir_next(walk.handle)
       if not name then
-        break
-      end
-
-      -- Skip hidden entries (except ".config")
-      if name:sub(1, 1) == "." and name ~= ".config" then
-        goto inner
-      end
-
-      local full = dir .. "/" .. name
-
-      if kind == "directory" then
-        if not ignore[name] then
-          stack[#stack + 1] = full
-        end
-      elseif kind == "file" then
-        local ext = name:match("%.([^.]+)$")
-        if ext and ext_set[ext] then
-          local stat = uv.fs_stat(full)
-          if stat and stat.size <= cfg.max_filesize then
-            files[#files + 1] = full
-            -- Also here, not only in the outer loop. The bound used to be
-            -- tested once per *directory*, so a single directory was always
-            -- drained in full: measured, 600 files in one directory were all
-            -- collected against a `max_files` of 500. It is the only bound on
-            -- a scan that blocks the editor, so it has to hold per file.
-            if #files >= cfg.max_files then
-              break
+        walk.handle = nil
+      elseif name:sub(1, 1) ~= "." or name == ".config" then -- hidden entries skipped
+        local full = walk.dir .. "/" .. name
+        if kind == "directory" then
+          if not IGNORE[name] then
+            stack[#stack + 1] = full
+          end
+        elseif kind == "file" then
+          local ext = name:match("%.([^.]+)$")
+          if ext and ext_set[ext] then
+            local stat = uv.fs_stat(full)
+            if stat and stat.size <= cfg.max_filesize then
+              files[#files + 1] = full
+              if #files >= cfg.max_files then
+                -- Per file, not per directory: see the max_files spec.
+                walk.handle = nil
+              end
             end
           end
         end
       end
-
-      ::inner::
     end
 
-    ::continue::
+    -- After every directory opened (one cold directory can cost 100+ ms on its
+    -- own, so 32 of them in a row would not be a "slice"), and every 32 entries
+    -- otherwise (uv.hrtime() is cheap, but not free per entry).
+    seen = seen + 1
+    if (opened or seen % 32 == 0) and uv.hrtime() > deadline then
+      return false
+    end
   end
-
-  return files
 end
 
 -- ============================================================================
@@ -186,28 +210,23 @@ local function extract_words(text, word_set)
   end
 end
 
---- Scan every file under `root` and return a deduplicated word set.
----@param root string
----@return table<string,true>
-local function build_word_set(root)
-  local word_set = {}
-  local files = collect_files(root)
-
-  for _, path in ipairs(files) do
-    local fd = uv.fs_open(path, "r", 438)
-    if fd then
-      local stat = uv.fs_fstat(fd)
-      if stat then
-        local data = uv.fs_read(fd, stat.size, 0)
-        if data then
-          extract_words(data, word_set)
-        end
-      end
-      uv.fs_close(fd)
+--- Read one file and add its words to `word_set`.
+---@param path     string
+---@param word_set table<string,true>
+---@return nil
+local function read_words(path, word_set)
+  local fd = uv.fs_open(path, "r", 438)
+  if not fd then
+    return
+  end
+  local stat = uv.fs_fstat(fd)
+  if stat then
+    local data = uv.fs_read(fd, stat.size, 0)
+    if data then
+      extract_words(data, word_set)
     end
   end
-
-  return word_set
+  uv.fs_close(fd)
 end
 
 -- ============================================================================
@@ -275,39 +294,73 @@ local function words_to_items(word_set)
   return items
 end
 
---- Kick off a rebuild on the next tick. Guards against concurrent runs.
+--- Id of the newest rebuild. A rebuild that finds it changed has been
+--- superseded (the root moved on) and stops without touching `state`.
+local build_id = 0
+
+--- Rebuild the cache in slices of at most `cfg.slice_ms`.
 ---
---- Deferred, not backgrounded: `build_word_set` walks the tree and reads every
---- file synchronously, so the editor is blocked for the whole scan, one tick
---- later. Measured at 82ms for 400 small files -- during which a 10ms timer
---- got one tick instead of eight. `cfg.max_files` and `cfg.max_filesize` are
---- what keep that bounded, which is why the cap in `collect_files` has to
---- actually hold.
+--- The walk and the file reads are cut into slices and handed back to the event
+--- loop between them, so a large tree costs wall-clock time but no freeze. Every
+--- bound that used to keep the scan short still applies (`max_files`,
+--- `max_filesize`), plus `max_dirs`, because a tree with few Markdown files was
+--- walked to its last directory.
 ---
---- It runs once per session unless the root changes or `:MdRebuildWords` asks,
---- so the freeze is a one-off rather than something felt while typing -- but
---- "async" is what this was called, and it is not that.
+--- A rebuild now spans many ticks, so asking for another root while one runs
+--- *replaces* it. Dropping the request (the old `state.building` guard) was only
+--- harmless while a rebuild fitted into one tick: it would leave the cache on
+--- the old root with nothing left to trigger the new one.
 ---@param root    string
 ---@param on_done fun()|nil
 ---@return nil
 local function rebuild_async(root, on_done)
-  if state.building then
-    return
-  end
+  build_id = build_id + 1
+  local id = build_id
   state.building = true
 
-  vim.defer_fn(function()
-    local ok, result = pcall(build_word_set, root)
+  local walk = walk_new(root)
+  local word_set = {}
+  local files, next_file = nil, 1
+
+  local function slice()
+    if id ~= build_id then
+      return
+    end
+    local deadline = uv.hrtime() + cfg.slice_ms * 1e6
+
+    local ok, done = pcall(function()
+      if not files then
+        if not walk_step(walk, deadline) then
+          return false
+        end
+        files = walk.files
+      end
+      while next_file <= #files do
+        read_words(files[next_file], word_set)
+        next_file = next_file + 1
+        if uv.hrtime() > deadline then
+          return next_file > #files
+        end
+      end
+      return true
+    end)
+
+    if ok and not done then
+      vim.defer_fn(slice, 1)
+      return
+    end
     if ok then
-      state.words = result
-      state.items = words_to_items(result)
+      state.words = word_set
+      state.items = words_to_items(word_set)
       state.root = root
     end
     state.building = false
     if on_done then
       on_done()
     end
-  end, 0)
+  end
+
+  vim.defer_fn(slice, 0)
 end
 
 --- Return cached items, triggering a background build if not ready yet.

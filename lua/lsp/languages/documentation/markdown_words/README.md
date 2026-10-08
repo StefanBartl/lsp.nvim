@@ -26,9 +26,10 @@ While language servers such as `marksman` are excellent at cross-project link an
 ## Features
 
 * **Project-wide scan:** analyses all `.md` and `.mdx` files below the project root.
-* **Deferred, not asynchronous:** the scan is `vim.defer_fn`'d off the current tick, but `vim.uv`'s *synchronous* `fs_scandir`/`fs_read` do the work, so it runs on the main loop and blocks the editor for its whole duration. Measured over 500 files of ~40 KB: 157 ms wall, during which a repeating 10 ms timer got **1** tick where a free loop would have given ~15. `max_files` and `max_filesize` are what keep that bounded — which is why the cap has to hold per file, not per directory.
-* **Intelligent cache:** the scan runs exactly once (lazily) when the first Markdown file is opened and caches the result for the rest of the session, so the freeze is a one-off rather than something felt while typing.
-* **Directory awareness:** if you change directory in the editor (`DirChanged`), the cache rebuilds itself automatically after 3 seconds (debounced) — with the same freeze.
+* **Sliced, not asynchronous:** `vim.uv`'s *synchronous* `fs_scandir`/`fs_read` do the work on the main loop, but in slices of at most `slice_ms` (8 ms by default) with the event loop getting control back between them (`vim.defer_fn`), so a large tree costs wall-clock time and not a freeze. Before this, the whole scan ran in one piece: 157 ms over 500 files of ~40 KB, and a `:cd` into `%TEMP%` held the editor for 1.3 s and more. A slice can still overrun by one libuv call (a cold directory listing measured up to ~350 ms), which slicing cannot split.
+* **Bounded walk:** `max_files` caps the *matching* files (per file, not per directory), `max_filesize` skips big files, and `max_dirs` caps the directories opened — the bound that matters for a tree with few Markdown files (a home directory, `%TEMP%`), which used to be walked to its last directory.
+* **Intelligent cache:** the scan runs exactly once (lazily) when the first Markdown file is opened and caches the result for the rest of the session.
+* **Directory awareness:** if you change directory in the editor (`DirChanged`), the cache rebuilds itself automatically after 3 seconds (debounced). A new root that arrives while a rebuild is still running replaces it.
 * **Safeguards:** automatically ignores typical folders (such as `.git`, `node_modules`, `dist`, `target`) and skips files that are too large.
 
 ---
@@ -63,6 +64,8 @@ The module works *out of the box* with sensible defaults. If needed, you can pas
 ```lua
 require("lsp.languages.documentation.markdown_words").setup({
   max_files    = 500,           -- maximum number of files to scan
+  max_dirs     = 3000,          -- maximum number of directories to open during the walk
+  slice_ms     = 8,             -- longest stretch the scan holds the editor before yielding
   max_filesize = 204800,        -- files above 200 KB are ignored
   min_word_len = 3,             -- words must be at least 3 characters long
   max_word_len = 60,            -- words longer than 60 characters are ignored
