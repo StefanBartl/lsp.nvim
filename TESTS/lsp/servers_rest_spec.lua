@@ -337,6 +337,112 @@ describe("lsp.servers (the modules without their own spec)", function()
       end)
       assert.is_false(started)
     end)
+
+    -- The `cmd` is a function and `root_dir` declines quietly when the binary
+    -- is absent, so nothing could tell a machine without omnisharp from one
+    -- with it: `:LspDoctor` showed "Executable: OK built dynamically", and `:Lsp
+    -- start` / `:Lsp recover` failed with "vim.lsp.start refused the
+    -- configuration". The config now says how to find the binary.
+    describe("executable probe", function()
+      local orig_stdpath = vim.fn.stdpath
+
+      after_each(function()
+        vim.fn.stdpath = orig_stdpath
+      end)
+
+      --- No `omnisharp` on PATH and none under Mason: the data directory is an
+      --- empty one, so the case does not depend on what this machine has.
+      ---@return nil
+      local function without_binary()
+        local empty = vim.fn.tempname()
+        vim.fn.mkdir(empty, "p")
+        vim.fn.executable = function()
+          return 0
+        end
+        ---@diagnostic disable-next-line: duplicate-set-field
+        vim.fn.stdpath = function(what)
+          if what == "data" then
+            return empty
+          end
+          return orig_stdpath(what)
+        end
+      end
+
+      it("is part of the config, next to the function cmd", function()
+        local cfg = register()
+        assert.are.equal("function", type(cfg.cmd))
+        assert.are.equal("function", type(cfg.executable_probe))
+      end)
+
+      it("finds the binary the way the start does", function()
+        local cfg = register()
+        local path, wanted = cfg.executable_probe()
+        assert.are.equal("omnisharp", path)
+        assert.are.equal("omnisharp", wanted)
+      end)
+
+      it("says the binary is absent, rather than 'built dynamically'", function()
+        local cfg = register()
+        without_binary()
+
+        local path, wanted = cfg.executable_probe()
+        assert.is_nil(path)
+        assert.are.equal("omnisharp", wanted)
+
+        local found = require("lsp.core.supervisor").probe_executable(cfg, "omnisharp")
+        assert.is_false(found)
+      end)
+
+      -- A user who runs :Mason install while the session is open: the next
+      -- :LspDoctor / :Lsp start has to see it, so an absent answer is not kept.
+      it("looks an absent binary up again when asked", function()
+        local cfg = register()
+        without_binary()
+        assert.is_nil((cfg.executable_probe()))
+
+        vim.fn.executable = function(name)
+          return name == "omnisharp" and 1 or 0
+        end
+        assert.are.equal("omnisharp", (cfg.executable_probe()))
+      end)
+
+      it("does not warn when the diagnostics ask, but root_dir warns once", function()
+        local said = {}
+        local real = package.loaded["lib.nvim.notify"]
+        package.loaded["lib.nvim.notify"] = {
+          create = function()
+            return setmetatable({}, {
+              __index = function(_, level)
+                return function(msg)
+                  said[#said + 1] = level .. ": " .. tostring(msg)
+                end
+              end,
+            })
+          end,
+        }
+        local cfg = register()
+        package.loaded["lib.nvim.notify"] = real
+        without_binary()
+
+        cfg.executable_probe()
+        assert.are.same({}, said)
+
+        local _, bufnr = tree({ "p/App.csproj", "p/Q.cs" }, "p/Q.cs")
+        resolve_root(cfg, bufnr)
+        resolve_root(cfg, bufnr)
+        assert.are.equal(1, #said, table.concat(said, "\n"))
+        assert.is_truthy(said[1]:find("Omnisharp not found", 1, true))
+      end)
+
+      it("names the missing binary when a start bypasses root_dir", function()
+        local cfg = register()
+        without_binary()
+
+        local ok, err = pcall(cfg.cmd, {}, {})
+        assert.is_false(ok)
+        assert.is_truthy(tostring(err):find("omnisharp not found", 1, true), tostring(err))
+      end)
+    end)
   end)
 
   ------------------------------------------------------------------------------

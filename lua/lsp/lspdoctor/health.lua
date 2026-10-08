@@ -136,7 +136,17 @@ local function executable_for(name)
 
   local cmd = cfg.cmd
   if type(cmd) == "function" then
-    -- A command built at start time cannot be probed without starting it.
+    -- A command built at start time cannot be probed without starting it --
+    -- unless the config says how to find its binary (`executable_probe`). A
+    -- blanket "found" here reported omnisharp as fine on a machine without it,
+    -- and made the "install it" hint below unreachable for that server.
+    local ok, supervisor = pcall(require, "lsp.core.supervisor")
+    if ok and type(supervisor.probe_executable) == "function" then
+      local found, detail = supervisor.probe_executable(cfg, name)
+      if found ~= nil then
+        return found, detail or name
+      end
+    end
     return true, "built dynamically (cmd is a function)"
   end
 

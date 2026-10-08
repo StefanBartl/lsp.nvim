@@ -49,6 +49,10 @@ describe("lsp.usercmds.recovery", function()
         calls.started[#calls.started + 1] = { name = name, bufnr = bufnr }
         return true
       end,
+      -- No server is blocked unless a case says so.
+      unstartable = function()
+        return nil
+      end,
       -- Test-only handle so a case can pre-load the counter.
       _set_attempts = function(name, n)
         attempts[name] = n
@@ -90,6 +94,49 @@ describe("lsp.usercmds.recovery", function()
       assert.are.equal(0, #sup.calls.started)
       assert.are.equal(0, sup.attempts("unknown"))
       assert.are.equal("no registered configuration", sup.calls.last_error.msg)
+    end)
+
+    -- Same reasoning for an absent binary: omnisharp's `root_dir` declines
+    -- without a word, so this used to be two attempts that each ended in
+    -- "vim.lsp.start refused the configuration" -- and the cause (the binary is
+    -- not installed) was named nowhere.
+    it("refuses a server whose binary is absent, with the cause, without an attempt", function()
+      local recovery, sup = reload({
+        unstartable = function(name)
+          return name == "known" and "executable 'known' not found -- install it" or nil
+        end,
+      })
+
+      local ok = recovery.retry_start("known", 0, 3)
+
+      assert.is_false(ok)
+      assert.are.equal(0, #sup.calls.started)
+      assert.are.equal(0, sup.attempts("known"))
+      assert.is_truthy(sup.calls.last_error.msg:find("not found", 1, true))
+    end)
+
+    it("does not retry a refusal whose cause is known", function()
+      local recovery, sup = reload({
+        start = function()
+          return false, "executable 'known' not found"
+        end,
+      })
+
+      local deferred = 0
+      local real_defer = vim.defer_fn
+      vim.defer_fn = function()
+        deferred = deferred + 1
+      end
+      local ok = recovery.retry_start("known", 0, 3)
+      vim.defer_fn = real_defer
+
+      assert.is_false(ok)
+      assert.are.equal(
+        0,
+        deferred,
+        "a retry was scheduled for a cause that waiting does not change"
+      )
+      assert.are.equal("executable 'known' not found", sup.calls.last_error.msg)
     end)
 
     it("counts an attempt when it does start", function()
@@ -166,6 +213,25 @@ describe("lsp.usercmds.recovery", function()
 
       assert.are.same({ "known" }, sup.calls.reset)
       assert.are.equal(1, #sup.calls.started)
+    end)
+
+    it("leaves a server without its binary out of the start list", function()
+      local recovery, sup = reload({
+        unstartable = function(name)
+          return name == "blocked" and "executable 'blocked' not found" or nil
+        end,
+      })
+      stub_health({
+        { name = "blocked", config_exists = true, running = false },
+        { name = "known", config_exists = true, running = false },
+      })
+
+      recovery.auto_recover(0)
+
+      assert.are.equal(1, #sup.calls.started)
+      assert.are.equal("known", sup.calls.started[1].name)
+      assert.are.same({ "known" }, sup.calls.reset)
+      assert.are.equal("executable 'blocked' not found", sup.calls.last_error.msg)
     end)
 
     it("starts nothing when everything expected is running", function()

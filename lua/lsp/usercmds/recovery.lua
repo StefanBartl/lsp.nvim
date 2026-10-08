@@ -61,6 +61,17 @@ function M.retry_start(name, bufnr, max_attempts)
     return false
   end
 
+  -- Nor can a missing binary, and it is the commonest reason a configured
+  -- server is not running. Answered before the counter moves as well, with the
+  -- cause: this used to be two attempts that each ended in "vim.lsp.start
+  -- refused the configuration", the config's `root_dir` having declined.
+  local unstartable = supervisor.unstartable(name)
+  if unstartable then
+    supervisor.note_error(name, unstartable)
+    notify.error(string.format("Cannot start '%s': %s", name, unstartable))
+    return false
+  end
+
   -- Check if max attempts reached
   if supervisor.attempts(name) >= max_attempts then
     notify.error(
@@ -82,11 +93,13 @@ function M.retry_start(name, bufnr, max_attempts)
 
   -- Start AND attach to this buffer. See the module doc for why it is not
   -- `vim.lsp.enable`.
-  if not supervisor.start(name, bufnr) then
-    supervisor.note_error(name, "vim.lsp.start refused the configuration")
+  local started, reason = supervisor.start(name, bufnr)
+  if not started then
+    supervisor.note_error(name, reason or "vim.lsp.start refused the configuration")
 
-    -- Retry after delay if not max attempts
-    if attempt < max_attempts then
+    -- Retry after delay if not max attempts -- unless the cause is known and
+    -- waiting does not change it.
+    if attempt < max_attempts and not reason then
       vim.defer_fn(function()
         if not vim.api.nvim_buf_is_valid(bufnr) then
           return
@@ -195,15 +208,27 @@ function M.auto_recover(bufnr)
 
   local _, results = health.check(bufnr)
   local to_start = {}
+  local blocked = 0
 
   for _, status in ipairs(results) do
     if status.config_exists and not status.running then
-      table.insert(to_start, status.name)
+      -- A server whose binary is absent is not "starting" and not "running":
+      -- it is said once, with the cause, and left out of the count below.
+      local unstartable = supervisor.unstartable(status.name)
+      if unstartable then
+        blocked = blocked + 1
+        supervisor.note_error(status.name, unstartable)
+        notify.warn(string.format("Cannot start '%s': %s", status.name, unstartable))
+      else
+        table.insert(to_start, status.name)
+      end
     end
   end
 
   if #to_start == 0 then
-    notify.info("All expected LSP servers are running")
+    if blocked == 0 then
+      notify.info("All expected LSP servers are running")
+    end
     return
   end
 

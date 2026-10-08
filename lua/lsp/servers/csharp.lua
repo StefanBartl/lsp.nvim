@@ -1,6 +1,7 @@
 ---@module 'lsp.servers.csharp'
 --- Omnisharp via native LSP config/enable (Neovim ≥ 0.11).
 
+local executable = require("lib.nvim.cross.executable")
 local notify = require("lib.nvim.notify").create("[lsp.servers.csharp]")
 
 local lsp = vim.lsp
@@ -10,8 +11,9 @@ local M = {}
 
 ---@return string|nil
 local function find_omnisharp()
-  -- 1. SYSTEM PATH CHECK
-  if vim.fn.executable("omnisharp") == 1 then
+  -- 1. SYSTEM PATH CHECK (memoized, and answered from a PATH index once
+  -- lookups have cost as much as building one -- see lib.nvim.cross.executable)
+  if executable.exists("omnisharp") then
     return "omnisharp"
   end
 
@@ -95,8 +97,12 @@ end
 ---@type string|false|nil
 local resolved = nil
 
+--- Has the "not found" warning been shown? Once per session is enough: it is
+--- raised by whatever asks first, and `:LspDoctor` reports the rest.
+local warned = false
+
 ---@internal
---- Look the binary up on first use, and only once.
+--- Look the binary up on first use, and only once. Silent.
 ---
 --- `vim.fn.executable("omnisharp")` walks every `PATH` entry (and `PATHEXT` on
 --- Windows) and costs ~100 ms on a long `PATH` when the name is absent -- far
@@ -104,14 +110,46 @@ local resolved = nil
 --- that to every start, C# project or not (LUA-92), so it runs when the first C#
 --- buffer asks for a root instead.
 ---@return string|nil cmd
-local function resolve()
+local function lookup()
   if resolved == nil then
     resolved = find_omnisharp() or false
-    if not resolved then
-      notify.warn("C#: Omnisharp not found; skipping LSP")
-    end
   end
   return resolved or nil
+end
+
+---@internal
+--- `lookup()`, plus the one-time warning for an absent binary. This is what a
+--- buffer opening (`root_dir`) and a client start (`cmd`) call.
+---@return string|nil cmd
+local function resolve()
+  local cmd = lookup()
+  if not cmd and not warned then
+    warned = true
+    notify.warn("C#: Omnisharp not found; skipping LSP")
+  end
+  return cmd
+end
+
+---@internal
+--- Where `omnisharp` resolves to, for the diagnostics.
+---
+--- `cmd` is a function, which no report can look into, and `root_dir` declines
+--- quietly when the binary is absent -- so without this `:LspDoctor` showed
+--- "Executable: OK" for a server that cannot start, and `:Lsp start` / `:Lsp
+--- recover` failed with no cause (`supervisor.probe_executable` reads it from
+--- the config's `executable_probe`).
+---
+--- Silent, and an absent answer is looked up again: this is asked on request,
+--- after a `:Mason` install, and a stale "absent" would hide that it worked.
+--- A present answer is kept, so it costs nothing.
+---@return string|nil path # nil when the binary is absent
+---@return string wanted # the name that was looked for
+function M.probe()
+  if resolved == false then
+    resolved = nil
+    executable.clear("omnisharp")
+  end
+  return lookup(), "omnisharp"
 end
 
 ---@internal
@@ -119,6 +157,8 @@ end
 ---@return nil
 function M._reset()
   resolved = nil
+  warned = false
+  executable.clear("omnisharp")
 end
 
 ---@param shared {capabilities?:table,on_attach?:fun(client,bufnr),on_init?:fun(client,init_result):boolean}|nil
@@ -135,12 +175,21 @@ function M.setup(shared, opts)
         -- A function, so the binary is looked up when a client starts rather
         -- than here; `root_dir` runs first and declines when it is absent.
         cmd = function(dispatchers, config)
-          return vim.lsp.rpc.start({ resolve() }, dispatchers, {
+          local bin = resolve()
+          if not bin then
+            -- Reached only by a start that bypassed `root_dir`
+            -- (`vim.lsp.start(vim.lsp.config.omnisharp)`); `rpc.start({})`
+            -- would fail with a message that names nothing.
+            error("omnisharp not found: install it (:Mason) or put it on $PATH", 0)
+          end
+          return vim.lsp.rpc.start({ bin }, dispatchers, {
             cwd = config.cmd_cwd,
             env = config.cmd_env,
             detached = config.detached,
           })
         end,
+        -- What the diagnostics ask because they cannot look into `cmd`.
+        executable_probe = M.probe,
         filetypes = { "cs" },
         capabilities = shared.capabilities,
         on_attach = shared.on_attach,

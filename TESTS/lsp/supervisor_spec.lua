@@ -274,6 +274,115 @@ describe("lsp.core.supervisor", function()
       -- resolver, not whatever root the first buffer happened to resolve.
       assert.are.equal(root_dir, registered.root_dir)
     end)
+
+    -- omnisharp's `cmd` is a function and its `root_dir` declines without a
+    -- word when the binary is absent, so a start ended in a bare `false` and the
+    -- recovery commands retried it. The config's `executable_probe` names the
+    -- cause before `root_dir` is asked.
+    it("refuses a server whose probe says the binary is absent, and says why", function()
+      local resolved = false
+      local sup, calls, restore = reload_with_config("omnisharp", {
+        cmd = function() end,
+        executable_probe = function()
+          return nil, "omnisharp"
+        end,
+        root_dir = function(_bufnr, on_dir)
+          resolved = true
+          on_dir("/repo/root")
+        end,
+      })
+
+      local ok, reason = sup.start("omnisharp", vim.api.nvim_get_current_buf())
+      restore()
+
+      assert.is_false(ok)
+      assert.is_truthy(reason and reason:find("'omnisharp' not found", 1, true), tostring(reason))
+      assert.is_false(resolved, "root_dir ran for a server that cannot start")
+      assert.are.equal(0, #calls.start)
+    end)
+
+    it("starts a server whose probe finds the binary", function()
+      local sup, calls, restore = reload_with_config("omnisharp", {
+        cmd = function() end,
+        executable_probe = function()
+          return "/bin/omnisharp", "omnisharp"
+        end,
+        root_dir = "/repo/root",
+      })
+
+      local ok, reason = sup.start("omnisharp", vim.api.nvim_get_current_buf())
+      restore()
+
+      assert.is_true(ok)
+      assert.is_nil(reason)
+      assert.are.equal(1, #calls.start)
+    end)
+
+    it("does not take a function cmd without a probe for absent", function()
+      local sup, calls, restore = reload_with_config("dyn", {
+        cmd = function() end,
+        root_dir = "/repo/root",
+      })
+
+      local ok = sup.start("dyn", vim.api.nvim_get_current_buf())
+      restore()
+
+      assert.is_true(ok)
+      assert.are.equal(1, #calls.start)
+    end)
+  end)
+
+  describe("probe_executable", function()
+    it("cannot tell for a list cmd, which the doctor reads itself", function()
+      local sup = reload()
+      assert.is_nil(
+        (sup.probe_executable({ cmd = { "x" }, executable_probe = function() end }, "x"))
+      )
+    end)
+
+    it("cannot tell for a function cmd without a probe", function()
+      local sup = reload()
+      assert.is_nil((sup.probe_executable({ cmd = function() end }, "x")))
+    end)
+
+    it("cannot tell when the probe raises", function()
+      local sup = reload()
+      local found = sup.probe_executable({
+        cmd = function() end,
+        executable_probe = function()
+          error("boom")
+        end,
+      }, "x")
+      assert.is_nil(found)
+    end)
+
+    it("reports the path when found and the wanted name when absent", function()
+      local sup = reload()
+      local found, path = sup.probe_executable({
+        cmd = function() end,
+        executable_probe = function()
+          return "/bin/x", "x"
+        end,
+      }, "server")
+      assert.is_true(found)
+      assert.are.equal("/bin/x", path)
+
+      local absent, wanted = sup.probe_executable({
+        cmd = function() end,
+        executable_probe = function()
+          return nil, "x-binary"
+        end,
+      }, "server")
+      assert.is_false(absent)
+      assert.are.equal("x-binary", wanted)
+
+      -- No name from the probe: the server's own is the best left.
+      local _, fallback = sup.probe_executable({
+        cmd = function() end,
+        executable_probe = function() end,
+      }, "server")
+      assert.are.equal("server", fallback)
+    end)
   end)
 
   describe("backoff", function()

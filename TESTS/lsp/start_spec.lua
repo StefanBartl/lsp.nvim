@@ -86,6 +86,46 @@ describe("lsp.usercmds.start", function()
     end)
   end)
 
+  -- `:Lsp start omnisharp` on a machine without omnisharp ended in "Failed to
+  -- start LSP 'omnisharp' -- check :LspLog". No client was ever created, so the
+  -- log has nothing to say; the cause is the binary.
+  describe("execute with a server whose binary is absent", function()
+    it("names the cause instead of sending the user to :LspLog", function()
+      vim.lsp.config("spec_nobin", {
+        cmd = function() end,
+        executable_probe = function()
+          return nil, "spec-nobin"
+        end,
+        filetypes = { "go" },
+        root_dir = "/spec/root",
+      })
+
+      ---@type string[]
+      local said = {}
+      local real = package.loaded["lib.nvim.notify"]
+      package.loaded["lib.nvim.notify"] = {
+        create = function()
+          return setmetatable({}, {
+            __index = function(_, level)
+              return function(msg)
+                said[#said + 1] = level .. ": " .. tostring(msg)
+              end
+            end,
+          })
+        end,
+      }
+      local start = reload()
+      local ok, err = pcall(start.execute, { args = "spec_nobin" })
+      package.loaded["lib.nvim.notify"] = real
+      package.loaded["lsp.usercmds.start"] = nil
+      assert.is_true(ok, tostring(err))
+
+      local text = table.concat(said, "\n")
+      assert.is_truthy(text:find("'spec-nobin' not found", 1, true), text)
+      assert.is_nil(text:find("check :LspLog", 1, true), text)
+    end)
+  end)
+
   describe("supervisor.registered_names", function()
     it("lists the enabled configs and skips the shared base config", function()
       local _, supervisor = reload()
