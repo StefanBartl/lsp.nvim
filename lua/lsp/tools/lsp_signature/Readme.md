@@ -138,7 +138,22 @@ require("lsp.tools.lsp_signature").setup()
 (The module moved out of `mappings.lsp_signature`; that path raises
 `module 'mappings.lsp_signature' not found`.)
 
-* `<C-b>` is bound for **insert and normal mode**.
+`setup()` binds **no key** since the toggle moved into the keymap catalogue
+(`signature_toggle` in `lua/lsp/config/KEYMAPS.lua`); the call is kept for
+`lsp.init`.
+
+* `<C-b>` (insert and normal mode) is bound by the keymap catalogue, so it
+  follows `keymaps.enable`, the presets (`keymaps = false` and `preset = "none"`
+  switch it off) and `keymaps.map` (`keymaps = { map = { signature_toggle = "<M-b>" } }`
+  rebinds it). `tools.lsp_signature.enable = false` drops it as well.
+* Without `lsp.setup()` -- or with the keymaps switched off -- bind it yourself:
+
+  ```lua
+  vim.keymap.set({ "i", "n" }, "<C-b>", function()
+    vim.schedule(require("lsp.tools.lsp_signature.request_and_show"))
+  end, { desc = "Show signature or hover (floating toggle)" })
+  ```
+
 * Optionally, the highlight groups can be adjusted in your own colorscheme file.
 
 ---
@@ -287,7 +302,7 @@ This is the module as it actually sits in `lsp.nvim`:
 
 ```sh
 lua/lsp/tools/lsp_signature/
-├─ init.lua                    -- setup(): the <C-b> mapping, i and n
+├─ init.lua                    -- setup(): a placeholder; <C-b> is the `signature_toggle` catalogue entry
 ├─ request_and_show.lua        -- signatureHelp, then hover, then fallbacks
 ├─ show_hover.lua              -- hover across all clients + the LRU cache
 ├─ fallback_providers.lua      -- typeDefinition / implementation / references
@@ -302,17 +317,19 @@ lua/lsp/tools/lsp_signature/
 └─ Readme.md
 ```
 
-An `after/plugin/lsp_signature.lua` is one way to call `setup()` from a
-standalone config; in this plugin the call comes from the tools bootstrap
-instead.
+An `after/plugin/lsp_signature.lua` is one way to use the module from a
+standalone config; in this plugin `setup()` is called from the tools bootstrap
+and the key from the keymap catalogue instead.
 
 ---
 
 ### Example `after/plugin/lsp_signature.lua`
 
 ```lua
-local lsp_sig = require("lsp.tools.lsp_signature")
-lsp_sig.setup()
+-- setup() binds no key; outside lsp.setup() the toggle is bound by hand.
+vim.keymap.set({ "i", "n" }, "<C-b>", function()
+  vim.schedule(require("lsp.tools.lsp_signature.request_and_show"))
+end, { desc = "Show signature or hover (floating toggle)" })
 
 -- Optional: additional signatures for Rust, Go, TypeScript, libuv
 _G.custom_signatures = {

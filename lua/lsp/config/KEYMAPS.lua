@@ -156,7 +156,7 @@ local entries = {
         require("lsp.tools.lsp_signature.request_and_show")()
       end)
     end,
-    desc = "[LSP] Show signature or hover (floating toggle)",
+    desc = "Show signature or hover (floating toggle)",
   },
 
   -- ------------------------------------------------------------ rename
