@@ -5,8 +5,10 @@ from redrawing the screen twenty times per keystroke pause.
 
 ## Diagnostics
 
-Diagnostics into the quickfix or location list, and navigation within either.
-`vim.diagnostic.config()` is applied *after* the servers are enabled, so a
+Diagnostics into the quickfix or location list, and a step to the next or
+previous one: through the quickfix list, or -- for the buffer's own diagnostics
+-- by `vim.diagnostic.jump` (the location list is not read; with Trouble as the
+UI, its panel opens instead). `vim.diagnostic.config()` is applied *after* the servers are enabled, so a
 server config cannot overwrite it -- everything in `diagnostics` except `ui`
 and `debounce_ms`. Those two live in `diagnostics` for this plugin's own use
 (`ui` picks where `]d`/`[d` send you, `debounce_ms` sizes the publish

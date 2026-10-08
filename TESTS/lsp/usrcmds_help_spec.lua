@@ -97,3 +97,85 @@ describe("the option float of the lsp.nvim verbs", function()
     end
   end)
 end)
+
+--- A value text says what the value does. `:Lsp diag next|prev loc` was described as going through
+--- the location list; it jumps to the next diagnostic of the buffer (or opens Trouble) and never
+--- reads or fills one. This pins the text to the behaviour it describes: whoever makes `loc` use
+--- the location list for real has to change both in the same step.
+describe("the text of :Lsp diag next|prev loc", function()
+  local buf, ns, orig_jump
+
+  ---@return table|nil arg # the `list` argument of the `diag` route
+  local function list_arg()
+    local handle = composer.registry().Lsp
+    for _, route in ipairs(handle and handle:spec().routes or {}) do
+      if table.concat(route.path, " ") == "diag" then
+        for _, arg in ipairs(route.args or {}) do
+          if arg.name == "list" then
+            return arg
+          end
+        end
+      end
+    end
+  end
+
+  before_each(function()
+    require("lsp.bindings.usrcmds").setup()
+
+    -- Trouble, when installed, would take the jump; this is the native path.
+    package.loaded["lsp.config"] = nil
+    require("lsp.config").setup({ diagnostics = { ui = "native" } })
+
+    -- The float `jump` opens is scheduled and outlives the case; the jump itself is the point.
+    orig_jump = vim.diagnostic.jump
+    -- Test double, restored in after_each.
+    ---@diagnostic disable-next-line: duplicate-set-field
+    vim.diagnostic.jump = function(opts)
+      return orig_jump(vim.tbl_extend("force", opts, { float = false }))
+    end
+
+    buf = vim.api.nvim_create_buf(true, false)
+    vim.api.nvim_set_current_buf(buf)
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "one", "two", "three" })
+    ns = vim.api.nvim_create_namespace("lsp_nvim_spec_diag_loc_text")
+    vim.diagnostic.set(ns, buf, {
+      { lnum = 1, col = 0, message = "second line" },
+      { lnum = 2, col = 0, message = "third line" },
+    })
+    vim.api.nvim_win_set_cursor(0, { 1, 0 })
+  end)
+
+  after_each(function()
+    vim.diagnostic.jump = orig_jump
+    vim.diagnostic.reset(ns, buf)
+    vim.fn.setloclist(0, {}, "f")
+    pcall(vim.api.nvim_buf_delete, buf, { force = true })
+    pcall(vim.api.nvim_del_user_command, "Lsp")
+    package.loaded["lsp.config"] = nil
+    require("lsp.config").setup({})
+  end)
+
+  it("does not claim the location list, which loc never touches", function()
+    if type(composer.registry) ~= "function" then
+      return pending("lib.nvim has no composer.registry")
+    end
+    local arg = list_arg()
+    assert.is_truthy(arg, "the diag route has a `list` argument")
+    local text = arg.enum_desc.loc
+    assert.is_nil(text:lower():find("location list", 1, true), "loc = " .. text)
+    assert.is_true(text:find("buffer", 1, true) ~= nil, "loc names what it walks: " .. text)
+  end)
+
+  it("walks the diagnostics of the buffer and leaves the location list empty", function()
+    vim.cmd("Lsp diag next")
+    assert.are.equal(2, vim.api.nvim_win_get_cursor(0)[1])
+    vim.cmd("Lsp diag next loc")
+    assert.are.equal(3, vim.api.nvim_win_get_cursor(0)[1])
+    vim.cmd("Lsp diag prev loc")
+    assert.are.equal(2, vim.api.nvim_win_get_cursor(0)[1])
+
+    local loclist = vim.fn.getloclist(0, { size = 0, title = 0 })
+    assert.are.equal(0, loclist.size, "no location list was filled")
+    assert.are.equal("", loclist.title)
+  end)
+end)

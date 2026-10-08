@@ -546,7 +546,7 @@ end
 
 ---@internal
 --- Whether `]d`/`[d` should route through Trouble instead of the native
---- location list, per `diagnostics.ui` (`"auto"|"native"|"trouble"`,
+--- `vim.diagnostic.jump`, per `diagnostics.ui` (`"auto"|"native"|"trouble"`,
 --- normalized by `lsp.config`).
 ---
 --- `"trouble"` and `"auto"` resolve the same way at runtime: both need
@@ -599,8 +599,10 @@ function M.diag_to_qflist()
   require("lsp.diagnostics.quickfix").to_qf({ open = true })
 end
 
---- Next diagnostic. Routes through Trouble when `diagnostics.ui` resolves to
---- it (roadmap section 15.1); otherwise the native location list.
+--- Next diagnostic of this buffer. Routes through Trouble when
+--- `diagnostics.ui` resolves to it (roadmap section 15.1: opens and focuses
+--- its panel); otherwise a native `vim.diagnostic.jump`. The location list is
+--- neither read nor filled -- `diag_to_loclist` is the one that builds it.
 ---@param count integer|nil # Explicit repeat; from a keypress, `v:count1`.
 ---@return nil
 function M.diag_next(count)
@@ -610,8 +612,10 @@ function M.diag_next(count)
   require("lsp.diagnostics.loclist").next_loc(nil, steps(count))
 end
 
---- Previous diagnostic. Routes through Trouble when `diagnostics.ui` resolves
---- to it (roadmap section 15.1); otherwise the native location list.
+--- Previous diagnostic of this buffer. Routes through Trouble when
+--- `diagnostics.ui` resolves to it (roadmap section 15.1: opens and focuses
+--- its panel); otherwise a native `vim.diagnostic.jump`. The location list is
+--- neither read nor filled -- `diag_to_loclist` is the one that builds it.
 ---@param count integer|nil # Explicit repeat; from a keypress, `v:count1`.
 ---@return nil
 function M.diag_prev(count)

@@ -802,15 +802,19 @@ closed unless it says otherwise.
                     itself, so it is refused with a warning.
 
     :Lsp diag {action} [list]                                  *:Lsp-diag*
-                    Diagnostics into a list, or movement within one. Actions:
-                    `qf`, `loc`, `next`, `prev` -- required, since there is no
-                    sensible default for "do something with diagnostics". The
-                    optional second argument picks the list `next`/`prev` move
-                    in, `qf` or `loc`, defaulting to `loc`. Movement is one
-                    step per invocation: the keymaps fall back to |v:count1|,
-                    which is right for a keypress and wrong for a command,
-                    where `v:count` holds whatever the last keypress left
-                    behind.
+                    Diagnostics into a list, or a step to the next or previous
+                    one. Actions: `qf`, `loc`, `next`, `prev` -- required,
+                    since there is no sensible default for "do something with
+                    diagnostics". The optional second argument picks what
+                    `next`/`prev` step through, `qf` or `loc`, defaulting to
+                    `loc`. `qf` steps the quickfix list; `loc` does not touch
+                    the location list at all: it jumps to the next diagnostic
+                    of this buffer (|vim.diagnostic.jump()|), or opens and
+                    focuses Trouble's panel when `diagnostics.ui` resolves
+                    to it. Movement is one step per invocation: the keymaps
+                    fall back to |v:count1|, which is right for a keypress
+                    and wrong for a command, where `v:count` holds whatever
+                    the last keypress left behind.
 
     :Lsp workspace [action] [project]                     *:Lsp-workspace*
                     Workspace-wide diagnostics. Actions: `on`, `off`, `toggle`,
