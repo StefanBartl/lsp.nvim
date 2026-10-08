@@ -291,6 +291,19 @@ end
 ---@type string[]
 M.MODES = { "startup", "resolve", "buffer", "capabilities", "probe", "all" }
 
+--- One line per report for the help float (`composer.help`), next to `MODES`
+--- and handed to the composer by both `:LspDoctor` and `:Lsp doctor` for the
+--- same reason: the two cannot come to describe a report differently.
+---@type table<string, string>
+M.MODE_DESC = {
+  startup = "Is a server running here, and if not, why",
+  resolve = "Where the filetype-to-server chain breaks",
+  buffer = "Clients, diagnostics and formatter of this buffer",
+  capabilities = "What the attached servers can do, plus workspaces",
+  probe = "Check that diagnostics arrive (slower, provokes them)",
+  all = "The four observing reports combined (not probe)",
+}
+
 ---Run the four observing reports combined.
 ---
 ---`probe` is deliberately not among them: it is the one report that acts on
@@ -358,6 +371,8 @@ function M.enable_usercmd()
             -- report names.
             enum = M.MODES,
             optional = true,
+            desc = "Report to show (default: all)",
+            enum_desc = M.MODE_DESC,
           },
         },
         run = function(ctx)

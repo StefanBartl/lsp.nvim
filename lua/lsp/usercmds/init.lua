@@ -153,6 +153,7 @@ function M.attach_md_hints()
             type = "STRING",
             enum = { "on", "off", "toggle", "status" },
             optional = true,
+            desc = "Marksman hint diagnostics: what to do (default: toggle)",
           },
         },
         run = function(ctx)
