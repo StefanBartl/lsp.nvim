@@ -39,6 +39,19 @@ local M = {}
 ---@type string[]
 local LOG_LEVELS = { "trace", "debug", "info", "warn", "error", "off" }
 
+--- Help-float texts (`composer.help`) for the two values of the
+--- `toggle|on|off|status|clear` shape that need one: `hints`, `lightbulb`,
+--- `winbar` and `implement` share it. `on`, `off` and `toggle` say it themselves.
+---@type table<string, string>
+local SWITCH_ENUM_DESC = {
+  status = "Show the global state and per-filetype overrides",
+  clear = "Drop a filetype's override (needs a filetype)",
+}
+
+--- The same `desc` for the `action` argument of every route with that shape.
+---@type string
+local SWITCH_ACTION_DESC = "What to do (omit to toggle)"
+
 --- Argument type for a server name, completing from the *live* set rather than
 --- a list frozen at setup time (NEW-26 asks for exactly that: a value set that
 --- changes at runtime must be computed at completion time).
@@ -49,6 +62,7 @@ local LOG_LEVELS = { "trace", "debug", "info", "warn", "error", "off" }
 ---@return nil
 local function register_server_argtype()
   argtypes.register("LSP_SERVER", {
+    desc = "Language server name, e.g. lua_ls",
     validate = function(raw)
       return true, raw, nil
     end,
@@ -89,6 +103,7 @@ end
 ---@return nil
 local function register_filetype_argtype()
   argtypes.register("LSP_FILETYPE", {
+    desc = "Filetype to apply it to (omit for the global setting)",
     validate = function(raw)
       return true, raw, nil
     end,
@@ -147,6 +162,7 @@ end
 ---@return nil
 local function register_project_argtype()
   argtypes.register("LSP_PROJECT", {
+    desc = "Project folder: . (current), a $REPOS_DIR name or a path",
     validate = function(raw)
       return true, raw, nil
     end,
@@ -390,7 +406,14 @@ function M.setup()
       {
         path = { "doctor" },
         args = {
-          { name = "mode", type = "STRING", enum = doctor_modes, optional = true },
+          {
+            name = "mode",
+            type = "STRING",
+            enum = doctor_modes,
+            optional = true,
+            desc = "Report to show (default: startup)",
+            enum_desc = ok_doctor and doctor_mod.MODE_DESC or nil,
+          },
         },
         desc = "Per-buffer diagnosis (same as :LspDoctor)",
         run = function(ctx)
@@ -411,7 +434,14 @@ function M.setup()
       -- ---------------------------------------------------------- lifecycle
       {
         path = { "start" },
-        args = { { name = "server", type = "LSP_SERVER", optional = true } },
+        args = {
+          {
+            name = "server",
+            type = "LSP_SERVER",
+            optional = true,
+            desc = "Server to start (omit for all registered for this filetype)",
+          },
+        },
         desc = "Start servers for this buffer (auto-detect, or one by name)",
         run = function(ctx)
           run_command_module("start", ctx.args.server)
@@ -419,7 +449,14 @@ function M.setup()
       },
       {
         path = { "stop" },
-        args = { { name = "server", type = "LSP_SERVER", optional = true } },
+        args = {
+          {
+            name = "server",
+            type = "LSP_SERVER",
+            optional = true,
+            desc = "Server to stop on this buffer (omit to stop all)",
+          },
+        },
         desc = "Stop clients on this buffer (all, or one by name)",
         run = function(ctx)
           run_command_module("stop", ctx.args.server)
@@ -427,7 +464,14 @@ function M.setup()
       },
       {
         path = { "restart" },
-        args = { { name = "server", type = "LSP_SERVER", optional = true } },
+        args = {
+          {
+            name = "server",
+            type = "LSP_SERVER",
+            optional = true,
+            desc = "Server to restart on this buffer (omit to restart all)",
+          },
+        },
         desc = "Restart clients on this buffer (all, or one by name)",
         run = function(ctx)
           run_command_module("restart", ctx.args.server)
@@ -439,7 +483,13 @@ function M.setup()
         -- and the two really are different operations -- this one tears the
         -- client down first.
         path = { "force-restart" },
-        args = { { name = "server", type = "LSP_SERVER" } },
+        args = {
+          {
+            name = "server",
+            type = "LSP_SERVER",
+            desc = "Server to stop with cleanup, then start again",
+          },
+        },
         desc = "Restart one server with a full cleanup first",
         run = function(ctx)
           require("lsp.usercmds.recovery").force_restart(
@@ -465,6 +515,15 @@ function M.setup()
             type = "STRING",
             enum = { "once", "on", "off", "toggle", "status", "which" },
             optional = true,
+            desc = "What to do (omit to format once)",
+            enum_desc = {
+              once = "Format this buffer now",
+              on = "Turn format-on-save on",
+              off = "Turn format-on-save off",
+              toggle = "Flip format-on-save",
+              status = "Report whether format-on-save is on",
+              which = "Show the formatter chain for this buffer",
+            },
           },
         },
         desc = "Format once, or control format-on-save",
@@ -489,6 +548,8 @@ function M.setup()
             type = "STRING",
             enum = { "toggle", "on", "off", "status", "clear" },
             optional = true,
+            desc = SWITCH_ACTION_DESC,
+            enum_desc = SWITCH_ENUM_DESC,
           },
           { name = "filetype", type = "LSP_FILETYPE", optional = true },
         },
@@ -530,6 +591,8 @@ function M.setup()
             type = "STRING",
             enum = { "toggle", "on", "off", "status" },
             optional = true,
+            desc = "What to do (omit to toggle)",
+            enum_desc = { status = "Show the settings and the attempts on record" },
           },
         },
         desc = "Bring a crashed server back automatically: control or report",
@@ -558,6 +621,8 @@ function M.setup()
             type = "STRING",
             enum = { "toggle", "on", "off", "status", "clear" },
             optional = true,
+            desc = SWITCH_ACTION_DESC,
+            enum_desc = SWITCH_ENUM_DESC,
           },
           { name = "filetype", type = "LSP_FILETYPE", optional = true },
         },
@@ -599,6 +664,8 @@ function M.setup()
             type = "STRING",
             enum = { "toggle", "on", "off", "status", "clear" },
             optional = true,
+            desc = SWITCH_ACTION_DESC,
+            enum_desc = SWITCH_ENUM_DESC,
           },
           { name = "filetype", type = "LSP_FILETYPE", optional = true },
         },
@@ -617,6 +684,8 @@ function M.setup()
             type = "STRING",
             enum = { "toggle", "on", "off", "status", "clear" },
             optional = true,
+            desc = SWITCH_ACTION_DESC,
+            enum_desc = SWITCH_ENUM_DESC,
           },
           { name = "filetype", type = "LSP_FILETYPE", optional = true },
         },
@@ -635,6 +704,7 @@ function M.setup()
             type = "STRING",
             enum = { "definition", "type_definition", "implementation", "declaration" },
             optional = true,
+            desc = "What to peek at (default: definition)",
           },
         },
         desc = "Peek a definition (or type, implementation, declaration) in a float",
@@ -647,8 +717,29 @@ function M.setup()
       {
         path = { "diag" },
         args = {
-          { name = "action", type = "STRING", enum = { "qf", "loc", "next", "prev" } },
-          { name = "list", type = "STRING", enum = { "qf", "loc" }, optional = true },
+          {
+            name = "action",
+            type = "STRING",
+            enum = { "qf", "loc", "next", "prev" },
+            desc = "What to do with the diagnostics",
+            enum_desc = {
+              qf = "Workspace diagnostics into the quickfix list",
+              loc = "Buffer diagnostics into the location list",
+              next = "Next diagnostic (quickfix entry with list qf)",
+              prev = "Previous diagnostic (quickfix entry with list qf)",
+            },
+          },
+          {
+            name = "list",
+            type = "STRING",
+            enum = { "qf", "loc" },
+            optional = true,
+            desc = "Where next/prev move (default: loc)",
+            enum_desc = {
+              qf = "Quickfix list entries",
+              loc = "Diagnostics, via the location list",
+            },
+          },
         },
         desc = "Diagnostics into a list, or move within one",
         run = function(ctx)
@@ -681,6 +772,13 @@ function M.setup()
             type = "STRING",
             enum = { "on", "off", "toggle", "status", "now", "clear", "list" },
             optional = true,
+            desc = "Workspace diagnostics: what to do (default: status)",
+            enum_desc = {
+              status = "Report whether it is on (for the project, if given)",
+              now = "Populate the attached clients' diagnostics once",
+              clear = "Drop a project's override (needs a project)",
+              list = "List every project override",
+            },
           },
           { name = "project", type = "LSP_PROJECT", optional = true },
         },
@@ -717,6 +815,14 @@ function M.setup()
             type = "STRING",
             enum = { "pick", "show", "add", "remove", "list" },
             optional = true,
+            desc = "What to do (default: show)",
+            enum_desc = {
+              pick = "Choose the root scope (cwd, git root, file path)",
+              show = "Report the scope, client roots and workspace folders",
+              add = "Pick a directory to add as a workspace folder",
+              remove = "Pick a workspace folder to remove",
+              list = "Report the directories add would offer",
+            },
           },
         },
         desc = "Root scope and workspace folders: pick, show, add, remove, list",
@@ -746,7 +852,15 @@ function M.setup()
       },
       {
         path = { "log", "level" },
-        args = { { name = "level", type = "STRING", enum = LOG_LEVELS } },
+        args = {
+          {
+            name = "level",
+            type = "STRING",
+            enum = LOG_LEVELS,
+            desc = "Lowest severity the LSP log records",
+            enum_desc = { trace = "Everything, very verbose", off = "Log nothing" },
+          },
+        },
         desc = "Set the LSP log level (trace|debug|info|warn|error|off)",
         run = function(ctx)
           vim.lsp.log.set_level(ctx.args.level)
