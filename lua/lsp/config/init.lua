@@ -107,11 +107,11 @@ local function normalize_keymaps(cfg)
   -- `keymaps = false` is the conventional "no keymaps at all" spelling across
   -- the plugins here; it means `keymaps = { enable = false }`. `true` is the
   -- defaults. Neither is a mistake worth a warning.
-  if km == false then
-    cfg.keymaps = vim.tbl_extend("force", vim.deepcopy(DEFAULTS.keymaps), { enable = false })
-    return
-  elseif km == true then
-    cfg.keymaps = vim.deepcopy(DEFAULTS.keymaps)
+  if type(km) == "boolean" then
+    -- the shared lib.nvim helper owns the shape: false -> { enable = false },
+    -- true -> {} (REL-20); the defaults fill the rest.
+    local group = require("lib.nvim.normalize").normalize_switch_group(km) or {}
+    cfg.keymaps = vim.tbl_extend("force", vim.deepcopy(DEFAULTS.keymaps), group)
     return
   end
   if type(km) ~= "table" then
