@@ -26,6 +26,17 @@ describe("lsp.config.KEYMAPS", function()
       end
     end)
 
+    -- The registry puts the plugin name in front of every description it
+    -- registers ("LSP: <desc>"), so a catalogue text that carries its own tag
+    -- reads "LSP: [LSP] ..." in `:map` and which-key. `signature_toggle` was the
+    -- one entry that did.
+    it("no description repeats the plugin tag the registry already adds", function()
+      for name, spec in pairs(KEYMAPS.entries) do
+        assert.is_nil(spec.desc:match("^%[LSP%]"), name .. ".desc starts with [LSP]")
+        assert.is_nil(spec.desc:match("^LSP:"), name .. ".desc starts with LSP:")
+      end
+    end)
+
     it("no two entries claim the same lhs in the same mode", function()
       ---@type table<string, string>
       local claimed = {}
@@ -172,6 +183,27 @@ describe("lsp.bindings.keymaps", function()
   it("tags each registered entry with its catalogue name", function()
     for _, spec in ipairs(keymaps.setup(cfg())) do
       assert.is_not_nil(KEYMAPS.entries[spec.name], spec.name)
+    end
+  end)
+
+  -- `<C-b>` read "LSP: [LSP] Show signature ..." in `:map`: the catalogue text
+  -- carried its own tag and the registry adds the plugin name as well.
+  it("binds the signature toggle with a single plugin tag in its description", function()
+    keymaps.setup(cfg())
+    for _, mode in ipairs({ "i", "n" }) do
+      local map = vim.fn.maparg("<C-b>", mode, false, true)
+      assert.are.equal("LSP: Show signature or hover (floating toggle)", map.desc, mode)
+    end
+  end)
+
+  -- The tool's own `setup()` used to bind `<C-b>` unconditionally; the key is a
+  -- catalogue entry now, so a preset that does not name it leaves it unbound.
+  it("does not bind the signature toggle for the none preset, tool setup() included", function()
+    pcall(vim.keymap.del, { "i", "n" }, "<C-b>")
+    keymaps.setup(cfg(nil, "none"))
+    require("lsp.tools.lsp_signature").setup()
+    for _, mode in ipairs({ "i", "n" }) do
+      assert.are.equal("", vim.fn.maparg("<C-b>", mode), mode)
     end
   end)
 
