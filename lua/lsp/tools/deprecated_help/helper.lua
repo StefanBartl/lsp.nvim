@@ -11,12 +11,31 @@ local M = {}
 ---@type table<number, table<string, boolean>>
 M.buf_symbol_cache = {}
 
+-- Without this, `buf_symbol_cache` grows by one entry per buffer ever
+-- visited and is never reclaimed for the rest of the session (PERF-53).
+-- Registered on the first cache entry (not at require time): there is nothing
+-- to drop before one exists, and requiring this module stays free of side effects.
+local cleanup_registered = false
+local function register_cleanup()
+  if cleanup_registered then
+    return
+  end
+  cleanup_registered = true
+  autocmd.create({ "BufDelete", "BufWipeout" }, function(args)
+    M.clear_buf_cache(args.buf)
+  end, {
+    group = autocmd.group("DeprecatedHelpBufCache", true),
+    desc = "lsp.nvim: drop a deleted buffer's cached deprecated-symbol mappings",
+  })
+end
+
 -- Utility: ensure per-buffer cache table exists.
 ---@param bufnr number
 ---@return table<string, boolean>
 function M.ensure_buf_cache(bufnr)
   -- create table if missing
   if M.buf_symbol_cache[bufnr] == nil then
+    register_cleanup()
     M.buf_symbol_cache[bufnr] = {}
   end
   return M.buf_symbol_cache[bufnr]
@@ -29,15 +48,6 @@ end
 function M.clear_buf_cache(bufnr)
   M.buf_symbol_cache[bufnr] = nil
 end
-
--- Without this, `buf_symbol_cache` grows by one entry per buffer ever
--- visited and is never reclaimed for the rest of the session (PERF-53).
-autocmd.create({ "BufDelete", "BufWipeout" }, function(args)
-  M.clear_buf_cache(args.buf)
-end, {
-  group = autocmd.group("DeprecatedHelpBufCache", true),
-  desc = "lsp.nvim: drop a deleted buffer's cached deprecated-symbol mappings",
-})
 
 -- Safely get a line from buffer (returns empty string if invalid)
 ---@param bufnr number
