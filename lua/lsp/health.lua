@@ -664,6 +664,35 @@ local function check_ecosystem()
 end
 
 ---@internal
+--- Optional plugins the umbrella reaches for with `pcall(require, ...)`.
+---
+--- Soft dependencies by definition: absence is information, never a warning.
+---@return nil
+local function check_soft_dependencies()
+  local deps = {
+    {
+      mod = "cmp_nvim_lsp",
+      name = "cmp_nvim_lsp",
+      found = "completion capabilities are merged into every server (lsp.integrations.cmp)",
+      missing = "servers start with Neovim's default capabilities, without nvim-cmp's completion extras",
+    },
+    {
+      mod = "nvim-ts-autotag",
+      name = "nvim-ts-autotag",
+      found = "Astro buffers get tag auto-closing from the plugin",
+      missing = "Astro buffers fall back to lsp.nvim's built-in manual auto-close",
+    },
+  }
+  for _, dep in ipairs(deps) do
+    if has(dep.mod) then
+      health.ok(("%s found: %s"):format(dep.name, dep.found))
+    else
+      health.info(("%s not installed: %s"):format(dep.name, dep.missing))
+    end
+  end
+end
+
+---@internal
 --- Who contributed to `vim.diagnostic.config()`.
 ---
 --- The surface has no notion of an owner -- every caller merges into the same
@@ -740,6 +769,7 @@ function M.check()
   section("Keymap collisions", check_keymap_collisions)
   section("Servers", check_servers)
   section("Ecosystem", check_ecosystem)
+  section("Soft dependencies", check_soft_dependencies)
   section("Diagnostics", check_diagnostics)
   section("Per-buffer diagnosis", check_doctor)
 end
