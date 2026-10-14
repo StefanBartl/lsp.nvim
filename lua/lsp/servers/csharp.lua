@@ -9,6 +9,9 @@ local lsp = vim.lsp
 ---@class CsharpServer
 local M = {}
 
+--- The name this module registers its config under (`lsp.config("omnisharp", ...)`); the registry enables this one.
+M.lsp_name = "omnisharp"
+
 ---@return string|nil
 local function find_omnisharp()
   -- 1. SYSTEM PATH CHECK (memoized, and answered from a PATH index once

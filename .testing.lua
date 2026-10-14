@@ -101,13 +101,6 @@ return {
       {
         check = "K6",
         level = "warn",
-        text = "'csharp' config not found",
-        reason = "lsp.nvim enables the registry name 'csharp' (DEFAULTS.servers) while lua/lsp/servers/csharp.lua registers the config as 'omnisharp' and the registry sets up modules with enable=false, so Neovim's own vim.lsp health finds no 'csharp' config; making init enable the registered name would change which servers start, so it is tracked separately instead of fixed in a cleanup",
-        expires = "2027-04-14",
-      },
-      {
-        check = "K6",
-        level = "warn",
         text = "Unknown filetype 'ksh'",
         reason = "bashls lists the filetype 'ksh' on purpose (its globPattern covers .ksh/.mksh); Neovim's known-filetype table of this version has no 'ksh', which only makes vim.lsp health hint at it",
         expires = "2027-04-14",

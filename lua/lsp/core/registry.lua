@@ -69,7 +69,9 @@ function M.setup_all(shared, servers)
         -- happens to fail the same way.
         local ok_setup, err = pcall(srv.setup, shared, { enable = false })
         if ok_setup then
-          enabled[#enabled + 1] = name
+          -- A module may register its config under another name than the one configured (`"csharp"` registers
+          -- `omnisharp`, `"zig"` registers `zls`): `vim.lsp.enable` needs the registered one, or the server never starts.
+          enabled[#enabled + 1] = type(srv.lsp_name) == "string" and srv.lsp_name or name
           loaded = true
           break
         else

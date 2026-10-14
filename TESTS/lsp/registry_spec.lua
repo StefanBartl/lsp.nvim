@@ -52,6 +52,30 @@ describe("lsp.core.registry", function()
     end)
   end)
 
+  describe("registered name", function()
+    it("enables the name a module registers under, not the configured one", function()
+      local restore = stub_server("fakealias", {
+        lsp_name = "fakealias_ls",
+        setup = function() end,
+      })
+      local enabled = registry.setup_all(shared(), { "fakealias" })
+      restore()
+      assert.are.same({ "fakealias_ls" }, enabled)
+    end)
+
+    it("keeps the configured name for a module without lsp_name", function()
+      local restore = stub_server("fakeplain", { setup = function() end })
+      local enabled = registry.setup_all(shared(), { "fakeplain" })
+      restore()
+      assert.are.same({ "fakeplain" }, enabled)
+    end)
+
+    it("the shipped csharp and zig modules declare the names they register", function()
+      assert.are.equal("omnisharp", require("lsp.servers.csharp").lsp_name)
+      assert.are.equal("zls", require("lsp.servers.zig").lsp_name)
+    end)
+  end)
+
   describe("resolution", function()
     it("sets up a server whose module resolves", function()
       local got
