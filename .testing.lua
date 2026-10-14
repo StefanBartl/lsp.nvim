@@ -60,4 +60,16 @@ return {
       "true",
     },
   },
+  -- Findings the minimal conformance editor cannot avoid (docs/CONFORMANCE.md of testing.nvim); reviewed 2026-10-14.
+  conformance = {
+    waivers = {
+      {
+        check = "K6",
+        level = "error",
+        text = "conform.nvim",
+        reason = "conform.nvim is an external plugin the health check requires; the minimal conformance editor has no third-party plugins",
+        expires = "2027-04-14",
+      },
+    },
+  },
 }
