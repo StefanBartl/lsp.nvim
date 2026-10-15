@@ -2626,6 +2626,216 @@ describe("lsp.core.env_links_server", function()
     end)
   end)
 
+  -- `textDocument/documentLink`: what Neovim 0.12's `gx` asks the attached
+  -- clients for. Without an answer `gx` falls through to `<cfile>`.
+  describe("document links", function()
+    local seq = 0
+
+    ---@param text string
+    ---@return table[]|nil
+    local function links_of(text)
+      seq = seq + 1
+      local buf = doc(("%s/dl%d.md"):format(root, seq), text)
+      return server.document_links({ textDocument = { uri = vim.uri_from_bufnr(buf) } })
+    end
+
+    it("returns the file an env link names, on the target span in UTF-16 columns", function()
+      local res = links_of("[t]($LSPTEST_ENV_ROOT/target.md)\n")
+      assert.are.equal(1, #res)
+      assert.are.equal(vim.uri_from_fname(root .. "/target.md"), res[1].target)
+      assert.are.same({
+        start = { line = 0, character = 4 },
+        ["end"] = { line = 0, character = 4 + #"$LSPTEST_ENV_ROOT/target.md" },
+      }, res[1].range)
+    end)
+
+    it("counts columns in UTF-16 code units, not bytes", function()
+      -- "ä" is two bytes and one UTF-16 unit; U+1F600 is four bytes and two units.
+      local res = links_of("\xC3\xA4 \xF0\x9F\x98\x80 [t]($LSPTEST_ENV_ROOT/target.md)\n")
+      assert.are.equal(1, #res)
+      assert.are.equal(1 + 1 + 2 + 1 + 4, res[1].range.start.character)
+    end)
+
+    it("does not carry the #fragment on the URI", function()
+      local res = links_of("[t]($LSPTEST_ENV_ROOT/target.md#deep-section)\n")
+      assert.are.equal(vim.uri_from_fname(root .. "/target.md"), res[1].target)
+      assert.is_nil(res[1].target:find("#", 1, true))
+      -- the range still covers the whole target, fragment included
+      assert.are.equal(
+        4 + #"$LSPTEST_ENV_ROOT/target.md#deep-section",
+        res[1].range["end"].character
+      )
+    end)
+
+    it("answers for a directory and for several links, one entry each", function()
+      vim.fn.mkdir(root .. "/dir", "p")
+      local res = links_of("[a]($LSPTEST_ENV_ROOT/dir) and [b]($LSPTEST_ENV_ROOT/target.md)\n")
+      assert.are.equal(2, #res)
+      assert.are.equal(vim.uri_from_fname(root .. "/dir"), res[1].target)
+      assert.are.equal(vim.uri_from_fname(root .. "/target.md"), res[2].target)
+    end)
+
+    it("gives no entry for a link that leads nowhere or cannot be judged", function()
+      assert.are.same({}, links_of("[g]($LSPTEST_ENV_ROOT/gone.md)\n"))
+      assert.are.same({}, links_of("[u]($LSPTEST_UNDEFINED_VAR_XYZ/target.md)\n"))
+      assert.are.same({}, links_of("[n](//host/share/x.md)\n"))
+      assert.are.same({}, links_of("[w](https://example.com/x.md)\n"))
+    end)
+
+    it("ignores links in code blocks, code spans and front matter", function()
+      assert.are.same({}, links_of("```\n[t]($LSPTEST_ENV_ROOT/target.md)\n```\n"))
+      assert.are.same({}, links_of("`[t]($LSPTEST_ENV_ROOT/target.md)`\n"))
+      assert.are.same({}, links_of("---\nref: [t]($LSPTEST_ENV_ROOT/target.md)\n---\n"))
+    end)
+
+    it("answers nil for a document Neovim does not have, and for no params", function()
+      assert.is_nil(server.document_links({ textDocument = { uri = "file:///nope/x.md" } }))
+      assert.is_nil(server.document_links({}))
+      assert.is_nil(server.document_links(nil))
+    end)
+
+    it("is advertised, without resolve, and answered through a real client", function()
+      server.setup({ env_links = true })
+      write_file(root .. "/gx.md", "[t]($LSPTEST_ENV_ROOT/target.md)\n")
+      vim.cmd.edit(vim.fn.fnameescape(root .. "/gx.md"))
+      local buf = vim.api.nvim_get_current_buf()
+      assert.is_true(vim.wait(3000, function()
+        return #vim.lsp.get_clients({ bufnr = buf, name = server.NAME }) > 0
+      end))
+      local client = vim.lsp.get_clients({ bufnr = buf, name = server.NAME })[1]
+      assert.is_table(client.server_capabilities.documentLinkProvider)
+      assert.is_falsy(client.server_capabilities.documentLinkProvider.resolveProvider)
+      local res = client:request_sync(
+        "textDocument/documentLink",
+        { textDocument = { uri = vim.uri_from_bufnr(buf) } },
+        3000,
+        buf
+      )
+      assert.is_nil(res.err)
+      assert.are.equal(vim.uri_from_fname(root .. "/target.md"), res.result[1].target)
+    end)
+  end)
+
+  -- After `file.md#` in an env link the exact anchors of the target file.
+  describe("heading completion", function()
+    local seq = 0
+
+    ---@param lines string[]
+    ---@param character? integer # UTF-16 column of the cursor. Default: the end of the last line.
+    ---@return table|nil
+    local function complete(lines, character, at_line)
+      seq = seq + 1
+      local buf = doc(("%s/hc%d.md"):format(root, seq), table.concat(lines, "\n") .. "\n")
+      local lnum = at_line or #lines - 1
+      local line = lines[lnum + 1]
+      return server.completion({
+        textDocument = { uri = vim.uri_from_bufnr(buf) },
+        position = { line = lnum, character = character or vim.str_utfindex(line, "utf-16", #line) },
+      })
+    end
+
+    ---@param result table|nil
+    ---@return string[]
+    local function labels(result)
+      local out = {}
+      for _, item in ipairs(result and result.items or {}) do
+        out[#out + 1] = item.label
+      end
+      return out
+    end
+
+    before_each(function()
+      write_file(
+        root .. "/doc.md",
+        "---\n# not a heading\n---\n# Title\n\n## Deep Section\n\n```\n# in code\n```\n"
+          .. "## Deep Section\n\n## Deep Section\n\n## Other\n"
+      )
+      write_file(root .. "/plain.txt", "# a\n")
+    end)
+
+    it("offers one item per heading in document order, repeats numbered", function()
+      local r = complete({ "[a]($LSPTEST_ENV_ROOT/doc.md#" })
+      assert.are.same(
+        { "title", "deep-section", "deep-section-1", "deep-section-2", "other" },
+        labels(r)
+      )
+      assert.is_false(r.isIncomplete)
+      assert.are.equal("Deep Section", r.items[2].detail)
+      -- document order, not alphabetical
+      local sorted = vim.deepcopy(r.items)
+      table.sort(sorted, function(x, y)
+        return x.sortText < y.sortText
+      end)
+      assert.are.same(labels(r), labels({ items = sorted }))
+    end)
+
+    it("inserts the anchor over what is typed after the #", function()
+      local line = "[a]($LSPTEST_ENV_ROOT/doc.md#de"
+      local r = complete({ line })
+      local edit = r.items[2].textEdit
+      assert.are.equal("deep-section", edit.newText)
+      assert.are.equal(#"[a]($LSPTEST_ENV_ROOT/doc.md#", edit.range.start.character)
+      assert.are.equal(#line, edit.range["end"].character)
+      assert.are.equal("deep-section", r.items[2].filterText)
+    end)
+
+    it("offers only the exact anchors, one per heading, no lenient spellings", function()
+      write_file(root .. "/odd.md", "# _emph_ word\n\n## snake_case_name\n\n## Tom & Jerry\n")
+      local r = complete({ "[a]($LSPTEST_ENV_ROOT/odd.md#" })
+      assert.are.equal(3, #r.items)
+      local seen = {}
+      for _, l in ipairs(labels(r)) do
+        assert.is_nil(seen[l])
+        seen[l] = true
+      end
+    end)
+
+    it(
+      "is silent for non-Markdown, missing files, undefined variables and network paths",
+      function()
+        assert.is_nil(complete({ "[a]($LSPTEST_ENV_ROOT/plain.txt#" }))
+        assert.is_nil(complete({ "[a]($LSPTEST_ENV_ROOT/gone.md#" }))
+        assert.is_nil(complete({ "[a]($LSPTEST_UNDEFINED_VAR_XYZ/doc.md#" }))
+        assert.is_nil(complete({ "[a](//host/share/doc.md#" }))
+        assert.is_nil(complete({ "[a]($LSPTEST_ENV_ROOT/doc.md#x#" }))
+      end
+    )
+
+    it("is silent in code blocks, code spans and front matter", function()
+      assert.is_nil(complete({ "```", "[a]($LSPTEST_ENV_ROOT/doc.md#", "```" }, nil, 1))
+      assert.is_nil(complete({ "---", "x: [a]($LSPTEST_ENV_ROOT/doc.md#", "---" }, nil, 1))
+      -- inside a closed code span; the same line without the span completes
+      local typed = "[a]($LSPTEST_ENV_ROOT/doc.md#"
+      assert.is_nil(complete({ "`" .. typed .. "` and more" }, #typed + 1))
+      assert.is_truthy(complete({ typed .. ") and more" }, #typed))
+    end)
+
+    it("sets isIncomplete only when the list is capped", function()
+      local real_max = server.MAX_COMPLETION_ITEMS
+      server.MAX_COMPLETION_ITEMS = 3
+      local ok, err = pcall(function()
+        local r = complete({ "[a]($LSPTEST_ENV_ROOT/doc.md#" })
+        assert.are.equal(3, #r.items)
+        assert.is_true(r.isIncomplete)
+        server.MAX_COMPLETION_ITEMS = 5
+        local all = complete({ "[a]($LSPTEST_ENV_ROOT/doc.md#" })
+        assert.are.equal(5, #all.items)
+        assert.is_false(all.isIncomplete)
+      end)
+      server.MAX_COMPLETION_ITEMS = real_max
+      assert.is_true(ok, tostring(err))
+    end)
+
+    it("follows the file when it changes", function()
+      local first = complete({ "[a]($LSPTEST_ENV_ROOT/doc.md#" })
+      assert.are.equal(5, #first.items)
+      write_file(root .. "/doc.md", "# Only\n")
+      -- size and mtime differ: the cached index is not served
+      local second = complete({ "[a]($LSPTEST_ENV_ROOT/doc.md#" })
+      assert.are.same({ "only" }, labels(second))
+    end)
+  end)
+
   -- What the client reports on its own, as `textDocument/diagnostic` answers
   -- it. marksman reports none of the `#fragment` links, so these are the
   -- only ones there are.
@@ -3102,11 +3312,14 @@ describe("lsp.core.env_links_server", function()
     end)
 
     it("answers nil where it has nothing to say", function()
+      write_file(root .. "/data.txt", "# x\n")
       for name, lines in pairs({
         ordinary = { "[a](./notes/" },
         undefined = { "[a]($LSPTEST_NOT_DEFINED/notes/" },
         ["no slash after a tilde"] = { "[a](~" },
-        fragment = { "[a]($LSPTEST_ENV_ROOT/target.md#" },
+        ["fragment of a missing file"] = { "[a]($LSPTEST_ENV_ROOT/gone.md#" },
+        ["fragment of a file that is no Markdown"] = { "[a]($LSPTEST_ENV_ROOT/data.txt#" },
+        ["fragment without a file"] = { "[a](#" },
         closed = { "[a]($LSPTEST_ENV_ROOT/notes/) x" },
         ["missing directory"] = { "[a]($LSPTEST_ENV_ROOT/nope/" },
         ["a file, not a directory"] = { "[a]($LSPTEST_ENV_ROOT/target.md/" },
@@ -3873,7 +4086,8 @@ describe("lsp.core.env_links_server", function()
         { "[b]($LSPTEST_ENV_ROOT/notes/ze", true, true },
         { "[c]($LSPTEST_ENV_ROOT/notes/zta", true, true },
         { "[d]($LSPTEST_NOT_DEFINED/x", true, false },
-        { "[e]($LSPTEST_ENV_ROOT/notes/a.md#he", true, false },
+        { "[e]($LSPTEST_ENV_ROOT/notes/a.md#he", true, true },
+        { "[e2]($LSPTEST_ENV_ROOT/notes/nope.md#he", true, false },
         { "`[f]($LSPTEST_ENV_ROOT/notes/` x", false, false },
         { "[g](./notes/", false, false },
         { "[h]($LSPTEST_ENV_ROOT/nope/", true, false },
@@ -3890,7 +4104,7 @@ describe("lsp.core.env_links_server", function()
       for lnum, row in ipairs(rows) do
         local line, mutes, lists = row[1], row[2], row[3]
         -- the code span row is asked inside the span, the others at the line's end
-        local byte = lnum == 6 and #"`[f]($LSPTEST_ENV_ROOT/notes/" or #line
+        local byte = lnum == 7 and #"`[f]($LSPTEST_ENV_ROOT/notes/" or #line
         vim.api.nvim_win_set_cursor(0, { lnum, byte })
         local answer = server.completion({
           textDocument = { uri = vim.uri_from_bufnr(buf) },

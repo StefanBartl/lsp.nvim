@@ -1706,11 +1706,17 @@ end
 
 ---@class LspNvim.EnvLink.HeadingIndex : table<string, integer>
 
+---@class LspNvim.EnvLink.Anchor
+---@field anchor string  # The exact GitHub-style anchor (`x`, `x-1`, ...).
+---@field line integer   # 0-based line of the heading.
+---@field title string   # The heading's text.
+
 ---@class LspNvim.EnvLink.IndexCacheEntry
 ---@field size integer
 ---@field sec integer
 ---@field nsec integer
 ---@field index LspNvim.EnvLink.HeadingIndex
+---@field anchors LspNvim.EnvLink.Anchor[]
 
 --- How many heading indexes are kept between calls.
 ---@type integer
@@ -1775,6 +1781,7 @@ function M.heading_index(path, only_cached)
   end
 
   local index = {} ---@type LspNvim.EnvLink.HeadingIndex
+  local anchors = {} ---@type LspNvim.EnvLink.Anchor[]
   -- The anchors GitHub gives, counted the way github-slugger counts them, and
   -- the lenient spellings a heading is also known by, counted among themselves:
   -- an exact anchor always wins over a lenient one, whatever the order.
@@ -1796,7 +1803,7 @@ function M.heading_index(path, only_cached)
   ---@param counter table<string, integer>
   local function numbered(anchor, n, tbl, counter)
     if anchor == "" then
-      return
+      return nil
     end
     local result = anchor
     while counter[result] ~= nil do
@@ -1805,6 +1812,7 @@ function M.heading_index(path, only_cached)
     end
     counter[result] = 0
     add(tbl, result, n)
+    return result
   end
   --- Index one heading: `title` is its source text, `n` its first line.
   ---@param title string
@@ -1821,7 +1829,12 @@ function M.heading_index(path, only_cached)
 
     -- What GitHub ends up with: emphasis and symbols dropped.
     local exact = slug(without_symbols(plain))
-    numbered(exact, n, index, occ)
+    local registered = numbered(exact, n, index, occ)
+    if registered then
+      -- The exact anchors in document order, for completion (the index above
+      -- also holds custom ids, HTML anchors and lenient spellings).
+      anchors[#anchors + 1] = { anchor = registered, line = n, title = rtrim(plain) }
+    end
 
     -- The lenient spellings (an emoji or emphasis left in, an image's alt text
     -- kept, the title with its `{#id}`, any of them trimmed). Each distinct one
@@ -1932,12 +1945,30 @@ function M.heading_index(path, only_cached)
       end
     end
   end
-  index_cache[real] = { size = st.size, sec = st.mtime.sec, nsec = st.mtime.nsec, index = index }
+  index_cache[real] =
+    { size = st.size, sec = st.mtime.sec, nsec = st.mtime.nsec, index = index, anchors = anchors }
   index_cache_order[#index_cache_order + 1] = real
   while #index_cache_order > M.INDEX_CACHE_SIZE do
     index_cache[table.remove(index_cache_order, 1)] = nil
   end
   return index
+end
+
+--- The exact GitHub-style anchors of the Markdown file at `path`, in document
+--- order (`x`, `x-1`, `x-2` for a repeated heading), each with its 0-based line
+--- and its title. Unlike `heading_index` this holds no custom ids, HTML anchors
+--- or lenient spellings: it is what a completion menu offers. nil when the file
+--- cannot be judged.
+---@param path string
+---@return LspNvim.EnvLink.Anchor[]|nil
+function M.heading_anchors(path)
+  local index = M.heading_index(path)
+  if not index then
+    return nil
+  end
+  local real = text_doc(path)
+  local hit = real and index_cache[real]
+  return hit and hit.index == index and hit.anchors or nil
 end
 
 --- The 0-based line `fragment` names in `index`, nil when it names nothing.
