@@ -706,8 +706,9 @@ hid that, and every genuinely broken link along with it.
   the slash the target goes on with. After a `$` or `${` it offers the variables
   that name an existing directory by an absolute path and a name `$NAME` can be
   written with (a secret in the environment is not one), and `$NVIM_CONFIG_DIR`,
-  which has no real variable behind it. The trigger characters are `/`, `$` and
-  `{`. Nothing is offered in code blocks, code spans (also ones that wrap over a
+  which has no real variable behind it. The trigger characters are `/`, `$`, `{` and
+  `#` (the menu of headings opens right after it). An item replaces the rest of the fragment behind the
+  cursor as well, up to the end of the target. Nothing is offered in code blocks, code spans (also ones that wrap over a
   line break) or a front matter, for a network path or a path that leads to one
   through a link in *any* of its components (`~/nas/notes/` with `nas` a link to
   a share; such an entry of a listing is shown as a plain file and never

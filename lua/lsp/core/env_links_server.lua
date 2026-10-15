@@ -797,7 +797,11 @@ function heading_items(typing, hash, lnum, line, col)
 
   local range = {
     start = { line = lnum, character = lsp_column(line, typing.start - 1 + hash) },
-    ["end"] = { line = lnum, character = lsp_column(line, col - 1) },
+    -- the rest of the fragment behind the cursor goes with it: `#de|ep` accepting `deep-1` must not give `#deep-1ep`
+    ["end"] = {
+      line = lnum,
+      character = lsp_column(line, col - 1 + #line:sub(col):match("^[^%s%)>#]*")),
+    },
   }
   local limit = M.MAX_COMPLETION_ITEMS
   local items, incomplete = {}, false
@@ -975,7 +979,10 @@ function M.server(dispatchers)
           definitionProvider = true,
           hoverProvider = true,
           documentLinkProvider = { resolveProvider = false },
-          completionProvider = { triggerCharacters = { "/", "$", "{" }, resolveProvider = false },
+          completionProvider = {
+            triggerCharacters = { "/", "$", "{", "#" },
+            resolveProvider = false,
+          },
           -- Neovim pulls diagnostics after the document was opened or changed
           -- (`LspNotify`), so it must be told about both. The content itself
           -- is read from the buffer, not from the notifications.
