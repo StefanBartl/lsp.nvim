@@ -2779,6 +2779,27 @@ describe("lsp.core.env_links_server", function()
       assert.are.equal("deep-section", r.items[2].filterText)
     end)
 
+    -- review of c6ed88a: the rest of the fragment behind the cursor is replaced too
+    it(
+      "replaces the rest of the fragment behind the cursor, up to the end of the target",
+      function()
+        local line = "[a]($LSPTEST_ENV_ROOT/doc.md#deep) and more"
+        local cursor = #"[a]($LSPTEST_ENV_ROOT/doc.md#de"
+        local r = complete({ line }, cursor)
+        local edit = r.items[3].textEdit
+        assert.are.equal("deep-section-1", edit.newText)
+        assert.are.equal(#"[a]($LSPTEST_ENV_ROOT/doc.md#", edit.range.start.character)
+        assert.are.equal(#"[a]($LSPTEST_ENV_ROOT/doc.md#deep", edit.range["end"].character)
+        -- an angled target ends at '>' and a following word is left alone
+        local angled = "[a](<$LSPTEST_ENV_ROOT/doc.md#de>) x"
+        local ra = complete({ angled }, #"[a](<$LSPTEST_ENV_ROOT/doc.md#de")
+        assert.are.equal(
+          #"[a](<$LSPTEST_ENV_ROOT/doc.md#de",
+          ra.items[1].textEdit.range["end"].character
+        )
+      end
+    )
+
     it("offers only the exact anchors, one per heading, no lenient spellings", function()
       write_file(root .. "/odd.md", "# _emph_ word\n\n## snake_case_name\n\n## Tom & Jerry\n")
       local r = complete({ "[a]($LSPTEST_ENV_ROOT/odd.md#" })
@@ -3984,7 +4005,7 @@ describe("lsp.core.env_links_server", function()
         return #vim.lsp.get_clients({ bufnr = buf, name = server.NAME }) > 0
       end))
       local caps = vim.lsp.get_clients({ bufnr = buf, name = server.NAME })[1].server_capabilities
-      assert.are.same({ "/", "$", "{" }, caps.completionProvider.triggerCharacters)
+      assert.are.same({ "/", "$", "{", "#" }, caps.completionProvider.triggerCharacters)
 
       local results = vim.lsp.buf_request_sync(buf, "textDocument/completion", {
         textDocument = { uri = vim.uri_from_bufnr(buf) },
