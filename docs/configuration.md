@@ -711,12 +711,20 @@ hid that, and every genuinely broken link along with it.
   line break) or a front matter, for a network path or a path that leads to one
   through a link in *any* of its components (`~/nas/notes/` with `nas` a link to
   a share; such an entry of a listing is shown as a plain file and never
-  stat-ed), for a variable nothing defines, or after a `#fragment` (the
-  headings of the target are not completed). A name typed so far that starts no
+  stat-ed), for a variable nothing defines, or for a target that is only a
+  `#fragment`. A name typed so far that starts no
   entry of the directory offers the whole directory (`isIncomplete`), so the
   engine's own matcher can still find it in the middle of a name. One answer
   holds at most 300 entries (`isIncomplete` past that; folders are kept first,
   also those that are links) and looks at no more than 50000 directory entries.
+  **After `file.md#`** the client offers the exact GitHub-style anchors of the
+  target, one item per heading in document order (`x`, `x-1`, `x-2` for a
+  repeated heading; the anchor is the insert text, the heading its detail; custom
+  ids, HTML anchors and the lenient spellings the diagnostics accept are not
+  offered). Only for a Markdown file that is there and readable, and with the
+  same guards as the path completion (nothing for a network path, an undefined
+  variable, a second `#`, or inside code and front matter); `isIncomplete` only
+  when the list is capped at the same 300 entries.
   Any engine that asks the language servers (blink, cmp, `omnifunc`) gets the
   answer. blink's and cmp's own path sources expand `$VAR/` and `~/` as well and
   would list every entry a second time, raw: lsp.nvim's blink pack mutes blink's
@@ -746,8 +754,13 @@ these is a length a hand-written Markdown line reaches.
 
 Link text may hold balanced brackets and escaped ones, so the badge pattern
 `[![alt]($REPOS_DIR/a.png)]($REPOS_DIR/doc.md)` answers on both its targets.
-`gx` on an env link is not covered: the client does not answer
-`textDocument/documentLink`, which Neovim 0.12's `gx` would ask.
+`gx` on an env link opens its target: the client answers
+`textDocument/documentLink` (which Neovim 0.12's `gx` asks the attached clients
+for) with one entry per env link whose target is a file or directory that exists,
+the range being the target in UTF-16 columns. A link in a code block, a code span
+or the front matter, an undefined variable, a network path and a missing file get
+no entry (`gx` then falls back to `<cfile>`). The `#fragment` is not part of the
+URI: `gx` opens the file at its top, `gd` is the way to the heading.
 
 `languages.env_links = false` switches the client and the diagnostics filter off
 together. It may also be set from `.nvim-lsp.json`, since `languages` is one of

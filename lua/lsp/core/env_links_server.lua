@@ -356,6 +356,40 @@ local function problem(resolved, target, indexes, stat)
   return nil, nil
 end
 
+--- `textDocument/documentLink`: every env link of the buffer whose target is a
+--- file or directory that is there, with the file URI to open -- what Neovim
+--- 0.12's `gx` asks the attached clients for. A link that cannot be judged
+--- (undefined variable, network path) or leads nowhere gets no entry. A
+--- `#fragment` is not carried: `gx` opens the URI as it is and cannot jump to a
+--- heading, so the file opens at the top; `gd` is the way to a heading.
+---@param params table
+---@return table[]|nil
+function M.document_links(params)
+  local uri = params and params.textDocument and params.textDocument.uri
+  local bufnr = type(uri) == "string" and loaded_buffer(uri) or nil
+  if not bufnr then
+    return nil
+  end
+  local lines = api.nvim_buf_get_lines(bufnr, 0, -1, false)
+  local opts = { stat = pull_stat() }
+  local result = {}
+  for _, link in ipairs(links.scan(lines)) do
+    -- One link that raises must not take the others with it.
+    local ok, resolved = pcall(links.resolve, link.target, opts)
+    if ok and resolved and resolved.exists == true then
+      local line = lines[link.lnum + 1]
+      result[#result + 1] = {
+        range = {
+          start = { line = link.lnum, character = lsp_column(line, link.first - 1) },
+          ["end"] = { line = link.lnum, character = lsp_column(line, link.last) },
+        },
+        target = vim.uri_from_fname(resolved.path),
+      }
+    end
+  end
+  return result
+end
+
 --- `textDocument/diagnostic`: the env links of the buffer that lead nowhere.
 ---@param params table
 ---@return table report # A full `DocumentDiagnosticReport`.
@@ -443,7 +477,10 @@ M.MAX_COMPLETION_ITEMS = 300
 M.MAX_COMPLETION_SCAN = 50000
 
 ---@type integer
-local KIND_VARIABLE, KIND_FILE, KIND_FOLDER = 6, 17, 19
+local KIND_VARIABLE, KIND_FILE, KIND_FOLDER, KIND_REFERENCE = 6, 17, 19, 18
+
+---@type fun(typing: LspNvim.EnvLink.Typing, hash: integer, lnum: integer, line: string, col: integer): table[]|nil, boolean|nil
+local heading_items
 
 ---@internal
 --- `s` lowercased for a comparison, multibyte-aware where it has to be (`Ü` is
@@ -604,8 +641,12 @@ end
 local function path_items(typing, lnum, line, col)
   -- Either separator ends the directory part, as it does in `links.resolve`.
   local dir, partial = typing.text:match("^(.*[/\\])([^/\\]*)$")
-  if not dir or typing.text:find("#", 1, true) then
-    return nil, nil -- no separator yet, or a fragment: headings are not completed here
+  if not dir then
+    return nil, nil -- no separator yet
+  end
+  local hash = typing.text:find("#", 1, true)
+  if hash then
+    return heading_items(typing, hash, lnum, line, col)
   end
   local resolved = links.resolve(dir)
   if not resolved or not resolved.exists or not is_directory(resolved.path) then
@@ -719,6 +760,61 @@ local function path_items(typing, lnum, line, col)
   table.sort(items, function(a, b)
     return a.sortText < b.sortText
   end)
+  return items, incomplete
+end
+
+---@internal
+--- The exact anchors of the Markdown file the link names, once the target has a
+--- `#`: one item per heading in document order, the anchor as insert text.
+--- Nothing for a file that is not Markdown, not there or not readable, for an
+--- undefined variable or a network path (`links.resolve` says "cannot tell"),
+--- for a target that is only a `#fragment`, or for a second `#`.
+---@param typing LspNvim.EnvLink.Typing
+---@param hash integer # Byte index (1-based) of the `#` in `typing.text`.
+---@param lnum integer
+---@param line string
+---@param col integer
+---@return table[]|nil items
+---@return boolean|nil incomplete
+function heading_items(typing, hash, lnum, line, col)
+  local target, fragment = typing.text:sub(1, hash - 1), typing.text:sub(hash + 1)
+  if target == "" or fragment:find("#", 1, true) then
+    return nil, nil
+  end
+  local resolved = links.resolve(target)
+  if
+    not resolved
+    or resolved.exists ~= true
+    or not links.is_markdown(resolved.path)
+    or vim.fn.filereadable(resolved.path) ~= 1
+  then
+    return nil, nil
+  end
+  local anchors = links.heading_anchors(resolved.path)
+  if not anchors or #anchors == 0 then
+    return nil, nil
+  end
+
+  local range = {
+    start = { line = lnum, character = lsp_column(line, typing.start - 1 + hash) },
+    ["end"] = { line = lnum, character = lsp_column(line, col - 1) },
+  }
+  local limit = M.MAX_COMPLETION_ITEMS
+  local items, incomplete = {}, false
+  for i, a in ipairs(anchors) do
+    if #items >= limit then
+      incomplete = true
+      break
+    end
+    items[#items + 1] = {
+      label = a.anchor,
+      kind = KIND_REFERENCE,
+      detail = a.title ~= "" and a.title or nil,
+      sortText = ("%06d"):format(i),
+      filterText = a.anchor,
+      textEdit = { newText = a.anchor, range = range },
+    }
+  end
   return items, incomplete
 end
 
@@ -871,12 +967,14 @@ function M.server(dispatchers)
       or method == "textDocument/hover" and M.hover
       or method == "textDocument/diagnostic" and M.diagnostics
       or method == "textDocument/completion" and M.completion
+      or method == "textDocument/documentLink" and M.document_links
       or nil
     if method == "initialize" then
       callback(nil, {
         capabilities = {
           definitionProvider = true,
           hoverProvider = true,
+          documentLinkProvider = { resolveProvider = false },
           completionProvider = { triggerCharacters = { "/", "$", "{" }, resolveProvider = false },
           -- Neovim pulls diagnostics after the document was opened or changed
           -- (`LspNotify`), so it must be told about both. The content itself
