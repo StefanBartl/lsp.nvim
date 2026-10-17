@@ -89,13 +89,90 @@ describe("lsp.integrations.mason.ensure_install.project", function()
       for _, list in ipairs({ "lsp", "dap", "linter", "formatter" }) do
         local defaults = require(ENSURE .. ".defaults." .. list)
         for name in pairs(defaults) do
-          if type(project.FILETYPES[name]) ~= "table" or #project.FILETYPES[name] == 0 then
+          local fts = project.FILETYPES[name]
+          local listed = type(fts) == "table" and #fts > 0
+          if not listed and not project.UNSCANNED[name] then
             missing[#missing + 1] = list .. ":" .. name
           end
         end
       end
       table.sort(missing)
       assert.are.same({}, missing)
+    end)
+
+    -- UNSCANNED is "left out on purpose": a name there must be a default
+    -- package and must not also carry FILETYPES (it would then be reported).
+    it("UNSCANNED names are default packages without a FILETYPES entry", function()
+      local project = require(MOD)
+      local defaults = {}
+      for _, list in ipairs({ "lsp", "dap", "linter", "formatter" }) do
+        for name in pairs(require(ENSURE .. ".defaults." .. list)) do
+          defaults[name] = true
+        end
+      end
+      local wrong = {}
+      for name in pairs(project.UNSCANNED) do
+        if not defaults[name] or project.FILETYPES[name] ~= nil then
+          wrong[#wrong + 1] = name
+        end
+      end
+      table.sort(wrong)
+      assert.are.same({}, wrong)
+      assert.is_not_nil(project.UNSCANNED["asmfmt"])
+      assert.is_not_nil(project.UNSCANNED["jsonld-lsp"])
+    end)
+
+    -- lib.nvim's scan maps a file by its name alone
+    -- (`vim.filetype.match({ filename = ... })`). A filetype no filename maps
+    -- to is never reported, so every one used here needs a sample that this
+    -- Neovim maps to it. Adding `asm` (`.asm`/`.s` need the buffer), `jsonld`
+    -- (unknown) or `bash` (`.bash` gives `sh`) fails here.
+    it("uses only filetypes a filename maps to", function()
+      local SAMPLES = {
+        astro = "a.astro",
+        c = "a.c",
+        cmake = "CMakeLists.txt",
+        cpp = "a.cpp",
+        cs = "a.cs",
+        css = "a.css",
+        go = "a.go",
+        html = "a.html",
+        java = "a.java",
+        javascript = "a.js",
+        javascriptreact = "a.jsx",
+        json = "a.json",
+        jsonc = "a.jsonc",
+        less = "a.less",
+        lua = "a.lua",
+        markdown = "a.md",
+        mysql = "a.mysql",
+        nasm = "a.nasm",
+        python = "a.py",
+        query = "queries/lua/highlights.scm",
+        rust = "a.rs",
+        scss = "a.scss",
+        sh = "a.sh",
+        sql = "a.sql",
+        svelte = "a.svelte",
+        typescript = "a.ts",
+        typescriptreact = "a.tsx",
+        vim = "a.vim",
+        vue = "a.vue",
+        xml = "a.xml",
+        yaml = "a.yaml",
+        zig = "a.zig",
+      }
+      local dead = {}
+      for name, fts in pairs(require(MOD).FILETYPES) do
+        for _, ft in ipairs(fts) do
+          local sample = SAMPLES[ft]
+          if not sample or vim.filetype.match({ filename = sample }) ~= ft then
+            dead[#dead + 1] = name .. ":" .. ft
+          end
+        end
+      end
+      table.sort(dead)
+      assert.are.same({}, dead)
     end)
   end)
 
@@ -139,6 +216,51 @@ describe("lsp.integrations.mason.ensure_install.project", function()
       ensure.has_dotnet = orig
       assert.is_false(vim.list_contains(without, "omnisharp"))
       assert.is_true(vim.list_contains(with, "omnisharp"))
+    end)
+
+    -- Mason's luaformatter has no Windows build (`bin/lua-format.bat`
+    -- missing): reported, it would be "missing" in every Lua root forever.
+    it("drops luaformatter on Windows, for the report and the install path", function()
+      local ensure = require(ENSURE)
+      local orig = ensure.is_windows
+      ensure.is_windows = function()
+        return true
+      end
+      local on_windows = ensure.wanted(nil)
+      local gate_windows = ensure.gate_by_system_deps("luaformatter")
+      ensure.is_windows = function()
+        return false
+      end
+      local elsewhere = ensure.wanted(nil)
+      local gate_elsewhere = ensure.gate_by_system_deps("luaformatter")
+      ensure.is_windows = orig
+      assert.is_false(vim.list_contains(on_windows, "luaformatter"))
+      assert.is_false(gate_windows)
+      assert.is_true(vim.list_contains(elsewhere, "luaformatter"))
+      assert.is_true(gate_elsewhere)
+    end)
+
+    -- Every report runs wanted(); on Windows a negative executable() walks
+    -- PATH x PATHEXT. Asked once per PATH value, again when PATH changes.
+    it("asks executable() once per binary and PATH value", function()
+      local ensure = require(ENSURE)
+      local orig_exec, orig_path = vim.fn.executable, vim.env.PATH
+      local asked = {}
+      vim.fn.executable = function(bin)
+        asked[bin] = (asked[bin] or 0) + 1
+        return 0
+      end
+      local ok, err = pcall(function()
+        ensure.wanted(nil)
+        ensure.wanted(nil)
+        assert.are.equal(1, asked.dotnet)
+        vim.env.PATH = (orig_path or "") .. (vim.fn.has("win32") == 1 and ";" or ":") .. "spec-dir"
+        ensure.wanted(nil)
+        assert.are.equal(2, asked.dotnet)
+      end)
+      vim.fn.executable = orig_exec
+      vim.env.PATH = orig_path
+      assert(ok, err)
     end)
   end)
 
@@ -196,20 +318,28 @@ describe("lsp.integrations.mason.ensure_install.project", function()
   end)
 
   describe("setup()", function()
-    it("registers with deps.project, also with ensure_install off", function()
+    -- One setup() per process (a second one is refused), so one case checks
+    -- both: it registers with ensure_install off, and it hands
+    -- `mason.overrides` on -- `register(nil)` would report luacheck again.
+    it("registers with deps.project (ensure_install off), mason.overrides applied", function()
       local stub, calls = lib_stub()
       package.loaded[LIB] = stub
-      require("lsp").setup({})
+      package.preload[MASON] = nil
+      package.loaded[MASON] = {}
+      require("lsp").setup({ mason = { overrides = { linters = { luacheck = false } } } })
       local owners = {}
       for _, call in ipairs(calls) do
         owners[#owners + 1] = call.owner
       end
       assert.are.same({ "lsp.nvim" }, owners)
+      local lua = names(calls[1].tools().lua)
+      assert.is_true(vim.list_contains(lua, "lua-language-server"))
+      assert.is_false(vim.list_contains(lua, "luacheck"))
     end)
   end)
 
   describe(":checkhealth lsp", function()
-    ---@type { level: string, msg: string }[]
+    ---@type { level: string, msg: string, advice: string[]|nil }[]
     local emitted
     local saved_health
 
@@ -217,8 +347,9 @@ describe("lsp.integrations.mason.ensure_install.project", function()
       emitted = {}
       saved_health = vim.health
       local function rec(level)
-        return function(msg)
-          emitted[#emitted + 1] = { level = level, msg = msg }
+        return function(msg, advice)
+          local list = type(advice) == "string" and { advice } or advice
+          emitted[#emitted + 1] = { level = level, msg = msg, advice = list }
         end
       end
       vim.health = {
@@ -253,22 +384,63 @@ describe("lsp.integrations.mason.ensure_install.project", function()
       assert.are.equal("warn", entry.level)
     end)
 
-    it("says ok once lsp.nvim is registered", function()
+    it("says ok once lsp.nvim is registered and Mason loads", function()
       local stub = lib_stub()
       package.loaded[LIB] = stub
+      package.preload[MASON] = nil
+      package.loaded[MASON] = {}
       require(MOD).register(nil)
       require("lsp.health").check()
-      local entry = find("registered with lib.nvim.deps.project")
+      local entry = find("Mason packages registered with lib.nvim.deps.project")
       assert.is_not_nil(entry)
       assert.are.equal("ok", entry.level)
+    end)
+
+    -- Registered, but the table is empty without Mason: "ok" would claim the
+    -- report lists packages it cannot.
+    it("says Mason is not loadable instead of ok when it is missing", function()
+      package.loaded[LIB] = lib_stub()
+      require(MOD).register(nil)
+      require("lsp.health").check()
+      assert.is_nil(find("Mason packages registered with lib.nvim.deps.project"))
+      local entry = find("Mason is not loadable")
+      assert.is_not_nil(entry)
+      assert.are.equal("info", entry.level)
     end)
 
     it("says not registered before setup()", function()
       package.loaded[LIB] = lib_stub()
       require("lsp.health").check()
-      local entry = find("not registered with lib.nvim.deps.project")
+      local entry = find("not registered with lib.nvim.deps.project (setup() has not run)")
       assert.is_not_nil(entry)
       assert.are.equal("info", entry.level)
+    end)
+
+    -- `:Lazy reload lib.nvim` after setup(): lib.nvim's list is empty again,
+    -- but setup() ran and a second one is refused -- a restart is the fix.
+    it("says restart, not 'setup() has not run', when lib.nvim lost the registration", function()
+      package.loaded[LIB] = lib_stub()
+      require(MOD).register(nil)
+      package.loaded[LIB] = lib_stub() -- the reloaded lib.nvim: nothing registered
+      require("lsp.health").check()
+      assert.is_nil(find("setup() has not run"))
+      local entry = find("although setup() ran")
+      assert.is_not_nil(entry)
+      assert.are.equal("warn", entry.level)
+      local advice = table.concat(entry.advice, "\n")
+      assert.is_truthy(advice:find("reloaded", 1, true))
+      assert.is_truthy(advice:find("Restart Neovim", 1, true))
+    end)
+
+    it("says restart when lib.nvim gained deps.project after setup()", function()
+      absent(LIB)
+      require(MOD).register(nil)
+      package.preload[LIB] = nil
+      package.loaded[LIB] = lib_stub()
+      require("lsp.health").check()
+      local entry = find("although setup() ran")
+      assert.is_not_nil(entry)
+      assert.is_truthy(table.concat(entry.advice, "\n"):find("updated since", 1, true))
     end)
   end)
 end)

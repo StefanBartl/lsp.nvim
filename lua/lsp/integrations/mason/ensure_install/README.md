@@ -17,11 +17,21 @@ before it installs anything.
 
 - The packages are `ensure_install.wanted(mason.overrides)`: the four default
   lists, your overrides on top, minus what the dependency gate refuses here
-  (`omnisharp` without `dotnet`, …).
+  (`omnisharp` without `dotnet`, `luaformatter` on Windows -- Mason has no
+  Windows build of it, …). The gate is the same for installing and for the
+  report. Its `PATH` lookups are cached per `PATH` value, so a report on
+  every `DirChanged` stays cheap; a binary added to a directory already on
+  `PATH` is seen after a restart.
 - Which filetypes a package serves is `project.FILETYPES`; a package without
   an entry there (one you switched on through `mason.overrides`) is not
-  registered.
+  registered. The scan maps files by name only, so only filetypes a filename
+  can map to are used: `asm-lsp` is reported for `.nasm` files, not for
+  `.asm`/`.s` (those need the buffer's content). `asmfmt` and `jsonld-lsp`
+  are deliberately not registered (`project.UNSCANNED`): no filename maps to
+  their filetypes.
 - Without Mason the table is empty, rather than a "could not be checked" line
-  per package.
+  per package; `:checkhealth lsp` says Mason is not loadable.
 - An older lib.nvim without `lib.nvim.deps.project` is no error: the step does
   nothing and `:checkhealth lsp` (section *Project tools*) says to update.
+  After `:Lazy reload lib.nvim` the registration is gone and a second
+  `setup()` is refused: the health check says to restart Neovim.

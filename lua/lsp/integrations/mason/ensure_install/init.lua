@@ -128,14 +128,47 @@ local FORMATTER_DEFAULTS = require("lsp.integrations.mason.ensure_install.defaul
 -- Dependency guards and name helpers
 -- =====================================================================================
 
+--- `vim.fn.executable` results, valid for one value of `PATH`.
+---
+--- `wanted()` runs on every `:Lib deps project` report -- with lib.nvim's
+--- `auto` on, every `DirChanged` -- and on Windows one negative lookup walks
+--- `PATH` times `PATHEXT` (`executable("dotnet")` measured ~13 ms, asked twice
+--- per report). Keyed by `PATH`, so a `PATH` change (dotnet installed and
+--- `PATH` extended in this session) is still seen; a binary dropped into a
+--- directory already on `PATH` is seen after a restart.
+---@type { path: string|nil, found: table<string, boolean> }
+local EXECUTABLE = { path = nil, found = {} }
+
+---@param bin string
+---@return boolean
+local function executable(bin)
+  local path = vim.env.PATH or ""
+  if EXECUTABLE.path ~= path then
+    EXECUTABLE.path = path
+    EXECUTABLE.found = {}
+  end
+  local found = EXECUTABLE.found[bin]
+  if found == nil then
+    found = vim.fn.executable(bin) == 1
+    EXECUTABLE.found[bin] = found
+  end
+  return found
+end
+
 ---@return boolean
 function M.has_dotnet()
-  return vim.fn.executable("dotnet") == 1
+  return executable("dotnet")
 end
 
 ---@return boolean
 local function has_maven()
-  return vim.fn.executable("mvn") == 1
+  return executable("mvn")
+end
+
+--- Replaceable for the spec, like `has_dotnet`.
+---@return boolean
+function M.is_windows()
+  return vim.fn.has("win32") == 1
 end
 
 --- Apply external dependency heuristics to avoid failing installs.
@@ -152,6 +185,15 @@ local function gate_by_system_deps(name)
     if not has_maven() then
       return false, "requires 'mvn' on PATH"
     end
+  end
+  -- Mason's `luaformatter` has no Windows build: the install fails with
+  -- `Tried to link bin "lua-format" to non-existent target "bin/lua-format.bat"`.
+  -- Gated here rather than dropped from the defaults, so both the install
+  -- path and `wanted()` (the `:Lib deps project` report) skip it: a package
+  -- that can never install would otherwise be reported missing in every Lua
+  -- root, and `:Lib deps project install` would retry and fail forever.
+  if name == "luaformatter" and M.is_windows() then
+    return false, "no Windows build in Mason"
   end
   if name == "node-debug2-adapter" then
     return false, "deprecated; prefer 'js-debug-adapter'"
