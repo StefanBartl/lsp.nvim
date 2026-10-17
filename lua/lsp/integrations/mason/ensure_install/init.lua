@@ -386,6 +386,34 @@ function M.enable(cfg)
   session_end()
 end
 
+--- The packages `enable(cfg)` would ask Mason for: the four category defaults
+--- with `overrides` merged on top, only the ones switched on, minus what
+--- `gate_by_system_deps` refuses on this machine. Sorted, de-duplicated
+--- across categories. Reads `PATH`, installs nothing.
+---@param overrides {lsp?:Cfg.Mason.EnsureMap, dap?:Cfg.Mason.EnsureMap, linters?:Cfg.Mason.EnsureMap, formatters?:Cfg.Mason.EnsureMap}|nil
+---@return string[] packages
+function M.wanted(overrides)
+  overrides = type(overrides) == "table" and overrides or {}
+  local set = {}
+  local categories = {
+    { LSP_DEFAULTS, overrides.lsp },
+    { DAP_DEFAULTS, overrides.dap },
+    { LINTER_DEFAULTS, overrides.linters },
+    { FORMATTER_DEFAULTS, overrides.formatters },
+  }
+  for _, category in ipairs(categories) do
+    local map = merge(category[1], type(category[2]) == "table" and category[2] or nil)
+    for name, want in pairs(map) do
+      if want and gate_by_system_deps(name) then
+        set[name] = true
+      end
+    end
+  end
+  local out = vim.tbl_keys(set)
+  table.sort(out)
+  return out
+end
+
 -- Optional export if one wants to call the guards elsewhere
 M.gate_by_system_deps = gate_by_system_deps
 

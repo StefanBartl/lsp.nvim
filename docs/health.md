@@ -4,7 +4,7 @@
 :checkhealth lsp
 ```
 
-Seven sections, in the order you need them when something is wrong.
+Nine sections, in the order you need them when something is wrong.
 
 | Section | Answers |
 | ------- | ------- |
@@ -13,10 +13,12 @@ Seven sections, in the order you need them when something is wrong.
 | Keymap collisions | Whether the keymap catalogue still owns its keys right now — or you, or another plugin, also claimed one |
 | Servers | Installed vs. configured vs. set up vs. attached — here and in total |
 | Ecosystem | Which third-party plugins the adapters can see |
+| Soft dependencies | Optional plugins lsp.nvim uses when present (nvim-cmp's capabilities, nvim-ts-autotag) |
+| Project tools | Whether `:Lib deps project` knows lsp.nvim's Mason packages — a warning when lib.nvim is too old to have `lib.nvim.deps.project` |
 | Diagnostics | Whether `vim.diagnostic.config()` was applied, and who contributed which keys |
 | Per-buffer diagnosis | Points at `:LspDoctor`, which answers the buffer-level questions |
 
-All seven run even when one of them cannot. A section whose module raises turns
+All nine run even when one of them cannot. A section whose module raises turns
 into a single error line — *"this section failed: …"*, with "the sections after
 it still ran" beside it — and the report continues. A health check that dies on
 the first broken module is useless in precisely the case it exists for.
