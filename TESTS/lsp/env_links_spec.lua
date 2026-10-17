@@ -186,13 +186,32 @@ describe("lsp.core.env_links", function()
       assert.are.equal(vim.fs.normalize(vim.fn.stdpath("config")) .. "/init.lua", r.path)
     end)
 
-    it("lets a real variable win over the well-known directory", function()
+    -- The registry takes $NVIM_CONFIG_DIR from stdpath("config"): an inherited
+    -- variable (a parent Neovim with another NVIM_APPNAME) can be stale.
+    it("takes $NVIM_CONFIG_DIR from stdpath, not from a stale variable", function()
       local saved = vim.env.NVIM_CONFIG_DIR
       vim.env.NVIM_CONFIG_DIR = root
       local r = links.resolve("$NVIM_CONFIG_DIR/notes/a.md")
       vim.env.NVIM_CONFIG_DIR = saved
 
-      assert.are.equal(root .. "/notes/a.md", r.path)
+      assert.are.equal(vim.fs.normalize(vim.fn.stdpath("config")) .. "/notes/a.md", r.path)
+    end)
+
+    -- The roots come from lib.nvim's named-roots registry, not from a list of
+    -- this plugin: a root another plugin registered resolves with no
+    -- environment variable behind it, and stops once it is unregistered.
+    it("resolves a root registered in the named-roots registry", function()
+      local roots = require("lib.nvim.fs.roots")
+      local unregister = roots.register("LSPTEST_REGISTERED", root)
+      local plain = links.resolve("$LSPTEST_REGISTERED/notes/a.md")
+      local braced = links.resolve("${LSPTEST_REGISTERED}/notes/a.md")
+      local bare = links.resolve("$LSPTEST_REGISTERED")
+      unregister()
+
+      assert.are.equal(root .. "/notes/a.md", plain.path)
+      assert.are.equal(root .. "/notes/a.md", braced.path)
+      assert.are.equal(root, bare.path)
+      assert.is_nil(links.resolve("$LSPTEST_REGISTERED/notes/a.md"))
     end)
 
     it("resolves ~ against the home directory", function()

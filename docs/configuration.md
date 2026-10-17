@@ -743,8 +743,11 @@ Resolution goes to **gopath.nvim first** when it is installed and has
 `${VAR}`, both separators, and "well-known" directories such as
 `$NVIM_CONFIG_DIR` that resolve with no real environment variable -- so a link
 resolves in the editor exactly as `gP` resolves it. Without gopath, a built-in
-resolver covers the real environment, `$NVIM_CONFIG_DIR` (from
-`stdpath("config")`) and `~`, and deliberately no more.
+resolver covers the roots of lib.nvim's named-roots registry (`$REPOS_DIR`,
+`$NVIM_CONFIG_DIR` from `stdpath("config")`, the user's and those other plugins
+registered; this plugin never calls its `setup()`), then the real environment,
+and `~`, and deliberately no more. A real `NVIM_CONFIG_DIR` variable no longer
+wins over the registry's root: an inherited one can be stale.
 
 A variable is followed by a separator or by nothing: `${VAR}foo` is the value
 with `foo` glued on in a shell, not a folder below it, so it is left alone
