@@ -5,6 +5,8 @@
 
 ---@type Cfg.Mason.EnsureMap
 return {
+  -- No Windows build in Mason; `gate_by_system_deps` skips it there (install
+  -- and `:Lib deps project` report alike).
   ["luaformatter"] = true,
   ["yamlfix"] = true,
   ["yamlfmt"] = true,

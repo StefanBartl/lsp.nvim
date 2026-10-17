@@ -41,16 +41,22 @@ end
 
 --- Mason package -> the filetypes it serves. Covers every package of the
 --- `ensure_install` default lists (also the ones switched off by default,
---- since `mason.overrides` can switch them on).
+--- since `mason.overrides` can switch them on), except those in `UNSCANNED`.
+---
+--- Only filetypes lib.nvim's scan can produce belong here: it maps a file by
+--- its name alone (`vim.filetype.match({ filename = ... })`, no content), so
+--- `asm` (`.asm`, `.s`, `.S` need the buffer), `jsonld` (unknown to Neovim)
+--- and `bash` (`.bash` and `.bashrc` give `sh`) would never be reported. The
+--- spec pins every filetype here to a filename that maps to it.
 ---@type table<string, string[]>
 M.FILETYPES = {
   -- LSP servers
-  ["asm-lsp"] = { "asm", "nasm" },
+  ["asm-lsp"] = { "nasm" },
   ["ast-grep"] = concat(
     JS_TS,
     { "c", "cpp", "cs", "css", "go", "html", "java", "lua", "python", "rust" }
   ),
-  ["bash-language-server"] = { "sh", "bash" },
+  ["bash-language-server"] = { "sh" },
   ["cmake-language-server"] = { "cmake" },
   ["csharp-language-server"] = { "cs" },
   ["css-lsp"] = { "css", "scss", "less" },
@@ -58,7 +64,6 @@ M.FILETYPES = {
   ["html-lsp"] = { "html" },
   ["htmx-lsp"] = { "html" },
   ["json-lsp"] = { "json", "jsonc" },
-  ["jsonld-lsp"] = { "jsonld" },
   ["lua-language-server"] = { "lua" },
   ["markdown-oxide"] = { "markdown" },
   ["marksman"] = { "markdown" },
@@ -78,7 +83,7 @@ M.FILETYPES = {
   ["yaml-language-server"] = { "yaml" },
 
   -- DAP adapters
-  ["bash-debug-adapter"] = { "sh", "bash" },
+  ["bash-debug-adapter"] = { "sh" },
   ["codelldb"] = { "c", "cpp", "rust", "zig" },
   ["firefox-debug-adapter"] = JS_TS,
   ["js-debug-adapter"] = JS_TS,
@@ -99,7 +104,6 @@ M.FILETYPES = {
   ["yamllint"] = { "yaml" },
 
   -- Formatters
-  ["asmfmt"] = { "asm" },
   ["luaformatter"] = { "lua" },
   ["markdown-toc"] = { "markdown" },
   ["mdformat"] = { "markdown" },
@@ -112,6 +116,16 @@ M.FILETYPES = {
   ["xmlformatter"] = { "xml" },
   ["yamlfix"] = { "yaml" },
   ["yamlfmt"] = { "yaml" },
+}
+
+--- Default packages deliberately left out of `FILETYPES`: every filetype
+--- they serve is one the filename-only scan never produces, so an entry would
+--- be dead. Kept as a list (with the reason) so the spec can tell "left out on
+--- purpose" from "forgotten".
+---@type table<string, string>
+M.UNSCANNED = {
+  ["asmfmt"] = "Go assembler (`asm`): `.s`/`.asm` map to no filetype by name",
+  ["jsonld-lsp"] = "`jsonld`: Neovim has no `.jsonld` detection and lsp.nvim adds none",
 }
 
 --- Turn a package list into lib.nvim's `{ [filetype] = { { mason = pkg }, ... } }`.
@@ -137,6 +151,13 @@ end
 ---@type "registered"|"unavailable"|nil
 local STATE = nil
 
+--- Whether `mason-registry` loads. Without it the registered table is empty;
+--- `:checkhealth lsp` asks the same question to say so.
+---@return boolean
+function M.mason_loadable()
+  return (pcall(require, "mason-registry"))
+end
+
 --- Register the tools table with `lib.nvim.deps.project`.
 ---
 --- Returns false and the reason when that module is not there (lib.nvim
@@ -151,7 +172,7 @@ function M.register(overrides)
     return false, "lib.nvim.deps.project not available (lib.nvim too old)"
   end
   project.register_tools(M.OWNER, function()
-    if not pcall(require, "mason-registry") then
+    if not M.mason_loadable() then
       return {}
     end
     return M.tools(require("lsp.integrations.mason.ensure_install").wanted(overrides))
@@ -161,7 +182,9 @@ function M.register(overrides)
 end
 
 --- What the last `register` call found: `"registered"`, `"unavailable"`, or
---- nil when it has not run.
+--- nil when it has not run. `:checkhealth lsp` holds it against what
+--- lib.nvim lists now, which tells "setup() has not run" from "lib.nvim was
+--- reloaded (or updated) after setup() ran".
 ---@return "registered"|"unavailable"|nil
 function M.state()
   return STATE

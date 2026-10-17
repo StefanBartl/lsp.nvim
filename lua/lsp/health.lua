@@ -695,10 +695,13 @@ end
 ---@internal
 --- Whether `:Lib deps project` knows lsp.nvim's Mason packages.
 ---
---- Asked of lib.nvim itself rather than of what `setup()` remembered, so the
---- answer holds after a `:Lazy reload lib.nvim` too. `lib.nvim.deps.project`
---- is newer than the rest of lib.nvim this plugin uses: its absence means an
---- old lib.nvim, which still runs everything else -- a warning, not an error.
+--- What lib.nvim lists now is held against what `setup()` found
+--- (`project.state()`): a `:Lazy reload lib.nvim` after setup() empties
+--- lib.nvim's list while lsp.nvim still remembers registering, and a second
+--- setup() is refused -- that case needs a restart, not a setup() call.
+--- `lib.nvim.deps.project` is newer than the rest of lib.nvim this plugin
+--- uses: its absence means an old lib.nvim, which still runs everything else
+--- -- a warning, not an error.
 ---@return nil
 local function check_project_tools()
   local ok, project = pcall(require, "lib.nvim.deps.project")
@@ -709,12 +712,30 @@ local function check_project_tools()
     })
     return
   end
-  local owner = require("lsp.integrations.mason.ensure_install.project").OWNER
-  if vim.list_contains(project.registered(), owner) then
-    health.ok("Mason packages registered with lib.nvim.deps.project (`:Lib deps project`)")
-  else
-    health.info("Mason packages not registered with lib.nvim.deps.project (setup() has not run)")
+  local mine = require("lsp.integrations.mason.ensure_install.project")
+  if vim.list_contains(project.registered(), mine.OWNER) then
+    if mine.mason_loadable() then
+      health.ok("Mason packages registered with lib.nvim.deps.project (`:Lib deps project`)")
+    else
+      health.info(
+        "Registered with lib.nvim.deps.project, but Mason is not loadable: "
+          .. "`:Lib deps project` lists no Mason packages until mason.nvim is installed"
+      )
+    end
+    return
   end
+  local state = mine.state()
+  if state == nil then
+    health.info("Mason packages not registered with lib.nvim.deps.project (setup() has not run)")
+    return
+  end
+  local why = state == "registered"
+      and "lib.nvim was reloaded after setup() (`:Lazy reload lib.nvim`), which dropped the registration"
+    or "lib.nvim had no deps.project when setup() ran (updated since)"
+  health.warn("Mason packages not registered with lib.nvim.deps.project, although setup() ran", {
+    why,
+    "Restart Neovim: setup() registers once, a second setup() is refused.",
+  })
 end
 
 ---@internal

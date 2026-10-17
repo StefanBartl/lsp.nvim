@@ -14,7 +14,7 @@ Nine sections, in the order you need them when something is wrong.
 | Servers | Installed vs. configured vs. set up vs. attached — here and in total |
 | Ecosystem | Which third-party plugins the adapters can see |
 | Soft dependencies | Optional plugins lsp.nvim uses when present (nvim-cmp's capabilities, nvim-ts-autotag) |
-| Project tools | Whether `:Lib deps project` knows lsp.nvim's Mason packages — a warning when lib.nvim is too old to have `lib.nvim.deps.project` |
+| Project tools | Whether `:Lib deps project` knows lsp.nvim's Mason packages — a note when Mason is not loadable (the table is then empty), a warning when lib.nvim is too old to have `lib.nvim.deps.project` or lost the registration after `setup()` (`:Lazy reload lib.nvim`: restart Neovim) |
 | Diagnostics | Whether `vim.diagnostic.config()` was applied, and who contributed which keys |
 | Per-buffer diagnosis | Points at `:LspDoctor`, which answers the buffer-level questions |
 
