@@ -81,7 +81,11 @@ The project argument completes `.`, every folder directly under `$REPOS_DIR`
 a stale one can be cleared. A path-like lead (`$REPOS_DIR/x`, `~/x`, `E:/x`)
 goes to Neovim's own directory completion. A value that is not an existing
 directory is refused with a message rather than stored, so a typo cannot create
-an override that matches nothing.
+an override that matches nothing. `$REPOS_DIR` (and any `$NAME` / `${NAME}` root)
+is read from lib.nvim's named-roots registry, so a root another plugin or your
+`require("lib.nvim.fs.roots").setup()` defines works without an environment
+variable; the registry configuration stays yours, this plugin never calls
+`setup()`.
 
 **OFF means two things**, because "workspace diagnostics" is two: this plugin no
 longer sends the workspace to the server (and never starts the walk, so the

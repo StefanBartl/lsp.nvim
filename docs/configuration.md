@@ -585,7 +585,9 @@ attach = {
 }
 ```
 
-- `~` and `$VAR` expand, so one entry serves every machine. On Windows the
+- `~` and `$VAR` expand (a root of lib.nvim's named-roots registry such as
+  `$REPOS_DIR` first, any other environment variable after it), so one entry
+  serves every machine. On Windows the
   comparison ignores case and separator style.
 - The most specific folder wins, and a file is governed by the folder that
   contains it (the folder itself included). `/x/vault` does not cover
