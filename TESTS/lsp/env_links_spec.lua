@@ -3691,6 +3691,23 @@ describe("lsp.core.env_links_server", function()
       assert.is_truthy(vim.tbl_contains(labels(r), "$NVIM_CONFIG_DIR"))
     end)
 
+    -- The variable names come from lib.nvim's named-roots registry, not from a
+    -- list of this plugin: a root another plugin registered (no environment
+    -- variable behind it) is offered, in both spellings.
+    it("offers a root registered in the named-roots registry", function()
+      local roots = require("lib.nvim.fs.roots")
+      local unregister = roots.register("LSPTEST_REGISTERED", root)
+      local ok, plain = pcall(complete, { "[a]($LSPTEST_REGI" })
+      local ok_braced, braced = pcall(complete, { "[a](${LSPTEST_REGI" })
+      unregister()
+      local gone = complete({ "[a]($LSPTEST_REGI" })
+      assert.is_true(ok, tostring(plain))
+      assert.is_true(ok_braced, tostring(braced))
+      assert.are.same({ "$LSPTEST_REGISTERED" }, labels(plain))
+      assert.are.same({ "${LSPTEST_REGISTERED}" }, labels(braced))
+      assert.is_falsy(vim.tbl_contains(labels(gone) or {}, "$LSPTEST_REGISTERED"))
+    end)
+
     -- A typed prefix that is the start of no name: the engine's (fuzzy) matcher
     -- gets the whole list, as its own path source is muted here.
     it("offers the whole directory when what is typed starts no name", function()
