@@ -441,6 +441,13 @@ local function bootstrap(cfg)
       })
     end)
   end
+  -- Independent of `ensure_install`: this installs nothing, it only tells
+  -- `:Lib deps project` which Mason packages a filetype wants. An older
+  -- lib.nvim without `deps.project` is not an error; `:checkhealth lsp` says
+  -- to update.
+  step("project tools (lib.nvim deps.project)", function()
+    require("lsp.integrations.mason.ensure_install.project").register(cfg.mason.overrides)
+  end)
 
   -- After the servers are enabled: it starts a client of its own, and only for
   -- buffers gitsigns is attached to.

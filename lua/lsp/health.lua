@@ -693,6 +693,31 @@ local function check_soft_dependencies()
 end
 
 ---@internal
+--- Whether `:Lib deps project` knows lsp.nvim's Mason packages.
+---
+--- Asked of lib.nvim itself rather than of what `setup()` remembered, so the
+--- answer holds after a `:Lazy reload lib.nvim` too. `lib.nvim.deps.project`
+--- is newer than the rest of lib.nvim this plugin uses: its absence means an
+--- old lib.nvim, which still runs everything else -- a warning, not an error.
+---@return nil
+local function check_project_tools()
+  local ok, project = pcall(require, "lib.nvim.deps.project")
+  if not ok or type(project) ~= "table" or type(project.registered) ~= "function" then
+    health.warn("lib.nvim has no lib.nvim.deps.project (lib.nvim too old)", {
+      "Update lib.nvim: `:Lib deps project` then lists the Mason packages of "
+        .. "lsp.nvim's ensure_install lists that the current project is missing.",
+    })
+    return
+  end
+  local owner = require("lsp.integrations.mason.ensure_install.project").OWNER
+  if vim.list_contains(project.registered(), owner) then
+    health.ok("Mason packages registered with lib.nvim.deps.project (`:Lib deps project`)")
+  else
+    health.info("Mason packages not registered with lib.nvim.deps.project (setup() has not run)")
+  end
+end
+
+---@internal
 --- Who contributed to `vim.diagnostic.config()`.
 ---
 --- The surface has no notion of an owner -- every caller merges into the same
@@ -770,6 +795,7 @@ function M.check()
   section("Servers", check_servers)
   section("Ecosystem", check_ecosystem)
   section("Soft dependencies", check_soft_dependencies)
+  section("Project tools", check_project_tools)
   section("Diagnostics", check_diagnostics)
   section("Per-buffer diagnosis", check_doctor)
 end
