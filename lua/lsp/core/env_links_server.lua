@@ -570,7 +570,8 @@ end
 --- `$` or `${` and the letters typed after it. Only names the resolver reads
 --- (`[%a_][%w_]*`: `PROGRAMFILES(X86)` is not one) whose value is an absolute
 --- path to an existing directory are offered -- a secret in the environment is
---- not one -- and `$NVIM_CONFIG_DIR`, which has no real variable behind it.
+--- not one -- and the roots of lib.nvim's named-roots registry, such as
+--- `$NVIM_CONFIG_DIR`, which has no real variable behind it.
 ---@param typing LspNvim.EnvLink.Typing
 ---@param lnum integer
 ---@param line string
@@ -590,8 +591,14 @@ local function variable_items(typing, lnum, line, col)
       names[name] = value
     end
   end
-  if ("nvim_config_dir"):find(prefix, 1, true) == 1 and names.NVIM_CONFIG_DIR == nil then
-    names.NVIM_CONFIG_DIR = vim.fn.stdpath("config")
+  -- The named roots (`$REPOS_DIR`, `$NVIM_CONFIG_DIR`, the user's and those
+  -- other plugins registered) come from lib.nvim's registry. It is what
+  -- `links.resolve` reads first, so its value replaces an environment variable
+  -- of the same name (an inherited `NVIM_CONFIG_DIR` can be stale).
+  for _, root in ipairs(require("lib.nvim.fs.roots").roots()) do
+    if fold(root.name):find(prefix, 1, true) == 1 then
+      names[root.name] = root.root
+    end
   end
 
   local range = {
