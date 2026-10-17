@@ -82,16 +82,31 @@ local held = {}
 
 ---@internal
 --- Unify separators and drop a trailing slash. `expand` also expands `~` and
---- `$VAR` -- only ever for a string a person or a config file wrote.
+--- `$VAR` -- only ever for a string a person or a config file wrote. A root of
+--- lib.nvim's named-roots registry (`$REPOS_DIR`, `${NVIM_CONFIG_DIR}`, a root
+--- another plugin registered) is expanded by the registry first, so it needs no
+--- real environment variable; any other variable is left to `vim.fs.normalize`.
 ---@param path string
 ---@param expand? boolean
 ---@return string
 local function norm(path, expand)
+  if expand == true then
+    path = require("lib.nvim.fs.roots").expand(path)
+  end
   local p = vim.fs.normalize(path, { expand_env = expand == true })
   if #p > 1 and p:sub(-1) == "/" and not p:match("^%a:/$") then
     p = p:sub(1, -2)
   end
   return p
+end
+
+---@internal
+--- The `$REPOS_DIR` root of the named-roots registry (nil when it has no usable
+--- value on this machine), the folder a bare project name is looked up under.
+---@return string|nil
+local function repos_dir()
+  local _, root = require("lib.nvim.fs.roots").match("$REPOS_DIR")
+  return root
 end
 
 ---@internal
@@ -297,9 +312,9 @@ function M.resolve(arg)
     candidate = finder.find(cwd) or cwd
   else
     local expanded = norm(arg, true)
-    local repos = vim.env.REPOS_DIR
-    if not expanded:find("/", 1, true) and repos and repos ~= "" then
-      local under = norm(repos, true) .. "/" .. expanded
+    local repos = repos_dir()
+    if not expanded:find("/", 1, true) and repos then
+      local under = repos .. "/" .. expanded
       if vim.fn.isdirectory(under) == 1 then
         candidate = under
       end
@@ -318,11 +333,10 @@ end
 --- excluded.
 ---@return string[]
 function M.repo_names()
-  local repos = vim.env.REPOS_DIR
-  if not repos or repos == "" then
+  local base = repos_dir()
+  if not base then
     return {}
   end
-  local base = norm(repos, true)
   local names = {}
   local ok, iter = pcall(vim.fs.dir, base)
   if not ok then

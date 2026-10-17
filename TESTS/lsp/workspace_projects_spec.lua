@@ -333,6 +333,31 @@ describe("lsp.core.workspace_projects", function()
       assert.is_true(vim.tbl_contains(names, "linked"), vim.inspect(names))
     end)
 
+    -- The roots come from lib.nvim's named-roots registry, not from this
+    -- module's own reading of the environment: a root a plugin registered is
+    -- expanded in a typed project, and a registered $REPOS_DIR is the folder a
+    -- bare name is looked up under, with no environment variable behind either.
+    it("reads the roots from the named-roots registry", function()
+      local roots = require("lib.nvim.fs.roots")
+      vim.env.REPOS_DIR = nil
+      vim.fn.mkdir(vault .. "/inner", "p")
+      local drop_repos = roots.register("REPOS_DIR", vault)
+      local drop_named = roots.register("LSPTEST_REGROOT", plugin)
+
+      local by_name = projects.resolve("inner")
+      local by_root = projects.resolve("$LSPTEST_REGROOT")
+      local braces = projects.resolve("${LSPTEST_REGROOT}")
+      local names = projects.repo_names()
+      drop_named()
+      drop_repos()
+
+      assert.are.equal(vault .. "/inner", by_name)
+      assert.are.equal(plugin, by_root)
+      assert.are.equal(plugin, braces)
+      assert.are.same({ "inner" }, names)
+      assert.is_nil((projects.resolve("$LSPTEST_REGROOT")), "unregistered: no root left")
+    end)
+
     it("refuses an empty argument", function()
       assert.is_nil((projects.resolve("")))
       assert.is_nil((projects.resolve(nil)))
