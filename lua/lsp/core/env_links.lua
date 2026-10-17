@@ -28,10 +28,11 @@
 ---    both separators, the "well-known" directories such as `$NVIM_CONFIG_DIR`
 ---    that resolve with no real environment variable -- so a link resolves here
 ---    exactly as `gP` resolves it there, including any config the user set.
---- 2. **Built-in**, otherwise: the real environment first, `$NVIM_CONFIG_DIR`
----    from `stdpath("config")`, and `~`. Enough to work without gopath, and
----    deliberately no more than that -- the moment it grew rules of its own it
----    would start disagreeing with gopath.
+--- 2. **Built-in**, otherwise: the roots of lib.nvim's named-roots registry
+---    (`$REPOS_DIR`, `$NVIM_CONFIG_DIR` from `stdpath("config")`, the user's and
+---    those other plugins registered), then the real environment, and `~`.
+---    Enough to work without gopath, and deliberately no more than that -- the
+---    moment it grew rules of its own it would start disagreeing with gopath.
 ---
 --- `~` is always handled here: gopath's text API is about env references.
 ---
@@ -45,16 +46,6 @@ local M = {}
 ---@field exists boolean|nil # Whether `path` is on disk (a directory counts); nil when it was not looked at (see `opts.stat`).
 ---@field fragment string|nil # The `#anchor` of the target, without the `#`.
 ---@field source "gopath"|"builtin"
-
---- Directories that resolve without a real environment variable, mirroring
---- gopath's `env_variable_resolution.shorten_known_dirs` default. Used only by
---- the built-in resolver -- gopath applies its own (configurable) table.
----@type table<string, fun(): string>
-local KNOWN_DIRS = {
-  NVIM_CONFIG_DIR = function()
-    return vim.fn.stdpath("config")
-  end,
-}
 
 --- Does this link target start with something only the user's shell could
 --- expand: `$VAR`, `${VAR}`, or `~`?
@@ -106,13 +97,22 @@ local function resolve_home(path)
 end
 
 ---@internal
---- The built-in `$VAR` / `${VAR}` resolver.
+--- The built-in `$VAR` / `${VAR}` resolver: a root of lib.nvim's named-roots
+--- registry first (`$REPOS_DIR`, `$NVIM_CONFIG_DIR` with no real variable behind
+--- it, the user's and those other plugins registered), any other environment
+--- variable after it.
 ---@param path string
 ---@return string|nil
 local function resolve_builtin(path)
   -- `${VAR}` and `$VAR` are followed by a separator or by nothing. `${VAR}foo`
   -- is the variable's value with `foo` glued on in a shell, not a folder
-  -- below it: not something to guess at.
+  -- below it: not something to guess at. (`roots.match` agrees.)
+  local _, root, tail = require("lib.nvim.fs.roots").match(path)
+  if root then
+    local below = (tail or ""):gsub("^[/\\]+", "")
+    return join(root, below)
+  end
+
   local name, rest = path:match("^%${([%w_]+)}[/\\](.*)$")
   if not name then
     name, rest = path:match("^%$([%w_]+)[/\\](.*)$")
@@ -126,10 +126,6 @@ local function resolve_builtin(path)
   end
 
   local base = vim.env[name]
-  if type(base) ~= "string" or base == "" then
-    local known = KNOWN_DIRS[name]
-    base = known and known() or nil
-  end
   if type(base) ~= "string" or base == "" then
     return nil
   end
