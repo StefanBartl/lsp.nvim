@@ -45,42 +45,33 @@ local unknown = require("lsp.config.unknown")
 
 local M = {}
 
----@type LspNvim.Config|nil
-local _active = nil
+--- The config object (`lib.lua.config.new`): the three layers under `DEFAULTS`, in rank order.
+--- A preset is ours and the project file is read in a second step, but the merge itself, the
+--- aliasing-free copy of `DEFAULTS` and the "every `setup()` starts fresh" rule are the shared
+--- ones. Declared here and created below `normalize_all`, which it runs as its `resolve` hook.
+---@type Lib.Config.Instance
+local store
 
+--- Problems that are not the normalization's: an unknown profile, a `setup()` that was not a
+--- table, what the project file reader refused, the unknown-key scan of each layer a person wrote.
+--- The normalization's own are `store.issues()`.
 ---@type string[]
-local _warnings = {}
+local _extra = {}
 
---- The layers above `DEFAULTS` that actually supplied something, highest
---- precedence first. Used for attribution only -- the merge itself is done by
---- `vim.tbl_deep_extend` -- so this is the answer to "who set that", nothing
---- more.
----@type { label: string, data: table, ours?: boolean }[]
-local _layers = {}
+--- The profile `setup()` resolved, read by the normalization (`cfg.preset` records it).
+---@type string
+local _preset = DEFAULTS.preset
+
+--- How a warning names the layer a value came from: `setup()`, `preset "lean"`, the project file.
+---@type table<string, string>
+local _labels = {}
 
 ---@type LspNvim.ConfigLayers
 local _sources = { preset = "default", project = nil }
 
----@internal
---- Which layer supplied a value, highest precedence first.
----@param key string|nil # Top-level key; nil to skip attribution entirely.
----@param field string|nil # Sub-field, for a value nested one level down.
----@return string|nil label
-local function source_of(key, field)
-  if key == nil then
-    return nil
-  end
-  for _, layer in ipairs(_layers) do
-    local value = layer.data[key]
-    if value ~= nil and field ~= nil then
-      value = type(value) == "table" and value[field] or nil
-    end
-    if value ~= nil then
-      return layer.label
-    end
-  end
-  return nil
-end
+--- The issue list of the normalization in progress (the one `resolve` was handed).
+---@type string[]
+local _found = {}
 
 ---@internal
 --- Record a normalization problem, naming the layer the bad value came from.
@@ -93,8 +84,11 @@ end
 ---@param field string|nil # Sub-field, when the value sits one level down.
 ---@return nil
 local function warn(msg, key, field)
-  local src = source_of(key, field)
-  _warnings[#_warnings + 1] = src ~= nil and ("%s (from %s)"):format(msg, src) or msg
+  local src = nil
+  if key ~= nil then
+    src = _labels[store.source(field ~= nil and (key .. "." .. field) or key) or ""]
+  end
+  _found[#_found + 1] = src ~= nil and ("%s (from %s)"):format(msg, src) or msg
 end
 
 ---@internal
@@ -218,40 +212,6 @@ local function normalize_project(cfg)
 end
 
 ---@internal
---- Take a list option from the layer that supplied it rather than from the
---- merged table.
----
---- `vim.tbl_deep_extend` merges two arrays index by index, which is wrong for
---- every list option here: `{ "lua_ls" }` over the multi-entry default yields
---- `{ "lua_ls", <rest of the defaults> }`, so a config asking for one server
---- silently gets the whole default set. A list is a replacement, not an
---- overlay -- there is no sensible reading of "half the default markers".
----
---- The highest layer that says anything wins outright, including when what it
---- says is malformed: a stray `"servers": "lua_ls"` in a project file must not
---- be answered by the `setup()` list underneath it, or the typo would be
---- invisible. So a non-list stops the search and returns nil, which sends the
---- caller down its degrade-and-warn path.
----@param key string # Top-level key.
----@param field string|nil # Sub-field, for a list nested one level down.
----@return string[]|nil # nil when no layer supplied a usable list.
-local function layer_list(key, field)
-  for _, layer in ipairs(_layers) do
-    local value = layer.data[key]
-    if value ~= nil and field ~= nil then
-      value = type(value) == "table" and value[field] or nil
-    end
-    if value ~= nil then
-      if type(value) == "table" and vim.islist(value) then
-        return value
-      end
-      return nil
-    end
-  end
-  return nil
-end
-
----@internal
 --- Clean a list of names down to the non-empty strings in it.
 ---@param list any[]
 ---@param label string # Option path, for the warning.
@@ -278,15 +238,15 @@ end
 --- list would silently mean "no language server at all", which looks exactly
 --- like a broken installation -- so it degrades to the default set and says so.
 ---
---- Read from the layers, not from the merged table, for the reason
---- `layer_list` gives: `servers = { "lua_ls" }` used to come out of the
---- deep-merge as `{ "lua_ls", "gopls", "marksman", ... }` -- every default from
---- index two on survived, so narrowing the server list did almost nothing and
---- said nothing about it.
+--- A list is a replacement, not an overlay -- there is no sensible reading of
+--- "half the default markers": the config object's merge hands the highest
+--- layer's list over whole, where `vim.tbl_deep_extend` turned
+--- `servers = { "lua_ls" }` into `{ "lua_ls", "gopls", "marksman", ... }`
+--- (every default from index two on survived).
 ---@param cfg LspNvim.Config
 ---@return nil
 local function normalize_servers(cfg)
-  local list = layer_list("servers") or cfg.servers
+  local list = cfg.servers
   if type(list) ~= "table" then
     warn("servers: expected a list of names, using defaults", "servers")
     cfg.servers = vim.deepcopy(DEFAULTS.servers)
@@ -312,8 +272,7 @@ end
 ---@return nil
 local function normalize_workspace(cfg)
   for _, field in ipairs({ "markers", "containers" }) do
-    local supplied = layer_list("workspace", field)
-    local list = supplied or cfg.workspace[field]
+    local list = cfg.workspace[field]
 
     if type(list) ~= "table" then
       if list ~= nil then
@@ -675,7 +634,7 @@ local function resolve_preset(user_opts)
   local name = user_opts.preset
   if PRESETS[name] == nil then
     if name ~= nil then
-      _warnings[#_warnings + 1] = ("preset: unknown value %q, using %q (known: %s)"):format(
+      _extra[#_extra + 1] = ("preset: unknown value %q, using %q (known: %s)"):format(
         tostring(name),
         DEFAULTS.preset,
         "default, full, lean"
@@ -687,64 +646,15 @@ local function resolve_preset(user_opts)
   return name
 end
 
---- Merge the layers, normalize the result, and store it.
----@param user_opts? LspNvim.Opts|table
----@return LspNvim.Config
-function M.setup(user_opts)
-  -- Cleared first, not after the type check below: appending a warning and
-  -- then resetting the list discards it, which is exactly what used to happen
-  -- to the "expected a table" warning -- the one case where the caller most
-  -- needs to be told.
-  _warnings = {}
-  _layers = {}
-  _sources = { preset = DEFAULTS.preset, project = nil }
-
-  if type(user_opts) ~= "table" then
-    if user_opts ~= nil then
-      _warnings[#_warnings + 1] = "setup(): expected a table of options, ignoring"
-    end
-    user_opts = {}
-  end
-
-  local preset = resolve_preset(user_opts)
-  _sources.preset = preset
-
-  -- Highest precedence first, and only the layers that exist: with no preset
-  -- and no project file this is one entry, and every warning reads exactly as
-  -- it did before the feature landed.
-  _layers = { { label = "setup()", data = user_opts } }
-  if preset ~= "default" then
-    _layers[#_layers + 1] = {
-      label = ("preset %q"):format(preset),
-      data = PRESETS[preset],
-      ours = true,
-    }
-  end
-
-  -- Stage one: everything that decides whether there is a project layer.
-  ---@diagnostic disable-next-line: missing-fields
-  local cfg =
-    vim.tbl_deep_extend("force", vim.deepcopy(DEFAULTS), vim.deepcopy(PRESETS[preset]), user_opts)
-  cfg.preset = preset
+---@internal
+--- Everything the layers cannot say by type: force each option into a shape the consumers can
+--- use without re-checking, writing a warning (named by the layer it came from) for each value
+--- it pulls back. Runs as the `resolve` hook, so on every change of a layer, over a fresh merge.
+---@param cfg LspNvim.Config
+---@return nil
+local function normalize_all(cfg)
+  cfg.preset = _preset
   normalize_project(cfg)
-
-  -- Stage two: the project file, merged over everything above.
-  local layer, project_warnings = project.read(cfg.project)
-  vim.list_extend(_warnings, project_warnings)
-  if layer ~= nil then
-    table.insert(_layers, 1, { label = layer.label, data = layer.data })
-    _sources.project = layer.path
-    cfg = vim.tbl_deep_extend("force", cfg, vim.deepcopy(layer.data))
-  end
-
-  -- The merge above keeps every key it is given, so a misspelled option would
-  -- sit in the resolved config looking as if it took. Only the layers a person
-  -- wrote are checked: a preset is ours, and `DEFAULTS` is the reference.
-  for _, l in ipairs(_layers) do
-    if not l.ours then
-      vim.list_extend(_warnings, unknown.messages(unknown.scan(l.data, DEFAULTS), l.label))
-    end
-  end
 
   normalize_keymaps(cfg)
   normalize_switch(cfg, "usrcmds")
@@ -967,29 +877,97 @@ function M.setup(user_opts)
       return type(name) == "string" and name ~= "" and type(value) == "boolean"
     end
   )
+end
 
-  -- The one choke point for warning text. Warnings echo what a layer supplied
-  -- (key names, values, paths), and the project layer can come from a cloned
-  -- repository: a newline in one breaks the scratch buffer `:Lsp status`
-  -- writes into, an escape sequence reaches the terminal through
-  -- `:checkhealth`, and an unbounded value floods both. Sanitizing here rather
-  -- than at each `warn()` call means a warning added later is covered too.
-  for i, w in ipairs(_warnings) do
-    _warnings[i] = unknown.sanitize(w, unknown.MAX_WARNING)
+---@param opts table
+---@return table
+local function without_unknown_keys(opts)
+  for key in pairs(opts) do
+    if DEFAULTS[key] == nil then
+      opts[key] = nil
+    end
+  end
+  return opts
+end
+
+--- To the schema the config object infers from `DEFAULTS`, every option is open: the typed
+--- checks are `normalize_all` above (they degrade to the default and name the layer), and an
+--- unknown key is reported by `unknown.scan` in `setup()` with its did-you-mean hint, then
+--- left out here.
+local ANY = "boolean|number|string|table|function"
+---@type table<string, string>
+local SCHEMA = {}
+for key in pairs(DEFAULTS) do
+  SCHEMA[key] = ANY
+end
+
+store = require("lib.lua.config").new(DEFAULTS, {
+  name = "lsp",
+  schema = SCHEMA,
+  layers = { "preset", "setup", "project" },
+  normalize = without_unknown_keys,
+  resolve = function(cfg, found)
+    _found = found
+    normalize_all(cfg)
+  end,
+})
+
+--- Merge the layers, normalize the result, and store it.
+---@param user_opts? LspNvim.Opts|table
+---@return LspNvim.Config
+function M.setup(user_opts)
+  -- Cleared first, not after the type check below: appending a warning and
+  -- then resetting the list discards it, which is exactly what used to happen
+  -- to the "expected a table" warning -- the one case where the caller most
+  -- needs to be told.
+  _extra = {}
+  _sources = { preset = DEFAULTS.preset, project = nil }
+  _labels = { setup = "setup()" }
+
+  if type(user_opts) ~= "table" then
+    if user_opts ~= nil then
+      _extra[#_extra + 1] = "setup(): expected a table of options, ignoring"
+    end
+    user_opts = {}
   end
 
-  _active = cfg
-  return cfg
+  _preset = resolve_preset(user_opts)
+  _sources.preset = _preset
+  if _preset ~= "default" then
+    _labels.preset = ("preset %q"):format(_preset)
+  end
+
+  -- Stage one: everything that decides whether there is a project layer.
+  store.layer("project", nil)
+  store.layer("preset", _preset ~= "default" and PRESETS[_preset] or nil)
+  store.layer("setup", user_opts)
+
+  -- Stage two: the project file, merged over everything above.
+  local layer, project_warnings = project.read(store.get("project"))
+  vim.list_extend(_extra, project_warnings)
+  if layer ~= nil then
+    _sources.project = layer.path
+    _labels.project = layer.label
+  end
+
+  -- A misspelled option would otherwise sit unnoticed next to the real one. Only the layers a
+  -- person wrote are checked: a preset is ours, and `DEFAULTS` is the reference.
+  if layer ~= nil then
+    vim.list_extend(_extra, unknown.messages(unknown.scan(layer.data, DEFAULTS), layer.label))
+  end
+  vim.list_extend(_extra, unknown.messages(unknown.scan(user_opts, DEFAULTS), "setup()"))
+
+  if layer ~= nil then
+    store.layer("project", layer.data)
+  end
+  return store.get()
 end
 
 --- The active configuration. Falls back to a copy of the defaults when
 --- `setup()` has not run, so `:checkhealth lsp` works on a bare install.
 ---@return LspNvim.Config
 function M.get()
-  if _active == nil then
-    _active = vim.deepcopy(DEFAULTS)
-  end
-  return _active
+  return store.get()
 end
 
 --- Which layers the active configuration was built from: the profile that was
@@ -1005,9 +983,23 @@ end
 
 --- Problems found while normalizing the last `setup()` call. Empty when the
 --- configuration was clean, or when `setup()` has not run.
+---
+--- The one choke point for warning text. Warnings echo what a layer supplied
+--- (key names, values, paths), and the project layer can come from a cloned
+--- repository: a newline in one breaks the scratch buffer `:Lsp status`
+--- writes into, an escape sequence reaches the terminal through
+--- `:checkhealth`, and an unbounded value floods both. Sanitizing here rather
+--- than at each `warn()` call means a warning added later is covered too.
 ---@return string[]
 function M.warnings()
-  return _warnings
+  local out = {}
+  for _, w in ipairs(_extra) do
+    out[#out + 1] = unknown.sanitize(w, unknown.MAX_WARNING)
+  end
+  for _, w in ipairs(store.issues()) do
+    out[#out + 1] = unknown.sanitize(w, unknown.MAX_WARNING)
+  end
+  return out
 end
 
 return M
