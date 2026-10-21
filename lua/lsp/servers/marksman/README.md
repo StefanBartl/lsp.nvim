@@ -23,6 +23,22 @@ could not be parsed."). Not calling the `on_dir` callback for such buffers
 stops the native pipeline from starting a client for them at all, so no
 didOpen is ever sent.
 
+## Relative links without `./`
+
+marksman reads a target without a leading `./` (`[x](Replies/a.md)`) not as
+relative to the document but as a path suffix matched across the whole
+workspace. In a folder of cases that each have a `Replies/a.md`, the link in
+one case's own `State.md` gets "Ambiguous link to document 'Replies/a.md'",
+while `./Replies/a.md` is clean (measured against marksman). Readers, GitHub
+and every renderer resolve it relative to the document.
+
+The diagnostics filter drops that message when the target exists relative to
+the document (`#fragment` and percent-encoding taken off first). A target that
+does not exist there keeps the message -- then it really is one of several
+files elsewhere -- and so do root-relative targets (`/x.md`), URLs and env
+links. `resolve_ambiguous_relative = false` in `lsp.servers.marksman.config`
+turns it off.
+
 ## Env-variable links
 
 marksman resolves a link target relative to the document, so

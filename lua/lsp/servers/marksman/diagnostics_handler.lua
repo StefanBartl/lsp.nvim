@@ -173,6 +173,60 @@ local function code_in_list(diag_code, list)
   return false
 end
 
+--- Whether `msg` is marksman's "Ambiguous link to document 'x'" about a target
+--- that exists relative to the document `uri` names -- a link that is not
+--- ambiguous at all.
+---
+--- marksman reads a target without a leading `./` (`Replies/a.md`) not as
+--- relative to the document but as a path *suffix*, matched across the whole
+--- workspace: with a `Replies/a.md` in every case folder, the link in one case's
+--- own `State.md` is "ambiguous", while `./Replies/a.md` is clean (measured
+--- against marksman). A reader, GitHub and every other renderer resolve it
+--- relative to the document, so when that file exists the message is a false
+--- alarm. One whose relative target does not exist stays: then it really is
+--- one of several files elsewhere.
+---
+--- Only plain relative targets are looked at: no `/`-rooted path, no scheme,
+--- no env link (`$VAR/...`, judged by `env_links`), no network path.
+--- @param msg string
+--- @param uri string|nil
+--- @return boolean
+local function ambiguous_but_relative(msg, uri)
+  if not cfg.resolve_ambiguous_relative or type(uri) ~= "string" then
+    return false
+  end
+  local target = msg:match("^Ambiguous link to document '(.*)'")
+  if not target then
+    return false
+  end
+  target = target:gsub("#.*$", "")
+  if
+    target == ""
+    or target:sub(1, 1) == "/"
+    or target:sub(1, 1) == "\\"
+    or target:match("^%a[%w+.%-]*:")
+    or env_links.is_env_target(target)
+  then
+    return false
+  end
+  local ok_dec, decoded = pcall(vim.uri_decode, target)
+  if ok_dec and type(decoded) == "string" then
+    target = decoded
+  end
+  if target:find("%z") then
+    return false
+  end
+  local ok, fname = pcall(vim.uri_to_fname, uri)
+  if not ok or type(fname) ~= "string" then
+    return false
+  end
+  local path = vim.fs.normalize(vim.fs.joinpath(vim.fs.dirname(fname), target))
+  if env_links.is_network_path(path) or env_links.leads_to_network(path) then
+    return false
+  end
+  return vim.uv.fs_stat(path) ~= nil
+end
+
 --- The pre-existing suppression rules (1-5 below), unchanged, as one function
 --- so the env-link verdict can be decided *before* them: a link whose target
 --- is `$VAR/...` is judged by whether the file it names exists, not by a
@@ -233,8 +287,9 @@ end
 --- Main filter function for diagnostics of a single result.
 --- @param diagnostics table[] diagnostics array from server
 --- @param env_client? boolean the in-process env-link client reports this document's broken env links (see `env_client_covers`); nil = ask whether it runs at all
+--- @param uri? string the document the diagnostics are about; needed to judge an "Ambiguous link to document" (see `ambiguous_but_relative`), left as it is without one
 --- @return table[] filtered diagnostics
-function M.filter_diagnostics(diagnostics, env_client)
+function M.filter_diagnostics(diagnostics, env_client, uri)
   if not diagnostics or type(diagnostics) ~= "table" then
     return diagnostics
   end
@@ -276,6 +331,8 @@ function M.filter_diagnostics(diagnostics, env_client)
       -- true -- with the path it was looked up at. The in-process client says
       -- the same, in its own words, when it is running: then only it does.
       suppressed = env_client
+    elseif ambiguous_but_relative(msg, uri) then
+      suppressed = true
     else
       suppressed = suppressed_by_rules(msg, diag_code)
     end
@@ -358,7 +415,7 @@ function M.republish_all()
       last_raw[uri] = nil
       last_meta[uri] = nil
     elseif meta then
-      local filtered = M.filter_diagnostics(diags, env_client_covers(uri))
+      local filtered = M.filter_diagnostics(diags, env_client_covers(uri), uri)
       local new_result = vim.tbl_deep_extend("force", {}, meta.result, { diagnostics = filtered })
       default_handler(meta.err, new_result, meta.ctx, meta.config)
     end
@@ -390,7 +447,7 @@ function M.make_handler()
 
     -- Filter diagnostics using configured rules
     local diags = result.diagnostics
-    local filtered = M.filter_diagnostics(diags, env_client_covers(result.uri))
+    local filtered = M.filter_diagnostics(diags, env_client_covers(result.uri), result.uri)
 
     -- If the filtering removed or rewrote any entry (a kept env link gets the
     -- path it was looked up at), clone result with new diagnostics

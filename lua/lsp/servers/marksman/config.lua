@@ -8,6 +8,12 @@ local M = {
   suppress_missing_doc_links = true,
   missing_doc_links_pattern = "^Link to non%-existent document",
 
+  -- Hides "Ambiguous link to document 'x'" when `x` exists relative to the
+  -- document: marksman matches a target without `./` as a workspace-wide path
+  -- suffix, so `Replies/a.md` next to a `Replies/` folder is "ambiguous" as soon
+  -- as another folder has one too. A target that does not exist there stays.
+  resolve_ambiguous_relative = true,
+
   -- list of additional message patterns (Lua patterns) to suppress.
   -- Each pattern is matched against the diagnostic message. Use anchored patterns
   -- or partial substrings. Example: "^Link to non%-existent link" will match
