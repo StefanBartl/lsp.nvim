@@ -187,11 +187,21 @@ end
 --- one of several files elsewhere.
 ---
 --- Only plain relative targets are looked at: no `/`-rooted path, no scheme,
---- no env link (`$VAR/...`, judged by `env_links`), no network path.
+--- no env link (`$VAR/...`, judged by `env_links`), no network path. And only
+--- a FILE counts: marksman sends the same message for a wiki link (`[[Project]]`)
+--- and an extensionless target, so a folder `Project/` next to the document
+--- must not make an ambiguous `Project` look resolved.
+---
+--- The target is taken as marksman sends it: already percent-decoded
+--- (`My%20Reply.md` arrives as `My Reply.md`), and without a fragment (a link
+--- with `#x` is "Ambiguous link to heading ... in document ...", another
+--- message, hidden by the `^Ambiguous link to heading` rule) -- so a `%` or a
+--- `#` in it is part of the file name.
 --- @param msg string
 --- @param uri string|nil
+--- @param known table<string, false> `env_links.leads_to_network`'s memo, one per push: the document's directories are read once, not once per diagnostic
 --- @return boolean
-local function ambiguous_but_relative(msg, uri)
+local function ambiguous_but_relative(msg, uri, known)
   if not cfg.resolve_ambiguous_relative or type(uri) ~= "string" then
     return false
   end
@@ -199,7 +209,6 @@ local function ambiguous_but_relative(msg, uri)
   if not target then
     return false
   end
-  target = target:gsub("#.*$", "")
   if
     target == ""
     or target:sub(1, 1) == "/"
@@ -209,10 +218,6 @@ local function ambiguous_but_relative(msg, uri)
   then
     return false
   end
-  local ok_dec, decoded = pcall(vim.uri_decode, target)
-  if ok_dec and type(decoded) == "string" then
-    target = decoded
-  end
   if target:find("%z") then
     return false
   end
@@ -221,10 +226,11 @@ local function ambiguous_but_relative(msg, uri)
     return false
   end
   local path = vim.fs.normalize(vim.fs.joinpath(vim.fs.dirname(fname), target))
-  if env_links.is_network_path(path) or env_links.leads_to_network(path) then
+  if env_links.is_network_path(path) or env_links.leads_to_network(path, known) then
     return false
   end
-  return vim.uv.fs_stat(path) ~= nil
+  local stat = vim.uv.fs_stat(path)
+  return stat ~= nil and stat.type == "file"
 end
 
 --- The pre-existing suppression rules (1-5 below), unchanged, as one function
@@ -310,6 +316,8 @@ function M.filter_diagnostics(diagnostics, env_client, uri)
   end
   env_client = env_links_on and env_client
 
+  -- Shared by every ambiguous link of this push (see `ambiguous_but_relative`).
+  local known = {}
   local out = {}
   for i = 1, #diagnostics do
     local d = diagnostics[i]
@@ -331,7 +339,7 @@ function M.filter_diagnostics(diagnostics, env_client, uri)
       -- true -- with the path it was looked up at. The in-process client says
       -- the same, in its own words, when it is running: then only it does.
       suppressed = env_client
-    elseif ambiguous_but_relative(msg, uri) then
+    elseif ambiguous_but_relative(msg, uri, known) then
       suppressed = true
     else
       suppressed = suppressed_by_rules(msg, diag_code)

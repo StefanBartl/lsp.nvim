@@ -32,11 +32,13 @@ one case's own `State.md` gets "Ambiguous link to document 'Replies/a.md'",
 while `./Replies/a.md` is clean (measured against marksman). Readers, GitHub
 and every renderer resolve it relative to the document.
 
-The diagnostics filter drops that message when the target exists relative to
-the document (`#fragment` and percent-encoding taken off first). A target that
-does not exist there keeps the message -- then it really is one of several
-files elsewhere -- and so do root-relative targets (`/x.md`), URLs and env
-links. `resolve_ambiguous_relative = false` in `lsp.servers.marksman.config`
+The diagnostics filter drops that message when the target is a file relative
+to the document (marksman sends the name decoded and without a fragment; a
+link with `#x` gets "Ambiguous link to heading", hidden by its own rule). A
+target that does not exist there keeps the message -- then it really is one of
+several files elsewhere -- and so does a folder of that name (marksman says the
+same for a wiki link `[[Project]]` next to a folder `Project/`), a
+root-relative target (`/x.md`), a URL and an env link. `resolve_ambiguous_relative = false` in `lsp.servers.marksman.config`
 turns it off.
 
 ## Env-variable links

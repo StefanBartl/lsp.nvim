@@ -101,10 +101,45 @@ describe("lsp.servers.marksman.diagnostics_handler: ambiguous relative links", f
     assert.are.equal(0, kept("Ambiguous link to document 'Replies/00_PSO.md'", uri))
   end)
 
-  it("also with an anchor and a percent-encoded name", function()
+  -- marksman sends the target already decoded: `[x](Replies/My%20Reply.md)` arrives as
+  -- 'Replies/My Reply.md' (measured), so a `%` that is still there is part of the name.
+  it("takes the name as marksman sends it, decoded", function()
     vim.fn.writefile({ "# x" }, root .. "/Cases/A/Replies/My Reply.md")
-    vim.fn.writefile({ "# x" }, root .. "/Cases/B/Replies/My Reply.md")
-    assert.are.equal(0, kept("Ambiguous link to document 'Replies/My%20Reply.md#top'", uri))
+    assert.are.equal(0, kept("Ambiguous link to document 'Replies/My Reply.md'", uri))
+    vim.fn.writefile({ "# x" }, root .. "/Cases/A/Replies/100%25.md")
+    assert.are.equal(
+      0,
+      kept("Ambiguous link to document 'Replies/100%25.md'", uri),
+      "a literal % is not decoded again"
+    )
+  end)
+
+  -- The same message comes for a wiki link and an extensionless target: `[[Project]]` with
+  -- a folder `Project/` next to the document is still ambiguous.
+  it("keeps it when what exists there is a folder", function()
+    vim.fn.mkdir(root .. "/Cases/A/Project", "p")
+    assert.are.equal(1, kept("Ambiguous link to document 'Project'", uri))
+  end)
+
+  it("reads the document's directories once per push, not once per link", function()
+    local env_links = require("lsp.core.env_links")
+    local real = env_links.leads_to_network
+    local memos = {}
+    env_links.leads_to_network = function(path, known)
+      memos[#memos + 1] = known
+      return real(path, known)
+    end
+    local ok, err = pcall(handler.filter_diagnostics, {
+      diag("Ambiguous link to document 'Replies/00_PSO.md'"),
+      diag("Ambiguous link to document 'Other/x.md'"),
+    }, false, uri)
+    env_links.leads_to_network = real
+    assert.is_true(ok, tostring(err))
+    assert.are.equal(2, #memos)
+    assert.is_true(
+      type(memos[1]) == "table" and memos[1] == memos[2],
+      "one memo shared by the push"
+    )
   end)
 
   it("keeps it when the target is not there relative to the document", function()
