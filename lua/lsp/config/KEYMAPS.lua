@@ -458,7 +458,7 @@ local entries = {
   -- the lowercase key is the direction one asks for far more often ("who
   -- calls this"), the shifted one is its sibling. In a Lua buffer with no
   -- attached call-hierarchy client, `actions.incoming_calls`/`outgoing_calls`
-  -- fall back to documentation.nvim on demand (`lsp.core.call_hierarchy`).
+  -- fall back to docmap.nvim on demand (`lsp.core.call_hierarchy`).
   picker_incoming_calls = {
     lhs = "lsc",
     mode = "n",

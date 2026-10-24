@@ -39,7 +39,7 @@ behind when it gets extracted — this one takes the ecosystem with it.
 > questions no language server answers: who imports this module, which imports
 > are unused, where the magic numbers are.
 >
-> **[documentation.nvim](https://github.com/StefanBartl/documentation.nvim)** —
+> **[docmap.nvim](https://github.com/StefanBartl/docmap.nvim)** —
 > generates the module map this repository deliberately does not commit.
 >
 > All of the above are soft: without them everything else works unchanged.

@@ -2,7 +2,7 @@
 ---@brief `lsc`/`lsC` (incoming/outgoing calls) for Lua, where lua_ls has none.
 ---@description
 --- lua_ls answers neither `prepareCallHierarchy` nor `callHierarchy/*` --
---- LuaLS/lua-language-server#2832 is still open. `StefanBartl/documentation.nvim`
+--- LuaLS/lua-language-server#2832 is still open. `StefanBartl/docmap.nvim`
 --- can, with `opts.callhierarchy = true`: a second, narrow in-process client
 --- backed by its own module-map scan, attached alongside lua_ls rather than
 --- instead of it.
@@ -19,13 +19,13 @@
 --- attached to the buffer skips straight to the picker.
 ---
 --- **A buffer already open when `install()` runs does not get the client for
---- free.** documentation.nvim attaches on `BufReadPost`/`BufNewFile`, which
+--- free.** docmap.nvim attaches on `BufReadPost`/`BufNewFile`, which
 --- already fired for a buffer that was open before this function called
 --- `install()`. Re-firing those two events for just this buffer (`nvim_exec_
 --- autocmds`) is the documented attach signal, not a private hook -- the same
 --- thing a manual `:e` would have triggered.
 ---
---- **Switching projects needs no bookkeeping here.** documentation.nvim's own
+--- **Switching projects needs no bookkeeping here.** docmap.nvim's own
 --- registry keys a handle by root and is fine holding several at once; this
 --- module never uninstalls one, it just asks "is a client already attached to
 --- *this* buffer" before deciding whether to install anything.
@@ -49,21 +49,21 @@ local function fzf_lua()
 end
 
 ---@internal
---- `require("documentation")`, forcing a lazy `cmd`-triggered plugin spec to
+--- `require("docmap")`, forcing a lazy `cmd`-triggered plugin spec to
 --- load first if a bare `require` does not find it -- `lazy.nvim` only adds a
 --- lazy plugin's `lua/` tree to the runtimepath once one of its declared
 --- triggers has fired, and pressing `lsc` is not one of them.
 ---@return table|nil
 local function documentation()
-  local ok, doc = pcall(require, "documentation")
+  local ok, doc = pcall(require, "docmap")
   if ok then
     return doc
   end
   local ok_lazy, lazy = pcall(require, "lazy")
   if ok_lazy and type(lazy.load) == "function" then
-    pcall(lazy.load, { plugins = { "documentation.nvim" } })
+    pcall(lazy.load, { plugins = { "docmap.nvim" } })
   end
-  ok, doc = pcall(require, "documentation")
+  ok, doc = pcall(require, "docmap")
   return ok and doc or nil
 end
 
@@ -75,26 +75,22 @@ local function has_call_hierarchy_client(bufnr)
 end
 
 ---@internal
---- Install (or reuse) documentation.nvim's call-hierarchy client for this
+--- Install (or reuse) docmap.nvim's call-hierarchy client for this
 --- buffer's own root, and attach it to this buffer specifically.
 ---@param bufnr integer
 ---@return boolean attached
 local function ensure_lua_call_hierarchy(bufnr)
   local doc = documentation()
   if doc == nil then
-    notify().info("call hierarchy for Lua needs documentation.nvim, with opts.callhierarchy = true")
+    notify().info("call hierarchy for Lua needs docmap.nvim, with opts.callhierarchy = true")
     return false
   end
 
   local root = require("lsp.servers.lua_ls.rootresolver")(bufnr)
-  notify().info(
-    ("scanning %s for call hierarchy (documentation.nvim, once per project)"):format(root)
-  )
+  notify().info(("scanning %s for call hierarchy (docmap.nvim, once per project)"):format(root))
   local ok = pcall(doc.install, { root = root, callhierarchy = true })
   if not ok then
-    notify().warn(
-      ("documentation.nvim could not install a call-hierarchy handle for %s"):format(root)
-    )
+    notify().warn(("docmap.nvim could not install a call-hierarchy handle for %s"):format(root))
     return false
   end
 

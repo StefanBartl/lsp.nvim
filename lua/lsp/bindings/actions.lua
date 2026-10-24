@@ -875,7 +875,7 @@ function M.type_sub()
 end
 
 --- Who calls the function under the cursor. lua_ls has no call hierarchy;
---- for a Lua buffer this falls back to documentation.nvim on demand.
+--- for a Lua buffer this falls back to docmap.nvim on demand.
 ---@see lsp.core.call_hierarchy
 ---@return nil
 function M.incoming_calls()

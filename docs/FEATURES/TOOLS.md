@@ -42,12 +42,12 @@ own request otherwise — same posture as `lsh`/`lsH`. `lsc`/`lsC` follow
 lua_ls has no call hierarchy at all (LuaLS/lua-language-server#2832 is still
 open), so in a Lua buffer with no client already answering
 `textDocument/prepareCallHierarchy`, `lsc`/`lsC` fall back to
-[`StefanBartl/documentation.nvim`](https://github.com/StefanBartl/documentation.nvim)
+[`StefanBartl/docmap.nvim`](https://github.com/StefanBartl/docmap.nvim)
 on demand, if it is installed with `opts.callhierarchy = true`: `install()` for
 the buffer's own project root (the same root `lsp.servers.lua_ls.rootresolver`
 would give lua_ls), then the picker. The scan is real work — ~2s measured on
 this repository — and happens once per project, not on every keypress. Without
-documentation.nvim, or in a non-Lua buffer with no answering client, the key
+docmap.nvim, or in a non-Lua buffer with no answering client, the key
 says so instead of a wait and then "No results".
 
 - **Module:** `tools/ts_type_lookup/symbol_picker.lua`, `integrations/picker.lua`,

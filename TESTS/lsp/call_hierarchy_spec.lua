@@ -1,7 +1,7 @@
---- Covers `lsp.core.call_hierarchy`: the on-demand documentation.nvim fallback
+--- Covers `lsp.core.call_hierarchy`: the on-demand docmap.nvim fallback
 --- for `lsc`/`lsC` in a Lua buffer lua_ls cannot answer call hierarchy for.
 ---
---- Everything documentation.nvim-shaped is stubbed through `package.loaded` --
+--- Everything docmap.nvim-shaped is stubbed through `package.loaded` --
 --- the real plugin is not a dependency of lsp.nvim's CI. What is pinned here
 --- is the *contract*: which root gets asked for, that a client already
 --- attached skips the whole detour, and that a buffer open before `install()`
@@ -48,13 +48,13 @@ describe("lsp.core.call_hierarchy", function()
   after_each(function()
     restore_notify()
     vim.lsp.get_clients = real_get_clients
-    package.loaded["documentation"] = nil
+    package.loaded["docmap"] = nil
     package.loaded["lazy"] = nil
     package.loaded["fzf-lua"] = nil
     package.loaded["lsp.servers.lua_ls.rootresolver"] = nil
   end)
 
-  it("skips documentation.nvim entirely when a client already answers", function()
+  it("skips docmap.nvim entirely when a client already answers", function()
     vim.lsp.get_clients = function(filter)
       if filter and filter.method == "textDocument/prepareCallHierarchy" then
         return { {} }
@@ -70,8 +70,8 @@ describe("lsp.core.call_hierarchy", function()
         opened[#opened + 1] = "out"
       end,
     }
-    -- documentation.nvim deliberately left unstubbed: if this were reached,
-    -- `require("documentation")` would fail and the case would notify instead.
+    -- docmap.nvim deliberately left unstubbed: if this were reached,
+    -- `require("docmap")` would fail and the case would notify instead.
     call_hierarchy.incoming()
     call_hierarchy.outgoing()
     assert.are.same({ "in", "out" }, opened)
@@ -95,13 +95,13 @@ describe("lsp.core.call_hierarchy", function()
     assert.is_truthy(said[1]:find("no attached server", 1, true))
   end)
 
-  it("says documentation.nvim is needed when it cannot be found at all", function()
+  it("says docmap.nvim is needed when it cannot be found at all", function()
     vim.lsp.get_clients = function()
       return {}
     end
     call_hierarchy.incoming()
     assert.are.equal(1, #said)
-    assert.is_truthy(said[1]:find("documentation.nvim", 1, true))
+    assert.is_truthy(said[1]:find("docmap.nvim", 1, true))
   end)
 
   it("installs a handle for the buffer's own root and opens the picker", function()
@@ -116,7 +116,7 @@ describe("lsp.core.call_hierarchy", function()
       return "/project/root"
     end
     local install_opts
-    package.loaded["documentation"] = {
+    package.loaded["docmap"] = {
       install = function(opts)
         install_opts = opts
         return { root = opts.root }
@@ -126,7 +126,7 @@ describe("lsp.core.call_hierarchy", function()
     local real_exec = vim.api.nvim_exec_autocmds
     vim.api.nvim_exec_autocmds = function(event, opts)
       exec_autocmds_calls[#exec_autocmds_calls + 1] = { event = event, opts = opts }
-      -- Simulate documentation.nvim's own BufReadPost handler attaching now.
+      -- Simulate docmap.nvim's own BufReadPost handler attaching now.
       vim.lsp.get_clients = function(filter)
         if filter and filter.method == "textDocument/prepareCallHierarchy" then
           return { {} }
@@ -151,7 +151,7 @@ describe("lsp.core.call_hierarchy", function()
     assert.are.same({ "in" }, opened)
   end)
 
-  it("force-loads a lazy documentation.nvim through lazy.nvim before requiring it", function()
+  it("force-loads a lazy docmap.nvim through lazy.nvim before requiring it", function()
     vim.lsp.get_clients = function()
       return {}
     end
@@ -163,7 +163,7 @@ describe("lsp.core.call_hierarchy", function()
       load = function(opts)
         loaded_plugins = opts.plugins
         -- Once lazy.nvim has "loaded" it, a bare require would succeed.
-        package.loaded["documentation"] = {
+        package.loaded["docmap"] = {
           install = function()
             return {}
           end,
@@ -176,7 +176,7 @@ describe("lsp.core.call_hierarchy", function()
     call_hierarchy.incoming()
     vim.api.nvim_exec_autocmds = real_exec
 
-    assert.are.same({ "documentation.nvim" }, loaded_plugins)
+    assert.are.same({ "docmap.nvim" }, loaded_plugins)
   end)
 
   it("warns instead of raising when install() itself fails", function()
@@ -186,7 +186,7 @@ describe("lsp.core.call_hierarchy", function()
     package.loaded["lsp.servers.lua_ls.rootresolver"] = function()
       return "/project/root"
     end
-    package.loaded["documentation"] = {
+    package.loaded["docmap"] = {
       install = function()
         error("scan failed")
       end,

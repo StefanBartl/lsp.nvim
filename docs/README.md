@@ -66,6 +66,6 @@ third-party plugins are installed at all, and has to be set before
 is pointless, change the catalogue instead.
 
 `docs/map/` is a module map produced by `scripts/gen_map.lua`
-([documentation.nvim](https://github.com/StefanBartl/documentation.nvim), or
+([docmap.nvim](https://github.com/StefanBartl/docmap.nvim), or
 `:DocMap` in a session). It is derived output and deliberately not committed, so
 it exists only where it has been generated.

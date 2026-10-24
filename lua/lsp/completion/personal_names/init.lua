@@ -1,6 +1,6 @@
 ---@module 'lsp.completion.personal_names'
 --- Completion source for this config's ~30 dotted personal-plugin names
---- (e.g. "documentation.nvim", "markdown.nvim", see plugins.personal.list) as
+--- (e.g. "docmap.nvim", "markdown.nvim", see plugins.personal.list) as
 --- one atomic candidate each. The default cmp keyword pattern splits words at
 --- ".", so typing "do" would otherwise only ever surface "documentation" (a
 --- plain buffer word), never the full plugin name.
@@ -14,7 +14,7 @@
 --- them in front of the user is `lsp.completion.register`'s problem, so this
 --- file no longer knows whether nvim-cmp or blink is running. Measured before
 --- porting: blink's fuzzy matcher does *not* make this source redundant —
---- typing "do" there still does not surface "documentation.nvim".
+--- typing "do" there still does not surface "docmap.nvim".
 ---
 --- Anything beyond the personal-plugin list — filenames, module paths,
 --- whatever comes up — goes in `extra.lua`, a plain hand-edited string list
@@ -169,7 +169,7 @@ function M.setup(opts)
     namespace = SOURCE_NAME,
     items = get_items,
     -- Includes "." (alongside md_words' "-") so the pattern spans a whole name
-    -- like "documentation.nvim" once part of it has been typed -- matching a
+    -- like "docmap.nvim" once part of it has been typed -- matching a
     -- bare "do" still resolves to just "do", since no dot has been typed yet.
     keyword_pattern = [[\%(-\?\d\+\%(\.\d\+\)\?\|\h\w*\%([-.]\w*\)*\)]],
     -- Drop the cache so the next request re-sorts with the fresh count.
