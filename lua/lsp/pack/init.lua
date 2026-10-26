@@ -4,9 +4,9 @@
 --- This is what makes lsp.nvim an umbrella rather than a plugin that assumes
 --- an ecosystem someone else assembled. One entry in a plugin list: >lua
 ---     {
----       "StefanBartl/lsp.nvim",
+---       "WKDSteve/lsp.nvim",
 ---       import = "lsp.pack",
----       dependencies = { "StefanBartl/lib.nvim" },
+---       dependencies = { "WKDSteve/lib.nvim" },
 ---     }
 --- <
 --- Without `import = "lsp.pack"` you get the plugin and nothing else: it wires

@@ -5,9 +5,9 @@ See [requirements.md](requirements.md) for the full required/optional list.
 ```lua
 -- lazy.nvim
 {
-  "StefanBartl/lsp.nvim",
+  "WKDSteve/lsp.nvim",
   import = "lsp.pack",
-  dependencies = { "StefanBartl/lib.nvim" },
+  dependencies = { "WKDSteve/lib.nvim" },
   event = { "BufReadPre", "BufNewFile" },
   opts = {},
 }
@@ -16,8 +16,8 @@ See [requirements.md](requirements.md) for the full required/optional list.
 ```lua
 -- packer.nvim / pckr.nvim
 use({
-  "StefanBartl/lsp.nvim",
-  requires = { "StefanBartl/lib.nvim" },
+  "WKDSteve/lsp.nvim",
+  requires = { "WKDSteve/lib.nvim" },
   config = function()
     require("lsp").setup()
   end,
@@ -26,8 +26,8 @@ use({
 
 ```vim
 " vim-plug
-Plug 'StefanBartl/lib.nvim'
-Plug 'StefanBartl/lsp.nvim'
+Plug 'WKDSteve/lib.nvim'
+Plug 'WKDSteve/lsp.nvim'
 ```
 
 Only lazy.nvim understands `import = "lsp.pack"`. Under the other managers you

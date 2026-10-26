@@ -5,7 +5,7 @@
 | | |
 | --- | --- |
 | Neovim | **0.11+** |
-| [lib.nvim](https://github.com/StefanBartl/lib.nvim) | the `:Lsp` command is built on its user-command composer and does not register without it |
+| [lib.nvim](https://github.com/WKDSteve/lib.nvim) | the `:Lsp` command is built on its user-command composer and does not register without it |
 
 ## Optional
 
@@ -27,7 +27,7 @@ not, so those are bring-your-own either way:
 | [mason.nvim](https://github.com/mason-org/mason.nvim) | Server and tool installation |
 | A completion engine | nvim-cmp or [blink.cmp](https://github.com/saghen/blink.cmp), both wired if present |
 | [nvzone/menu](https://github.com/nvzone/menu) | A host for the context-menu entries — see [FEATURES/INTEGRATIONS.md](FEATURES/INTEGRATIONS.md) |
-| [ui.nvim](https://github.com/StefanBartl/ui.nvim) | Backs `:Lsp doctor` (`ui.kit`, degrades to a warning if missing), the root-scope and workspace-folder pickers, `:Lsp info`'s viewer, `ts_type_lookup`'s viewer, and astro's scaffold prompts (`ui.kit.select`/`ui.kit.input`/`ui.kit.viewer`) — those specific commands need it if actually invoked, the rest of the plugin does not |
+| [ui.nvim](https://github.com/WKDSteve/ui.nvim) | Backs `:Lsp doctor` (`ui.kit`, degrades to a warning if missing), the root-scope and workspace-folder pickers, `:Lsp info`'s viewer, `ts_type_lookup`'s viewer, and astro's scaffold prompts (`ui.kit.select`/`ui.kit.input`/`ui.kit.viewer`) — those specific commands need it if actually invoked, the rest of the plugin does not |
 
 `:checkhealth lsp` reports which of them resolved. See [installation.md](installation.md)
 for how `import = "lsp.pack"` installs and configures most of the optional

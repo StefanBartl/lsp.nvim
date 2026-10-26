@@ -57,7 +57,7 @@ local opts = require("docmap.config").build(root, {
   source = "lua/lsp",
   title = "lsp.nvim",
   out_dir = "docs/map",
-  repo_url = "https://github.com/StefanBartl/lsp.nvim",
+  repo_url = "https://github.com/WKDSteve/lsp.nvim",
   branch = "main",
 
   -- The layer rule the whole umbrella design rests on:

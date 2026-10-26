@@ -17,10 +17,10 @@
 [![Neovim](https://img.shields.io/badge/Neovim-0.11%2B-57A143?logo=neovim&logoColor=white)](https://neovim.io)
 [![Lua](https://img.shields.io/badge/Lua-5.1%2FLuaJIT-2C2D72?logo=lua&logoColor=white)](https://www.lua.org)
 ![Status](https://img.shields.io/badge/status-beta-orange)
-[![CI](https://github.com/StefanBartl/lsp.nvim/actions/workflows/ci.yml/badge.svg)](https://github.com/StefanBartl/lsp.nvim/actions/workflows/ci.yml)
-[![wkd](https://img.shields.io/badge/wkd-family-c6ff3d)](https://stefanbartl.github.io/wkd/p/lsp/)
+[![CI](https://github.com/WKDSteve/lsp.nvim/actions/workflows/ci.yml/badge.svg)](https://github.com/WKDSteve/lsp.nvim/actions/workflows/ci.yml)
+[![wkd](https://img.shields.io/badge/wkd-family-c6ff3d)](https://wkdsteve.github.io/wkd/p/lsp/)
 
-> Part of the [wkd](https://stefanbartl.github.io/wkd/) family — see this plugin's [page](https://stefanbartl.github.io/wkd/p/lsp/) on the site.
+> Part of the [wkd](https://wkdsteve.github.io/wkd/) family — see this plugin's [page](https://wkdsteve.github.io/wkd/p/lsp/) on the site.
 
 The umbrella for everything LSP in a Neovim config, behind one `:Lsp` command.
 A config's `lua/lsp/**` is usually a pile of settings with the ecosystem left
@@ -30,20 +30,20 @@ behind when it gets extracted — this one takes the ecosystem with it.
 
 ## Around it
 
-> **[dap.nvim](https://github.com/StefanBartl/dap.nvim)** — the same
+> **[dap.nvim](https://github.com/WKDSteve/dap.nvim)** — the same
 > architecture applied to the other protocol. LSP tells you what the code
 > means, DAP tells you what it does; one umbrella each, so neither ends up
 > scattered across a config.
 >
-> **[insights.nvim](https://github.com/StefanBartl/insights.nvim)** — the
+> **[insights.nvim](https://github.com/WKDSteve/insights.nvim)** — the
 > questions no language server answers: who imports this module, which imports
 > are unused, where the magic numbers are.
 >
-> **[docmap.nvim](https://github.com/StefanBartl/docmap.nvim)** —
+> **[docmap.nvim](https://github.com/WKDSteve/docmap.nvim)** —
 > generates the module map this repository deliberately does not commit.
 >
 > All of the above are soft: without them everything else works unchanged.
-> [lib.nvim](https://github.com/StefanBartl/lib.nvim) is the one real
+> [lib.nvim](https://github.com/WKDSteve/lib.nvim) is the one real
 > dependency — see [Requirements](docs/requirements.md).
 
 ---
@@ -74,7 +74,7 @@ says what each one answers.
 - [Architecture](docs/architecture.md) — the three layers, and which way the arrows point.
 - [Health check](docs/health.md) — how to read `:checkhealth lsp`.
 - [Contributing](docs/CONTRIBUTING.md) — ground rules, project layout, and how to add a server or an integration.
-- [Feedback](https://github.com/StefanBartl/lsp.nvim/issues) — bugs, feature requests and usage questions; broader discussion in [Discussions](https://github.com/StefanBartl/lsp.nvim/discussions).
+- [Feedback](https://github.com/WKDSteve/lsp.nvim/issues) — bugs, feature requests and usage questions; broader discussion in [Discussions](https://github.com/WKDSteve/lsp.nvim/discussions).
 
 `:h lsp.nvim` is the same reference inside the editor.
 

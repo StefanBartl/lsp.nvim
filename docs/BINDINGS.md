@@ -171,7 +171,7 @@ first.
 ## User Commands
 
 One command, `:Lsp <subcommand>`, built with
-[`lib.nvim.bindings.usercmd.composer`](https://github.com/StefanBartl/lib.nvim), with
+[`lib.nvim.bindings.usercmd.composer`](https://github.com/WKDSteve/lib.nvim), with
 `<Tab>` completion over subcommands and arguments. Registered by `setup()`
 unless `usrcmds.enable = false`.
 

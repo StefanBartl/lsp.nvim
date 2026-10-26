@@ -101,7 +101,7 @@ local function check_environment()
     health.error("lib.nvim missing", {
       "lsp.nvim depends on it hard: the `:Lsp` command is built on "
         .. "lib.nvim.bindings.usercmd.composer and will not register without it.",
-      'Install it: dependencies = { "StefanBartl/lib.nvim" }',
+      'Install it: dependencies = { "WKDSteve/lib.nvim" }',
     })
   end
 end

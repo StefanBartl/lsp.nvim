@@ -2,7 +2,7 @@
 ---@brief `lsc`/`lsC` (incoming/outgoing calls) for Lua, where lua_ls has none.
 ---@description
 --- lua_ls answers neither `prepareCallHierarchy` nor `callHierarchy/*` --
---- LuaLS/lua-language-server#2832 is still open. `StefanBartl/docmap.nvim`
+--- LuaLS/lua-language-server#2832 is still open. `WKDSteve/docmap.nvim`
 --- can, with `opts.callhierarchy = true`: a second, narrow in-process client
 --- backed by its own module-map scan, attached alongside lua_ls rather than
 --- instead of it.

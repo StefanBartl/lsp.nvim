@@ -1,7 +1,7 @@
 # Contributing to lsp.nvim
 
 Thank you for your interest! Bugs, ideas and questions are welcome in the
-[issue tracker](https://github.com/StefanBartl/lsp.nvim/issues); pull requests
+[issue tracker](https://github.com/WKDSteve/lsp.nvim/issues); pull requests
 very welcome.
 
 Read [`architecture.md`](architecture.md) before the first change. This plugin
@@ -18,7 +18,7 @@ vim.opt.rtp:prepend("/path/to/lsp.nvim")
 require("lsp").setup({})
 ```
 
-[lib.nvim](https://github.com/StefanBartl/lib.nvim) has to be on the runtime
+[lib.nvim](https://github.com/WKDSteve/lib.nvim) has to be on the runtime
 path too — the `:Lsp` command is built on its user-command composer and does
 not register without it.
 

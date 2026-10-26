@@ -10,7 +10,7 @@ Three layers, run by CI and all runnable locally.
 
 ## Run
 
-The suite is run by [testing.nvim](https://github.com/StefanBartl/testing.nvim),
+The suite is run by [testing.nvim](https://github.com/WKDSteve/testing.nvim),
 one Neovim per spec file. `scripts/test.sh` finds testing.nvim, lib.nvim and
 ui.nvim (in this order: `$<NAME>_DIR`, `.deps/<name>`, a sibling checkout,
 `stdpath("data")/lazy/<name>`) and exits 1 naming all four places when one is

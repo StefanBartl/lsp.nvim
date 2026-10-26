@@ -44,12 +44,12 @@ which still carries its own `lua/lsp/**` shadows this plugin on the
 2. REQUIREMENTS                                       *lsp.nvim-requirements*
 
   - Neovim 0.11 or newer.
-  - lib.nvim (https://github.com/StefanBartl/lib.nvim), a HARD dependency:
+  - lib.nvim (https://github.com/WKDSteve/lib.nvim), a HARD dependency:
     the |:Lsp| command is built on `lib.nvim.bindings.usercmd.composer`, and
     `lsp/init.lua` requires `lib.nvim.notify` at its top. Without lib.nvim
     `require("lsp")` itself raises -- there is no degraded mode. It is never
     optional, in the code or in the docs.
-  - ui.nvim (https://github.com/StefanBartl/ui.nvim), a SOFT dependency with
+  - ui.nvim (https://github.com/WKDSteve/ui.nvim), a SOFT dependency with
     teeth: setup() survives without it, but `lsp/lspdoctor/init.lua` requires
     `ui.kit` at its top, so |:LspDoctor| is not registered at all and
     `tools.ts_type_lookup` fails -- both recorded as setup warnings. The
@@ -75,9 +75,9 @@ the rest of the setup with it -- it is recorded and shown by |:Lsp-status| and
 
 With lazy.nvim: >lua
     {
-      "StefanBartl/lsp.nvim",
+      "WKDSteve/lsp.nvim",
       import = "lsp.pack",
-      dependencies = { "StefanBartl/lib.nvim" },
+      dependencies = { "WKDSteve/lib.nvim" },
       event = { "BufReadPre", "BufNewFile" },
       opts = {},
     }
