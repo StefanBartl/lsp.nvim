@@ -462,9 +462,6 @@ describe("lsp.tools.deprecated_help display", function()
       pcall(vim.api.nvim_win_close, win, true)
     end
     vim.cmd("silent! helpclose")
-  end)
-
-  teardown(function()
     for _, mod in ipairs({
       "lsp.tools.deprecated_help",
       "lsp.tools.deprecated_help.defaults",
