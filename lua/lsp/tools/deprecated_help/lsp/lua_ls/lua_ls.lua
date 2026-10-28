@@ -50,6 +50,13 @@ function M.show_help(bufnr, symbol)
     vim.api.nvim_set_current_buf(bufnr)
   end
 
+  if defaults.display == "hover" then
+    if not require("lsp.tools.deprecated_help.help_float").show(symbol) then
+      notify.warn("Help not found for: " .. symbol)
+    end
+    return
+  end
+
   -- call help command for symbol (safe protected call)
   local ok, _ = pcall(function()
     vim.cmd("help " .. symbol)
@@ -96,7 +103,7 @@ local function on_publish(_err, result, ctx, _config)
 
         -- notify user with appended actionable hint
         local notify_msg = string.format(
-          "%s\n[Hint] Press %s to open :help for '%s' (buffer-local).",
+          "%s\n[Hint] Press %s to show the help for '%s' (buffer-local).",
           diag.message,
           defaults.keymap,
           symbol
@@ -126,6 +133,12 @@ function M.setup(opts)
   opts = opts or {}
   if opts.keymap and type(opts.keymap) == "string" then
     defaults.keymap = opts.keymap
+  end
+  if opts.display == "hover" or opts.display == "help" then
+    defaults.display = opts.display
+  elseif opts.display ~= nil then
+    notify.warn(('display: unknown value %q, using "hover"'):format(tostring(opts.display)))
+    defaults.display = "hover"
   end
 
   -- register with lsp_common

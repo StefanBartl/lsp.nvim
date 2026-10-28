@@ -401,7 +401,7 @@ local DEFAULTS = {
     },
     lsp_signature = { enable = true },
     ts_type_lookup = { enable = true },
-    deprecated_help = { enable = true },
+    deprecated_help = { enable = true, display = "hover" },
   },
 
   -- Filetype-specific quality-of-life setup under `lsp/languages/**`, applied

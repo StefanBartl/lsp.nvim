@@ -309,7 +309,7 @@ local function setup_tools(cfg)
   end
   if tools.deprecated_help.enable then
     step("tools.deprecated_help", function()
-      require("lsp.tools.deprecated_help").setup()
+      require("lsp.tools.deprecated_help").setup({ display = tools.deprecated_help.display })
     end)
   end
 end

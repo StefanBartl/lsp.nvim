@@ -8,4 +8,8 @@ local M = {}
 ---@type string
 M.keymap = "<leader>oh" -- open help for last detected symbol in the current buffer
 
+-- How the help is shown: "hover" (a float, focus stays) or "help" (`:help`)
+---@type "hover"|"help"
+M.display = "hover"
+
 return M

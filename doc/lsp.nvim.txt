@@ -192,7 +192,7 @@ Defaults (excerpt -- the full table is `lua/lsp/config/DEFAULTS.lua`): >lua
         eslint_prettier = { enable = true, filetypes = { ... } },
         lsp_signature = { enable = true },
         ts_type_lookup = { enable = true },
-        deprecated_help = { enable = true },
+        deprecated_help = { enable = true, display = "hover" },
       },
       languages = { enable = true, env_links = true },
       completion = {
@@ -544,6 +544,11 @@ tools.<name>.enable   (boolean)   Master switch per extra tool:
                                   ts_type_lookup, deprecated_help.
 tools.eslint_prettier.filetypes (string[])
                                   Filetypes that tool attaches to.
+tools.deprecated_help.display ("hover"|"help")
+                                  How the help of a deprecated symbol is
+                                  shown: "hover" (default) opens its entry
+                                  in a float and keeps the focus, "help"
+                                  runs `:help`.
 languages.enable      (boolean)   Apply the filetype-specific setup under
                                   `lsp/languages/**` before the servers are
                                   registered.

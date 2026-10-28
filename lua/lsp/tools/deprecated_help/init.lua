@@ -30,6 +30,7 @@ function M.setup(opts)
   -- explicit `lua_ls.keymap` still wins over it.
   local lua_ls_opts = vim.tbl_extend("keep", opts.lua_ls or {}, {
     keymap = opts.keymap,
+    display = opts.display,
   })
   lua_ls.setup(lua_ls_opts)
 
@@ -37,7 +38,7 @@ function M.setup(opts)
   lsp_common.setup()
 
   -- set dynamic hint message for wrap.publish_diagnostics
-  opts.diagnostic_hint = " — press " .. defaults.keymap .. " to open :help for this symbol"
+  opts.diagnostic_hint = " — press " .. defaults.keymap .. " to show the help for this symbol"
   publish_diagnostics.wrap(opts)
 end
 

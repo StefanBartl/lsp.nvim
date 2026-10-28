@@ -169,18 +169,24 @@ require("lsp.@types.subsystem")
 ---@field eslint_prettier LspNvim.Tool
 ---@field lsp_signature LspNvim.Tool
 ---@field ts_type_lookup LspNvim.Tool
----@field deprecated_help LspNvim.Tool
+---@field deprecated_help LspNvim.DeprecatedHelpTool
 
 --- The resolved form of `LspNvim.ToolOpts`.
 ---@class LspNvim.Tool
 ---@field enable boolean
 ---@field filetypes string[]|nil
 
+---@class LspNvim.DeprecatedHelpTool: LspNvim.Tool
+---@field display "hover"|"help"
+
+---@class LspNvim.DeprecatedHelpOpts: LspNvim.ToolOpts
+---@field display? "hover"|"help" # Show the help of a deprecated symbol in a float ("hover") or with `:help` ("help").
+
 ---@class LspNvim.ToolsOpts
 ---@field eslint_prettier? LspNvim.ToolOpts
 ---@field lsp_signature? LspNvim.ToolOpts
 ---@field ts_type_lookup? LspNvim.ToolOpts
----@field deprecated_help? LspNvim.ToolOpts
+---@field deprecated_help? LspNvim.DeprecatedHelpOpts
 
 ---@class LspNvim.LanguagesOpts
 ---@field enable? boolean # Apply the filetype-specific setup under `lsp/languages/**`.

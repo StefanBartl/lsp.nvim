@@ -429,6 +429,174 @@ describe("lsp.tools.deprecated_help", function()
   end)
 end)
 
+describe("lsp.tools.deprecated_help display", function()
+  local defaults, help_float, lua_ls
+
+  ---@return integer[]
+  local function floats()
+    local out = {}
+    for _, win in ipairs(vim.api.nvim_list_wins()) do
+      if vim.api.nvim_win_get_config(win).relative ~= "" then
+        out[#out + 1] = win
+      end
+    end
+    return out
+  end
+
+  before_each(function()
+    for _, mod in ipairs({
+      "lsp.tools.deprecated_help",
+      "lsp.tools.deprecated_help.defaults",
+      "lsp.tools.deprecated_help.help_float",
+      "lsp.tools.deprecated_help.lsp.lua_ls.lua_ls",
+    }) do
+      package.loaded[mod] = nil
+    end
+    defaults = require("lsp.tools.deprecated_help.defaults")
+    help_float = require("lsp.tools.deprecated_help.help_float")
+    lua_ls = require("lsp.tools.deprecated_help.lsp.lua_ls.lua_ls")
+  end)
+
+  after_each(function()
+    for _, win in ipairs(floats()) do
+      pcall(vim.api.nvim_win_close, win, true)
+    end
+    vim.cmd("silent! helpclose")
+  end)
+
+  teardown(function()
+    for _, mod in ipairs({
+      "lsp.tools.deprecated_help",
+      "lsp.tools.deprecated_help.defaults",
+      "lsp.tools.deprecated_help.help_float",
+      "lsp.tools.deprecated_help.lsp.lua_ls.lua_ls",
+    }) do
+      package.loaded[mod] = nil
+    end
+  end)
+
+  it("defaults to hover, in the tool and in lsp.nvim's DEFAULTS", function()
+    assert.are.equal("hover", defaults.display)
+    assert.are.equal("hover", require("lsp.config.DEFAULTS").tools.deprecated_help.display)
+  end)
+
+  it("takes display from setup and falls back to hover for an unknown value", function()
+    require("lsp.tools.deprecated_help").setup({ display = "help" })
+    assert.are.equal("help", defaults.display)
+    require("lsp.tools.deprecated_help").setup({ display = "split" })
+    assert.are.equal("hover", defaults.display)
+  end)
+
+  it("tries the symbol with vim. in front first, because the detected symbol loses it", function()
+    assert.are.same({
+      "vim.lsp.buf_get_clients",
+      "vim.lsp.buf_get_clients()",
+      "lsp.buf_get_clients",
+      "lsp.buf_get_clients()",
+    }, help_float.candidates("lsp.buf_get_clients"))
+    assert.are.same({ "vim.x", "vim.x()" }, help_float.candidates("vim.x"))
+  end)
+
+  -- `split()` is a Vimscript function; a deprecated symbol of lua_ls is Lua.
+  it("prefers the Lua API over the Vimscript function of the same name", function()
+    local lines = help_float.lookup("split")
+    assert.is_table(lines)
+    assert.truthy(lines[1]:find("*vim.split()*", 1, true), lines[1])
+  end)
+
+  -- `deprecated.txt` defines its tags as bullets, the tag in the middle of the
+  -- line; read as headings the entry ran on through every following bullet.
+  it("cuts a bullet entry to its own line and its indented continuation", function()
+    local lines = {
+      "• *vim.a()*		Use |vim.b()| instead.",
+      "  Still about a.",
+      "• *vim.c()*		Use |vim.d()| instead.",
+      "",
+      "OPTIONS",
+    }
+    assert.are.same({ lines[1], lines[2] }, help_float.section(lines, "vim.a()"))
+    assert.are.same({ lines[3] }, help_float.section(lines, "vim.c()"))
+  end)
+
+  it("shows one bullet of Neovim's own deprecated.txt, not the list after it", function()
+    local file = vim.api.nvim_get_runtime_file("doc/deprecated.txt", false)[1]
+    assert.is_string(file, "no deprecated.txt in the runtime")
+    local tag
+    for _, line in ipairs(vim.fn.readfile(file)) do
+      tag = line:match("^%s*%S+%s+%*([^%s*]+)%*%s+%S")
+      if tag then
+        break
+      end
+    end
+    assert.is_string(tag, "deprecated.txt has no bullet entry any more")
+    local lines = help_float.lookup(tag)
+    assert.is_table(lines)
+    assert.truthy(
+      #lines <= 3,
+      ("%d lines for %s:\n%s"):format(#lines, tag, table.concat(lines, "\n"))
+    )
+  end)
+
+  it("cuts an entry at the next tag after text, at a separator and at the cap", function()
+    local lines = {
+      "intro",
+      "                                                  *a.alias*",
+      "a({x})                                                *a()*",
+      "    Does a.",
+      "",
+      "b({y})                                                *b()*",
+      "    Does b.",
+      "==============================================================================",
+      "c                                                     *c*",
+    }
+    assert.are.same(
+      { "                                                  *a.alias*", lines[3], "    Does a." },
+      help_float.section(lines, "a.alias")
+    )
+    assert.are.same({ lines[6], "    Does b." }, help_float.section(lines, "b()"))
+    assert.are.same({ lines[3], "    Does a.", "..." }, help_float.section(lines, "a()", 2))
+    assert.is_nil(help_float.section(lines, "missing"))
+  end)
+
+  it("finds a real entry of Neovim's own help", function()
+    local lines = help_float.lookup("tbl_contains")
+    assert.is_table(lines, "vim.tbl_contains() was not found in the runtime help")
+    assert.truthy(lines[1]:find("*vim.tbl_contains()*", 1, true))
+  end)
+
+  it("hover opens a float and keeps the window; help mode opens :help", function()
+    local win = vim.api.nvim_get_current_win()
+    lua_ls.show_help(vim.api.nvim_get_current_buf(), "tbl_contains")
+    assert.are.equal(1, #floats(), "no float was opened")
+    assert.are.equal(win, vim.api.nvim_get_current_win(), "the focus moved")
+    for _, w in ipairs(floats()) do
+      vim.api.nvim_win_close(w, true)
+    end
+
+    defaults.display = "help"
+    lua_ls.show_help(vim.api.nvim_get_current_buf(), "vim.tbl_contains()")
+    assert.are.equal("help", vim.bo.buftype)
+    assert.are.equal(0, #floats())
+  end)
+
+  it("hover warns and opens nothing for a symbol without help", function()
+    local warned = {}
+    local orig = vim.notify
+    ---@diagnostic disable-next-line: duplicate-set-field
+    vim.notify = function(msg)
+      warned[#warned + 1] = msg
+    end
+    local ok, err =
+      pcall(lua_ls.show_help, vim.api.nvim_get_current_buf(), "no_such_symbol_anywhere")
+    vim.notify = orig
+    assert(ok, err)
+    assert.are.equal(0, #floats())
+    assert.truthy(
+      table.concat(warned, "\n"):find("Help not found for: no_such_symbol_anywhere", 1, true)
+    )
+  end)
+end)
+
 describe("lsp.tools -- the commands, run", function()
   -- Nothing here raises on an empty unnamed buffer with no client attached,
   -- which is the state every one of these commands is reachable in. Kept as a
