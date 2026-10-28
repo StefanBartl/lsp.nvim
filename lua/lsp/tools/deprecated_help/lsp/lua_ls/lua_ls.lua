@@ -42,6 +42,12 @@ function M.show_help(bufnr, symbol)
     notify.info("No symbol available for help.")
     return
   end
+  -- The symbol is text from the buffer or the server's message: a `|` or a
+  -- line break in it would end `:help` and start another command.
+  if #symbol > 200 or not symbol:match("^[%w_.:]+$") and not symbol:match("^[%w_.:]+%(%)$") then
+    notify.warn("Not a symbol to look up: " .. symbol:sub(1, 80):gsub("%c", "?"))
+    return
+  end
 
   -- switch to buffer if not current (so :h opens in correct window context)
   if bufnr and vim.api.nvim_get_current_buf() ~= bufnr and vim.api.nvim_buf_is_loaded(bufnr) then
@@ -58,9 +64,7 @@ function M.show_help(bufnr, symbol)
   end
 
   -- call help command for symbol (safe protected call)
-  local ok, _ = pcall(function()
-    vim.cmd("help " .. symbol)
-  end)
+  local ok, _ = pcall(vim.api.nvim_cmd, { cmd = "help", args = { symbol } }, {})
   if not ok then
     notify.warn("Help not found for: " .. symbol)
   end

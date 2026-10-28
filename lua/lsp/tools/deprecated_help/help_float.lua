@@ -50,7 +50,7 @@ function M.find_tags(tags)
   for _, tag in ipairs(tags) do
     wanted[tag] = true
   end
-  local found = {}
+  local found, left = {}, vim.tbl_count(wanted)
   for _, tags_file in ipairs(vim.api.nvim_get_runtime_file("doc/tags", true)) do
     local f = io.open(tags_file, "r")
     if f then
@@ -59,9 +59,16 @@ function M.find_tags(tags)
         local name, file = line:match("^([^\t]+)\t([^\t]+)\t")
         if name and wanted[name] and not found[name] then
           found[name] = vim.fs.joinpath(dir, file)
+          left = left - 1
+          if left == 0 then
+            break
+          end
         end
       end
       f:close()
+      if left == 0 then
+        break
+      end
     end
   end
   return found
@@ -151,22 +158,31 @@ end
 ---@param symbol string
 ---@return string[]|nil
 function M.lookup(symbol)
-  local tags = M.candidates(symbol)
-  local ok, completion = pcall(vim.fn.getcompletion, symbol, "help")
-  if ok and type(completion) == "table" and completion[1] then
-    tags[#tags + 1] = completion[1]
-  end
-  local files = M.find_tags(tags)
   local cache = {}
-  for _, tag in ipairs(tags) do
-    local file = files[tag]
-    if file and vim.fn.filereadable(file) == 1 then
-      cache[file] = cache[file] or vim.fn.readfile(file)
-      local lines = M.section(cache[file], tag)
-      if lines then
-        return lines
+  ---@param tags string[]
+  ---@return string[]|nil
+  local function first_entry(tags)
+    local files = M.find_tags(tags)
+    for _, tag in ipairs(tags) do
+      local file = files[tag]
+      if file and vim.fn.filereadable(file) == 1 then
+        cache[file] = cache[file] or vim.fn.readfile(file)
+        local lines = M.section(cache[file], tag)
+        if lines then
+          return lines
+        end
       end
     end
+    return nil
+  end
+  local lines = first_entry(M.candidates(symbol))
+  if lines then
+    return lines
+  end
+  -- Only on a miss: `getcompletion` walks every help tag.
+  local ok, completion = pcall(vim.fn.getcompletion, symbol, "help")
+  if ok and type(completion) == "table" and completion[1] then
+    return first_entry({ completion[1] })
   end
   return nil
 end

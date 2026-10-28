@@ -576,6 +576,28 @@ describe("lsp.tools.deprecated_help display", function()
     assert.are.equal(0, #floats())
   end)
 
+  -- The symbol comes from the buffer or from the server's message (the text in
+  -- backticks): `vim.cmd("help " .. symbol)` ran every line of it.
+  it("never runs a second command hidden in the symbol", function()
+    vim.g.deprecated_help_pwned = nil
+    local orig = vim.notify
+    ---@diagnostic disable-next-line: duplicate-set-field
+    vim.notify = function() end
+    local ok, err = pcall(function()
+      for _, display in ipairs({ "help", "hover" }) do
+        defaults.display = display
+        lua_ls.show_help(
+          vim.api.nvim_get_current_buf(),
+          "vim.split\nlet g:deprecated_help_pwned = 1"
+        )
+      end
+    end)
+    vim.notify = orig
+    assert(ok, err)
+    assert.is_nil(vim.g.deprecated_help_pwned, "a line of the symbol ran as a command")
+    assert.are.equal(0, #floats())
+  end)
+
   it("hover warns and opens nothing for a symbol without help", function()
     local warned = {}
     local orig = vim.notify
