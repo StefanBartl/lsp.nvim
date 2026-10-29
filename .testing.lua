@@ -67,6 +67,10 @@ return {
   conformance = {
     -- gated: a failed check makes `scripts/test.sh conformance` exit 1
     gate = true,
+    -- K10 (require + setup). lsp.nvim replaces a whole LSP config (~60 keymaps, ~50 commands, ~36
+    -- autocmds, 119 modules), so the default 40 ms is too tight (warm median ~41.5 ms, no single lever
+    -- left); 60 ms still catches a real regression.
+    load_budget_ms = 60,
     waivers = {
       {
         check = "K1",
