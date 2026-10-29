@@ -14,6 +14,12 @@
 --- Clients are in-process stub servers (`cmd` is a function), as in
 --- usercmds_impl_spec.lua: no process is spawned. `supervisor.start` is a spy
 --- that does not start anything, so only what the command asked for is seen.
+---
+--- Limit: `supervisor.setup()` (the on_exit crash hook) is not installed here, so
+--- this spec cannot show that an unannounced stop would be restarted as a crash;
+--- it shows that the commands announce the stop and that `:Lsp stop` itself never
+--- calls `supervisor.start`. The exit handling itself (a declared stop is not a
+--- crash) is covered by supervisor_spec.lua.
 
 local supervisor = require("lsp.core.supervisor")
 require("lsp.bindings.usrcmds").setup()
@@ -145,7 +151,7 @@ describe(":Lsp stop / :Lsp restart -> lsp.core.supervisor", function()
       return attached(bufnr) == 0
     end)
     assert.are.equal(0, attached(bufnr), "the client went down")
-    assert.are.same({}, calls.start, "a stop starts nothing")
+    assert.are.same({}, calls.start, "the stop route does not call supervisor.start itself")
   end)
 
   it(":Lsp restart <name> declares the stop and starts the server via supervisor.start", function()
