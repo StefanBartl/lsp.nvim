@@ -83,6 +83,7 @@ longer match at all, exclusion or no exclusion.
 | `pack_spec.lua` | The `vim.g.lsp_nvim.pack` gating, and that the two completion engines exclude each other. |
 | `registry_spec.lua` | Server-name resolution, the `webdev.*` fallback, and what happens to a name whose module is missing or throws. |
 | `usrcmds_spec.lua` | The `:Lsp` route table: every route reachable, the legacy aliases mapping onto real routes, and the argument completion. |
+| `usrcmds_supervisor_spec.lua` | That `:Lsp stop` and `:Lsp restart` (by name and all) reach `lsp.core.supervisor` through the real `:Lsp` verb: every deliberate stop is declared with `expect_stop` first, and a restart starts through `supervisor.start`. In-process stub servers, the supervisor spied at its boundary. |
 | `lightbulb_spec.lua` | The CodeActionKind allowlist the code-action indicator rests on, the per-filetype resolution, and the draw path against a stub client. |
 | `symbols_spec.lua` | `core/symbols`: both response shapes normalized, the cursor-to-path lookup (a range ending at column 0, a one-line symbol, the header line's indentation), and the cache -- keyed to `changedtick`, joining an in-flight request, not dropping a waiter when a newer one supersedes it. |
 | `winbar_spec.lua` | `core/winbar`: the parts and the per-filetype depth cap, the three-state resolution, and -- in a real window with a stub client -- that a `'winbar'` it did not write is never cleared, and that it does not draw on floats or special buffers. |
