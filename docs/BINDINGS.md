@@ -109,7 +109,7 @@ marked in the last column; `none` binds nothing.
 | `rename` | `grn` | n | — | — | Rename symbol |
 | `rename_leader` | `<leader>rn` | n | — | yes | Rename symbol (leader variant) |
 | `root_scope_pick` | `<leader>lsp` | n | — | yes | Pick root scope (cwd / git root / file path) |
-| `signature_help` | `<M-s>` | i | — | yes | Signature help |
+| `signature_help` | `<M-s>` | i | — | yes | Signature help (framed; says so when there is none) |
 | `signature_toggle` | `<C-b>` | i, n | — | yes | Show signature or hover (floating toggle) |
 | `trouble_all` | `<leader>xx` | n | `trouble` | yes | Trouble: all diagnostics |
 | `trouble_buffer` | `<leader>xd` | n | `trouble` | yes | Trouble: buffer diagnostics |

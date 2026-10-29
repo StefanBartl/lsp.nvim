@@ -937,4 +937,13 @@ function M.winbar_toggle_filetype()
   wb.toggle(ft)
 end
 
+---@internal
+--- Insert-mode signature help: framed like the hover of hover.nvim, and a small
+--- "No signature help" float when there is nothing at the cursor. See
+--- `lsp.tools.lsp_signature.help`.
+---@return nil
+function M.signature_help()
+  require("lsp.tools.lsp_signature.help").show()
+end
+
 return M

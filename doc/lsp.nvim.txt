@@ -190,7 +190,7 @@ Defaults (excerpt -- the full table is `lua/lsp/config/DEFAULTS.lua`): >lua
       lspdoctor = { use_notify = false, list_limit = 8, ... },
       tools = {
         eslint_prettier = { enable = true, filetypes = { ... } },
-        lsp_signature = { enable = true },
+        lsp_signature = { enable = true, border = "rounded" },
         ts_type_lookup = { enable = true },
         deprecated_help = { enable = true, display = "hover" },
       },
@@ -544,6 +544,14 @@ tools.<name>.enable   (boolean)   Master switch per extra tool:
                                   ts_type_lookup, deprecated_help.
 tools.eslint_prettier.filetypes (string[])
                                   Filetypes that tool attaches to.
+tools.lsp_signature.border (string|string[])
+                                  Border of the Insert-mode signature help
+                                  (`<M-s>`) and of its small "No signature
+                                  help" float, which closes on the next
+                                  cursor move. Default "rounded", the
+                                  hover.nvim default; a hover.nvim style
+                                  name (`heavy`, ...) is understood when
+                                  that plugin is installed.
 tools.deprecated_help.display ("hover"|"help")
                                   How the help of a deprecated symbol is
                                   shown: "hover" (default) opens its entry

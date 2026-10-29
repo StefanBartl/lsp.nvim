@@ -167,7 +167,7 @@ require("lsp.@types.subsystem")
 --- relies on when it reads them straight through.
 ---@class LspNvim.Tools
 ---@field eslint_prettier LspNvim.Tool
----@field lsp_signature LspNvim.Tool
+---@field lsp_signature LspNvim.SignatureTool
 ---@field ts_type_lookup LspNvim.Tool
 ---@field deprecated_help LspNvim.DeprecatedHelpTool
 
@@ -175,6 +175,9 @@ require("lsp.@types.subsystem")
 ---@class LspNvim.Tool
 ---@field enable boolean
 ---@field filetypes string[]|nil
+
+---@class LspNvim.SignatureTool: LspNvim.Tool
+---@field border string|string[] # Border of the signature-help float and of its "No signature help" notice (default "rounded", as in hover.nvim).
 
 ---@class LspNvim.DeprecatedHelpTool: LspNvim.Tool
 ---@field display "hover"|"help"
@@ -184,9 +187,12 @@ require("lsp.@types.subsystem")
 
 ---@class LspNvim.ToolsOpts
 ---@field eslint_prettier? LspNvim.ToolOpts
----@field lsp_signature? LspNvim.ToolOpts
+---@field lsp_signature? LspNvim.SignatureOpts
 ---@field ts_type_lookup? LspNvim.ToolOpts
 ---@field deprecated_help? LspNvim.DeprecatedHelpOpts
+
+---@class LspNvim.SignatureOpts: LspNvim.ToolOpts
+---@field border? string|string[] # Border style of the signature-help float; any `nvim_open_win` border, a hover.nvim style name or an 8-character list.
 
 ---@class LspNvim.LanguagesOpts
 ---@field enable? boolean # Apply the filetype-specific setup under `lsp/languages/**`.

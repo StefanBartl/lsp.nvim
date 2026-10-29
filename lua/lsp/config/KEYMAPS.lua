@@ -141,8 +141,8 @@ local entries = {
   signature_help = {
     lhs = "<M-s>",
     mode = "i",
-    rhs = vim.lsp.buf.signature_help,
-    desc = "Signature help",
+    rhs = actions.signature_help,
+    desc = "Signature help (framed; says so when there is none)",
   },
   -- Moved here from `tools/lsp_signature`, which bound it unconditionally: a
   -- key outside the catalogue ignored `keymaps.enable = false`, the presets

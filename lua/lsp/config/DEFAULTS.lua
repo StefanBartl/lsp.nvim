@@ -399,7 +399,7 @@ local DEFAULTS = {
       enable = true,
       filetypes = { "javascript", "typescript", "javascriptreact", "typescriptreact" },
     },
-    lsp_signature = { enable = true },
+    lsp_signature = { enable = true, border = "rounded" },
     ts_type_lookup = { enable = true },
     deprecated_help = { enable = true, display = "hover" },
   },
