@@ -127,6 +127,13 @@ return {
         expires = "2027-04-14",
       },
       {
+        check = "K12",
+        level = "warn",
+        text = "LSP.signature_help",
+        reason = "insert-mode signature help (<M-s>) shows the signature at the cursor of the current insert session; an ex command would leave insert mode and has nothing to show there",
+        expires = "2027-04-14",
+      },
+      {
         check = "K6",
         level = "error",
         text = "conform.nvim",
