@@ -1614,6 +1614,63 @@ describe("lsp.core.env_links", function()
       assert.are.equal(10, links.heading_lookup(idx, "para-2-not-item"))
     end)
 
+    -- A setext underline of one or two characters ends the paragraph too: an
+    -- indented line after it is code, not a continuation line.
+    it("takes an indented line after a short setext underline for code", function()
+      assert.are.same({}, scanned({ "Title", "==", "    [x]($A/gone/after-setext.md)" }))
+      assert.are.same({}, scanned({ "Title", "-", "    [x]($A/gone/after-setext.md)" }))
+      -- without a paragraph above, `==` is text and the indented line goes on it
+      assert.are.same({ "$A/cont.md" }, scanned({ "", "==", "    [c]($A/cont.md)" }))
+    end)
+
+    -- An HTML block is no paragraph: no lazy line goes on it, so the block quote
+    -- or list item it opened in ends it (an unclosed `<!--` used to swallow the
+    -- rest of the document).
+    it("ends an unclosed HTML comment block with its block quote or list item", function()
+      assert.are.same({ "$A/real.md" }, scanned({ "> <!-- note", "", "[r]($A/real.md)" }))
+      assert.are.same({ "$A/real.md" }, scanned({ "> <!-- note", "[r]($A/real.md)" }))
+      assert.are.same(
+        { "$A/real.md" },
+        scanned({ "- item", "", "  <!-- note", "", "[r]($A/real.md)" })
+      )
+      -- inside the item it still runs on, over blank lines too
+      assert.are.same(
+        {},
+        scanned({ "- item", "", "  <!-- note", "", "  [x]($A/gone/c.md)", "  -->" })
+      )
+      assert.are.same({}, scanned({ "> <!-- note", ">", "> [x]($A/gone/c.md)", "> -->" }))
+    end)
+
+    -- A comment block opens at the content column of the list item it is in, not
+    -- at the margin: `10.` and nested items start four columns in or more.
+    it("finds an HTML comment block in a list item whose content starts four columns in", function()
+      assert.are.same(
+        {},
+        scanned({ "10. a", "", "    <!--", "", "    [x]($A/gone/c.md)", "    -->" })
+      )
+      assert.are.same(
+        {},
+        scanned({ "- a", "  - b", "", "    <!--", "", "    [x]($A/gone/c.md)", "    -->" })
+      )
+      -- one that goes on a paragraph is text, and its link is masked when it closes
+      assert.are.same(
+        { "$A/after.md" },
+        scanned({ "text", "    <!-- [x]($A/gone/c.md) -->", "[a]($A/after.md)" })
+      )
+    end)
+
+    -- A paragraph that goes on a list item after a blank line sits at the item's
+    -- content column: its underline does too (also four columns in or more).
+    it("indexes a setext heading in a list continuation paragraph", function()
+      local idx = index_of(
+        "10. a\n\n    Second\n    ---\n\n- a\n  - b\n\n    Third\n    ===\n\nTop\n    ===\n"
+      )
+      assert.are.equal(2, links.heading_lookup(idx, "second"))
+      assert.are.equal(8, links.heading_lookup(idx, "third"))
+      -- a line at the margin ends the list: an underline four blanks in is text
+      assert.is_nil(links.heading_lookup(idx, "top"))
+    end)
+
     it("stays fast on a long document of indented lines, comments and quotes", function()
       local lines = {}
       for k = 1, 5000 do

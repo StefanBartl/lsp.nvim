@@ -936,16 +936,20 @@ end
 
 ---@class LspNvim.EnvLink.Blocks
 ---@field fence LspNvim.EnvLink.Fence|nil # The fenced code block the line is in.
----@field comment boolean # Inside an HTML comment block (`<!--` up to the line with `-->`).
+---@field comment LspNvim.EnvLink.Comment|nil # The HTML comment block (`<!--` up to the line with `-->`) the line is in.
 ---@field lists integer[] # Content columns of the open list items, innermost last.
 ---@field lists_quote integer # Block quote depth `lists` belong to.
 ---@field para boolean # The line before was paragraph text (an indented line goes on it).
+
+---@class LspNvim.EnvLink.Comment
+---@field quote integer # Block quote depth the block was opened at.
+---@field indent integer # Content column of the list item it was opened in (0: none).
 
 ---@internal
 --- A fresh `block_step` state, for the first line of a document.
 ---@return LspNvim.EnvLink.Blocks
 local function new_blocks()
-  return { comment = false, lists = {}, lists_quote = 0, para = false }
+  return { lists = {}, lists_quote = 0, para = false }
 end
 
 --- The list item marker of `rest` (a line without its quote prefix): the
@@ -975,26 +979,37 @@ end
 --- a paragraph: an indented line right after paragraph text is its
 --- continuation. The list items are followed by their content columns, so a
 --- list continuation paragraph (`- a`, blank, `  more`) stays text. An HTML
---- comment block starts at a line beginning with `<!--` (up to three blanks)
---- and ends at the first line that holds `-->`, as in CommonMark; a comment in
---- running text is masked per paragraph (`masked_lines`).
+--- comment block starts at a line beginning with `<!--` (up to three blanks
+--- past the content of the list item it is in) and ends at the first line that
+--- holds `-->`, or with the block quote or list item it was opened in (no lazy
+--- line goes on an HTML block), as in CommonMark; a comment in running text is
+--- masked per paragraph (`masked_lines`).
 ---@param st LspNvim.EnvLink.Blocks
 ---@param line string
 ---@return boolean skip
 local function block_step(st, line)
-  local quote, rest = unquote(line)
-  if st.comment then
-    st.comment = not line:find("-->", 1, true)
-    st.para = false
-    return true
-  end
+  local quote, rest, leads = unquote(line)
   local blank = not rest:find("%S")
-  if not st.fence and not blank then
-    if rest:find("^ ? ? ?<!%-%-") then
-      st.comment = not rest:find("-->", 1, true)
+  local comment = st.comment
+  if comment then
+    -- Measured as `fence_step` measures a fenced block's list item.
+    local ended = quote < comment.quote
+    if not ended and comment.indent > 0 and not blank then
+      local cols = quote > comment.quote and columns(leads[comment.quote + 1])
+        or columns(rest:match("^[ \t]*"))
+      ended = cols < comment.indent
+    end
+    if not ended then
+      if line:find("-->", 1, true) then
+        st.comment = nil
+      end
       st.para = false
       return true
     end
+    st.comment = nil -- the line after the block is read as any other
+  end
+  local underline = false -- a setext underline: it ends the paragraph above it
+  if not st.fence and not blank then
     if quote ~= st.lists_quote then
       st.lists, st.lists_quote = {}, quote
     end
@@ -1008,6 +1023,22 @@ local function block_step(st, line)
         return true
       end
     end
+    local inside = lead < (lists[#lists] or 0) + 4 -- not a paragraph continuation line
+    if inside and rest:find("^[ \t]*<!%-%-") then
+      -- An HTML block is no lazy line: it belongs to the innermost item whose
+      -- content it reaches.
+      while #lists > 0 and lists[#lists] > lead do
+        lists[#lists] = nil
+      end
+      if not rest:find("-->", 1, true) then
+        st.comment = { quote = quote, indent = lists[#lists] or 0 }
+      end
+      st.para = false
+      return true
+    end
+    underline = st.para
+      and inside
+      and (rest:find("^[ \t]*=+[ \t]*$") or rest:find("^[ \t]*%-+[ \t]*$")) ~= nil
     local item_lead, content = list_item(rest)
     if item_lead then
       while #lists > 0 and lists[#lists] > item_lead do
@@ -1023,6 +1054,7 @@ local function block_step(st, line)
     return true
   end
   st.para = not blank
+    and not underline
     and not rest:find("^%s*#+%s")
     and not rest:find("^%s*#+$")
     and not rest:find("^%s*[-*_=][-*_= ]*[-*_=][-*_= ]*[-*_=]%s*$")
@@ -2026,6 +2058,7 @@ function M.heading_index(path, only_cached)
   local skip ---@type boolean
   local para, para_first = {}, 0 ---@type string[], integer # Lines of the paragraph a setext underline would turn into a heading.
   local para_head, para_quote, para_indent = "", 0, 0 ---@type string, integer, integer # Its first line (unquoted), quote depth, list item content column.
+  local lists, lists_quote = {}, 0 ---@type integer[], integer # Content columns of the open list items (innermost last), and their quote depth.
   local n = 0
   for line in (content .. "\n"):gmatch("(.-)\r?\n") do
     if n <= front_until then
@@ -2041,6 +2074,9 @@ function M.heading_index(path, only_cached)
       -- depth) or a list item (its underline indented to the item's content).
       local quote, rest = unquote(line)
       local item = list_item(rest)
+      if quote ~= lists_quote then
+        lists, lists_quote = {}, quote
+      end
       if #para > 0 and quote == para_quote and is_setext_underline(rest, para_indent) then
         index_title(table.concat(para, " "), para_first)
         para = {}
@@ -2051,7 +2087,11 @@ function M.heading_index(path, only_cached)
         para = {} -- too long to be a heading: it is not one, and neither is what follows
       elseif item and (#para == 0 or opens_block(rest, para_head)) then
         -- A list item starts a paragraph of its own, inside the item.
-        local _, content_col = list_item(rest)
+        local item_lead, content_col = list_item(rest)
+        while #lists > 0 and lists[#lists] > item_lead do
+          lists[#lists] = nil
+        end
+        lists[#lists + 1] = content_col
         local inner = rest:match("^[ \t]*[-*+][ \t]+(.*)$")
           or rest:match("^[ \t]*%d+[.)][ \t]+(.*)$")
         if opens_block(inner) then
@@ -2065,8 +2105,15 @@ function M.heading_index(path, only_cached)
         -- part of the title.
         para[#para + 1] = rtrim(rest:sub(rest:match("^%s*()")))
       elseif not opens_block(rest) then
+        -- A paragraph of its own sits in the innermost list item whose content
+        -- it reaches (a list continuation paragraph); a line left of an item's
+        -- content ends the item.
+        local lead = columns(rest:match("^[ \t]*"))
+        while #lists > 0 and lists[#lists] > lead do
+          lists[#lists] = nil
+        end
         para, para_first, para_head = { rtrim(rest:sub(rest:match("^%s*()"))) }, n, rest
-        para_quote, para_indent = quote, 0
+        para_quote, para_indent = quote, lists[#lists] or 0
       else
         para = {}
       end
