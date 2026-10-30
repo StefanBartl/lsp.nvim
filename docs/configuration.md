@@ -659,14 +659,15 @@ hid that, and every genuinely broken link along with it.
   GitHub spelling with the braces), HTML `id`/`name` anchors, and a heading's
   emoji dropped (`## 🚀 Features` is `#-features`); a trailing image or tag
   keeps its hyphen (`#title-`). ATX headings count, also in block quotes and
-  list items; setext headings at the top level; none in a
-  front matter or a
-  fenced block. A few extra lenient spellings exist; they can only make a link
+  list items; setext headings too, also in block quotes and list items; none
+  in a front matter or a fenced block. A few extra lenient spellings exist; they can only make a link
   resolve that GitHub would not.
   Links inside fenced code blocks (followed the CommonMark way: by character and
-  length, in block quotes and behind list markers), code spans (also ones that
-  wrap over a line break) and a YAML front matter are not links and are not
-  reported. A link cannot contain a link: in `[A [B](x) C](y)` only `x` is one. Diagnostics follow the document as it is edited,
+  length, in block quotes and behind list markers), indented code blocks (four
+  columns past the list item's content; a list continuation paragraph is text),
+  HTML comments (`<!-- ... -->`, also over several lines), code spans (also ones
+  that wrap over a line break or over the lines of a block quote) and a YAML
+  front matter are not links and are not reported. A link cannot contain a link: in `[A [B](x) C](y)` only `x` is one. Diagnostics follow the document as it is edited,
   and are re-checked when any file is written or Neovim regains focus, so a
   target that is created later clears its warning.
 

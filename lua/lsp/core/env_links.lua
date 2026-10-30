@@ -764,6 +764,34 @@ function M.mask_code_spans(text)
   return table.concat(out)
 end
 
+--- `text` with every HTML comment (`<!-- ... -->`, also `<!-->` and `<!--->`,
+--- as in CommonMark) blanked out, byte for byte, so columns still line up. A
+--- `<!--` that is never closed stays text. Run it on text whose code spans are
+--- already blanked (`mask_code_spans`): a `<!--` shown in a span is no comment.
+---@param text string
+---@return string
+function M.mask_html_comments(text)
+  if not text:find("<!--", 1, true) then
+    return text
+  end
+  local out, from = {}, 1
+  while true do
+    local s = text:find("<!--", from, true)
+    if not s then
+      break
+    end
+    local _, e = text:find("-->", s + 2, true)
+    if not e then
+      break
+    end
+    out[#out + 1] = text:sub(from, s - 1)
+    out[#out + 1] = text:sub(s, e):gsub("[^\n]", " ")
+    from = e + 1
+  end
+  out[#out + 1] = text:sub(from)
+  return table.concat(out)
+end
+
 ---@class LspNvim.EnvLink.Fence
 ---@field char string # "`" or "~".
 ---@field len integer # How many of them opened the block.
@@ -906,19 +934,117 @@ local function front_matter_end(lines)
   return 0
 end
 
+---@class LspNvim.EnvLink.Blocks
+---@field fence LspNvim.EnvLink.Fence|nil # The fenced code block the line is in.
+---@field comment boolean # Inside an HTML comment block (`<!--` up to the line with `-->`).
+---@field lists integer[] # Content columns of the open list items, innermost last.
+---@field lists_quote integer # Block quote depth `lists` belong to.
+---@field para boolean # The line before was paragraph text (an indented line goes on it).
+
 ---@internal
---- Walk the paragraphs of a buffer's lines, front matter and fenced code blocks
---- left out: `visit(para)` gets each one as a list of `{ lnum, line }` (`lnum`
---- is 0-based) and answers true to stop the walk.
+--- A fresh `block_step` state, for the first line of a document.
+---@return LspNvim.EnvLink.Blocks
+local function new_blocks()
+  return { comment = false, lists = {}, lists_quote = 0, para = false }
+end
+
+--- The list item marker of `rest` (a line without its quote prefix): the
+--- columns of the blanks before it, and the column its content starts at.
+---@param rest string
+---@return integer|nil lead
+---@return integer|nil content
+local function list_item(rest)
+  local item = rest:match("^[ \t]*[-*+][ \t]+()") or rest:match("^[ \t]*%d+[.)][ \t]+()")
+  if not item or not rest:find("%S", item) then
+    return nil -- an empty item (`-`) or a thematic break of one marker
+  end
+  -- `- - -` and `* * *` are thematic breaks, not items.
+  if rest:find("^[ \t]*[-*_][ \t]*[-*_][ \t]*[-*_][-*_ \t]*$") then
+    return nil
+  end
+  return columns(rest:match("^[ \t]*")), columns(rest:sub(1, item - 1))
+end
+
+---@internal
+--- Advance the block tracking `st` past `line`, and say whether the line is no
+--- document text: a fenced code block (`fence_step`), an indented code block, or
+--- an HTML comment block.
+---
+--- An indented code block is a line indented four columns past the content of
+--- the list item it is in (past the margin outside a list), that does not go on
+--- a paragraph: an indented line right after paragraph text is its
+--- continuation. The list items are followed by their content columns, so a
+--- list continuation paragraph (`- a`, blank, `  more`) stays text. An HTML
+--- comment block starts at a line beginning with `<!--` (up to three blanks)
+--- and ends at the first line that holds `-->`, as in CommonMark; a comment in
+--- running text is masked per paragraph (`masked_lines`).
+---@param st LspNvim.EnvLink.Blocks
+---@param line string
+---@return boolean skip
+local function block_step(st, line)
+  local quote, rest = unquote(line)
+  if st.comment then
+    st.comment = not line:find("-->", 1, true)
+    st.para = false
+    return true
+  end
+  local blank = not rest:find("%S")
+  if not st.fence and not blank then
+    if rest:find("^ ? ? ?<!%-%-") then
+      st.comment = not rest:find("-->", 1, true)
+      st.para = false
+      return true
+    end
+    if quote ~= st.lists_quote then
+      st.lists, st.lists_quote = {}, quote
+    end
+    local lists = st.lists
+    local lead = columns(rest:match("^[ \t]*"))
+    if not st.para then
+      while #lists > 0 and lists[#lists] > lead do
+        lists[#lists] = nil -- a line left of an item's content ends the item
+      end
+      if lead >= (lists[#lists] or 0) + 4 then
+        return true
+      end
+    end
+    local item_lead, content = list_item(rest)
+    if item_lead then
+      while #lists > 0 and lists[#lists] > item_lead do
+        lists[#lists] = nil
+      end
+      lists[#lists + 1] = content
+    end
+  end
+  local skip
+  st.fence, skip = fence_step(st.fence, line)
+  if skip then
+    st.para = false
+    return true
+  end
+  st.para = not blank
+    and not rest:find("^%s*#+%s")
+    and not rest:find("^%s*#+$")
+    and not rest:find("^%s*[-*_=][-*_= ]*[-*_=][-*_= ]*[-*_=]%s*$")
+  return false
+end
+
+---@internal
+--- Walk the paragraphs of a buffer's lines, front matter, code blocks (fenced
+--- and indented) and HTML comment blocks left out (`block_step`): `visit(para)`
+--- gets each one as a list of `{ lnum, line }` (`lnum` is 0-based) and answers
+--- true to stop the walk.
 ---
 --- A paragraph ends at a blank line, a fence, or a line that opens a block of its
---- own (`opens_block`), and is cut at `MAX_LINE_BYTES`. (The lines of a block
---- quote are paragraphs of their own.)
+--- own (`opens_block`), and is cut at `MAX_LINE_BYTES`. The lines of a block
+--- quote at one depth are one paragraph (judged without their `>`), and so is a
+--- line without `>` that goes on one (a lazy continuation line).
 ---@param lines string[]
 ---@param visit fun(para: { lnum: integer, line: string }[]): boolean|nil
 ---@return nil
 local function each_paragraph(lines, visit)
   local para, bytes = {}, 0 ---@type { lnum: integer, line: string }[], integer
+  local para_quote, head = 0, nil ---@type integer, string|nil # Quote depth and unquoted first line of `para`.
   local stopped = false
 
   --- Hand the paragraph collected so far to `visit`.
@@ -934,22 +1060,28 @@ local function each_paragraph(lines, visit)
     end
   end
 
-  local fence ---@type LspNvim.EnvLink.Fence|nil
-  local skip ---@type boolean
+  local st = new_blocks()
   for k = front_matter_end(lines) + 1, #lines do
     local line = lines[k]
-    fence, skip = fence_step(fence, line)
-    if skip or #line > M.MAX_LINE_BYTES then
+    if block_step(st, line) or #line > M.MAX_LINE_BYTES then
       flush()
     else
-      if opens_block(line, para[1] and para[1].line) or bytes + #line > M.MAX_LINE_BYTES then
+      local quote, rest = unquote(line)
+      local goes_on = #para > 0
+        and (quote == para_quote or quote == 0)
+        and not opens_block(rest, head)
+        and bytes + #line <= M.MAX_LINE_BYTES
+      if not goes_on then
         flush()
       end
-      if not stopped and not line:find("^%s*$") then
+      if not stopped and rest:find("%S") then
+        if #para == 0 then
+          para_quote, head = quote, rest
+        end
         para[#para + 1] = { lnum = k - 1, line = line }
         bytes = bytes + #line + 1
       end
-      if line:find("^%s*|") or line:find("^%s*#+%s") or line:find("^%s*#+$") then
+      if rest:find("^%s*|") or rest:find("^%s*#+%s") or rest:find("^%s*#+$") then
         flush() -- a heading or a table row is a block of one line
       end
     end
@@ -971,7 +1103,7 @@ local function masked_lines(para)
   for i, entry in ipairs(para) do
     texts[i] = entry.line
   end
-  local masked = M.mask_code_spans(table.concat(texts, "\n"))
+  local masked = M.mask_html_comments(M.mask_code_spans(table.concat(texts, "\n")))
   local out, off = {}, 1
   for i, entry in ipairs(para) do
     out[i] = masked:sub(off, off + #entry.line - 1)
@@ -981,16 +1113,16 @@ local function masked_lines(para)
 end
 
 --- Every env link (`$VAR/...`, `${VAR}/...`, `~/...`) in a buffer's lines
---- that is a link in the Markdown sense: not inside a fenced code block or a
---- code span, not in a YAML front matter. Documentation that *shows* a link
---- must not be told its example is broken.
+--- that is a link in the Markdown sense: not inside a code block (fenced or
+--- indented), a code span or an HTML comment, not in a YAML front matter.
+--- Documentation that *shows* a link must not be told its example is broken.
 ---
---- Code spans are found per paragraph, not per line: a span may wrap over a
---- line break (hard-wrapped prose does exactly that), and read line by line
---- the closing backtick would pair with the next one on its line, and the
---- link between them would be missed or an example in the next span exposed.
---- (See `each_paragraph` for where a paragraph ends: the lines of a block
---- quote are paragraphs of their own, a span that wraps over `>` lines is not
+--- Code spans and comments are found per paragraph, not per line: a span may
+--- wrap over a line break (hard-wrapped prose does exactly that), and read line
+--- by line the closing backtick would pair with the next one on its line, and
+--- the link between them would be missed or an example in the next span
+--- exposed. (See `each_paragraph` for where a paragraph ends; the lines of a
+--- block quote are one paragraph, so a span that wraps over `>` lines is
 --- followed.)
 ---@param lines string[]
 ---@return LspNvim.EnvLink.Found[]
@@ -1115,8 +1247,9 @@ function M.typing_at(line, col)
   return { text = text, start = start, angled = angled }
 end
 
---- Is line `lnum` (1-based) of `lines` no document text: inside a fenced code
---- block or a YAML front matter, or a fence line itself?
+--- Is line `lnum` (1-based) of `lines` no document text: inside a fenced or
+--- indented code block, an HTML comment block or a YAML front matter, or a
+--- fence line itself?
 ---@param lines string[]
 ---@param lnum integer
 ---@return boolean
@@ -1125,10 +1258,10 @@ function M.fenced_at(lines, lnum)
   if lnum <= front then
     return true
   end
-  local fence ---@type LspNvim.EnvLink.Fence|nil
+  local st = new_blocks()
   local skip = false
   for k = front + 1, lnum do
-    fence, skip = fence_step(fence, lines[k] or "")
+    skip = block_step(st, lines[k] or "")
   end
   return skip
 end
@@ -1693,11 +1826,19 @@ local function without_emphasis_underscores(s)
 end
 
 ---@internal
---- Is `line` a setext underline (`===` or `---`, at most three blanks before)?
----@param line string
+--- Is `rest` (a line without its quote prefix) a setext underline (`===` or
+--- `---`) for a paragraph in a list item whose content starts at column
+--- `indent` (0: none): at least `indent` and at most `indent + 3` blanks before?
+---@param rest string
+---@param indent integer
 ---@return boolean
-local function is_setext_underline(line)
-  return line:match("^ ? ? ?=+%s*$") ~= nil or line:match("^ ? ? ?%-+%s*$") ~= nil
+local function is_setext_underline(rest, indent)
+  local lead, mark = rest:match("^([ \t]*)(.*)$")
+  local cols = columns(lead)
+  if cols < indent or cols > indent + 3 then
+    return false
+  end
+  return mark:match("^=+%s*$") ~= nil or mark:match("^%-+%s*$") ~= nil
 end
 
 ---@class LspNvim.EnvLink.HeadingIndex : table<string, integer>
@@ -1732,7 +1873,7 @@ end
 
 --- The anchors of the Markdown file at `path`, each with the 0-based line it
 --- names: a heading's GitHub-style slug (ATX headings, also in block quotes and
---- list items; setext headings at the top level; a repeated heading `x` is `x`,
+--- list items; setext headings too, at the top level, in block quotes and in list items; a repeated heading `x` is `x`,
 --- `x-1`, `x-2`, ..., counted on the anchor GitHub ends up with), its
 --- `{#custom-id}`, and the `id`/`name` of an HTML anchor. Headings inside fenced code blocks and a YAML
 --- front matter are not headings.
@@ -1884,6 +2025,7 @@ function M.heading_index(path, only_cached)
   local fence ---@type LspNvim.EnvLink.Fence|nil
   local skip ---@type boolean
   local para, para_first = {}, 0 ---@type string[], integer # Lines of the paragraph a setext underline would turn into a heading.
+  local para_head, para_quote, para_indent = "", 0, 0 ---@type string, integer, integer # Its first line (unquoted), quote depth, list item content column.
   local n = 0
   for line in (content .. "\n"):gmatch("(.-)\r?\n") do
     if n <= front_until then
@@ -1895,23 +2037,38 @@ function M.heading_index(path, only_cached)
       para = {}
     else
       local title = heading_title(line)
-      if is_setext_underline(line) and #para > 0 then
+      -- A setext heading may sit in a block quote (its underline at the same
+      -- depth) or a list item (its underline indented to the item's content).
+      local quote, rest = unquote(line)
+      local item = list_item(rest)
+      if #para > 0 and quote == para_quote and is_setext_underline(rest, para_indent) then
         index_title(table.concat(para, " "), para_first)
         para = {}
       elseif title then
         index_title(title, n)
         para = {}
-      elseif opens_block(line, para[1]) then
-        para = {}
-      elseif #line <= M.MAX_HEADING_BYTES and #para < 8 then
-        if #para == 0 then
-          para_first = n
+      elseif #line > M.MAX_HEADING_BYTES or #para >= 8 then
+        para = {} -- too long to be a heading: it is not one, and neither is what follows
+      elseif item and (#para == 0 or opens_block(rest, para_head)) then
+        -- A list item starts a paragraph of its own, inside the item.
+        local _, content_col = list_item(rest)
+        local inner = rest:match("^[ \t]*[-*+][ \t]+(.*)$")
+          or rest:match("^[ \t]*%d+[.)][ \t]+(.*)$")
+        if opens_block(inner) then
+          para = {}
+        else
+          para, para_first, para_head = { rtrim(inner) }, n, rest
+          para_quote, para_indent = quote, content_col
         end
+      elseif #para > 0 and quote == para_quote and not opens_block(rest, para_head) then
         -- Leading blanks and the trailing ones before a line break are no
         -- part of the title.
-        para[#para + 1] = rtrim(line:sub(line:match("^%s*()")))
+        para[#para + 1] = rtrim(rest:sub(rest:match("^%s*()")))
+      elseif not opens_block(rest) then
+        para, para_first, para_head = { rtrim(rest:sub(rest:match("^%s*()"))) }, n, rest
+        para_quote, para_indent = quote, 0
       else
-        para = {} -- too long to be a heading: it is not one, and neither is what follows
+        para = {}
       end
       if line:find("<", 1, true) and not fence then
         for _, attr in ipairs({ "id", "name" }) do

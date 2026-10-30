@@ -1469,12 +1469,164 @@ describe("lsp.core.env_links", function()
       assert.are.same({}, scanned({ "- ```", "  > [c]($A/c.md)", "  ```" }))
     end)
 
-    it("does not index a setext heading that starts on a list-item line", function()
+    -- GitHub renders `- Title` over `  ===` as a heading inside the item.
+    it("indexes a setext heading that starts on a list-item line", function()
       write_file(root .. "/sl.md", "- Title\n  ===\n\nPlain\n=====\n")
       links.clear_cache()
       local idx = assert(links.heading_index(root .. "/sl.md"))
-      assert.is_nil(links.heading_lookup(idx, "title"))
+      assert.are.equal(0, links.heading_lookup(idx, "title"))
       assert.are.equal(3, links.heading_lookup(idx, "plain"))
+    end)
+  end)
+
+  -- The CommonMark gaps the scanner had left: indented code blocks, HTML
+  -- comments, setext headings in quotes and lists, quote lines as one paragraph.
+  describe("scanner: indented code, comments, quoted paragraphs", function()
+    ---@param lines string[]
+    ---@return string[]
+    local function scanned(lines)
+      local out = {}
+      for _, l in ipairs(links.scan(lines)) do
+        out[#out + 1] = l.target
+      end
+      return out
+    end
+
+    ---@param text string
+    ---@return LspNvim.EnvLink.HeadingIndex
+    local function index_of(text)
+      write_file(root .. "/cm.md", text)
+      links.clear_cache()
+      return assert(links.heading_index(root .. "/cm.md"))
+    end
+
+    it("does not take a link in an indented code block for one", function()
+      assert.are.same(
+        { "$A/real.md" },
+        scanned({
+          "text",
+          "",
+          "    [x]($A/gone/four-blanks.md)",
+          "\t[t]($A/gone/tab.md)",
+          "",
+          "    [y]($A/gone/after-blank.md)",
+          "",
+          "[r]($A/real.md)",
+        })
+      )
+      -- in a block quote too
+      assert.are.same({}, scanned({ ">     [q]($A/gone/quoted.md)" }))
+      -- and a fence line in an indented code block opens no fence
+      assert.are.same({ "$A/after.md" }, scanned({ "    ```", "", "[a]($A/after.md)" }))
+    end)
+
+    it("still reports a link on an indented line that goes on a paragraph", function()
+      assert.are.same({ "$A/cont.md" }, scanned({ "text", "    [c]($A/cont.md)" }))
+    end)
+
+    it("still reports a link in a list continuation paragraph", function()
+      assert.are.same(
+        { "$A/one.md", "$A/two.md", "$A/three.md", "$A/nested.md" },
+        scanned({
+          "- item",
+          "",
+          "  [a]($A/one.md)",
+          "",
+          "1. numbered",
+          "",
+          "    [b]($A/two.md)",
+          "",
+          "- outer",
+          "  - inner",
+          "",
+          "    [n]($A/three.md)",
+          "",
+          "  [o]($A/nested.md)",
+        })
+      )
+      -- four columns past the item's content are code again
+      assert.are.same({}, scanned({ "- item", "", "      [x]($A/gone/code.md)" }))
+      -- a line at the margin ends the list: four blanks after it are code
+      assert.are.same({}, scanned({ "- item", "", "text", "", "    [x]($A/gone/code.md)" }))
+    end)
+
+    it("does not take a link inside an HTML comment for one", function()
+      assert.are.same(
+        { "$A/before.md", "$A/after.md", "$A/real.md" },
+        scanned({
+          "[b]($A/before.md) <!-- [x]($A/gone/inline.md) --> [a]($A/after.md)",
+          "",
+          "<!--",
+          "[y]($A/gone/block.md)",
+          "-->",
+          "",
+          "text <!-- wraps",
+          "[z]($A/gone/wrapped.md) -->",
+          "",
+          "<!-- one line [w]($A/gone/one-line.md) -->",
+          "[r]($A/real.md)",
+        })
+      )
+      -- a comment shown in a code span is no comment, and one in running text
+      -- that is never closed is text (a comment block at a line start runs to
+      -- the end of the document, as in CommonMark)
+      assert.are.same({ "$A/open.md" }, scanned({ "`<!--` [o]($A/open.md)" }))
+      assert.are.same({ "$A/unclosed.md" }, scanned({ "text <!-- [u]($A/unclosed.md)" }))
+      assert.are.same({}, scanned({ "<!-- [u]($A/gone/block.md)", "[v]($A/gone/still.md)" }))
+    end)
+
+    it("is not fooled by an HTML comment that closes at once", function()
+      assert.are.same({ "$A/a.md" }, scanned({ "x <!--> [a]($A/a.md)" }))
+    end)
+
+    it("follows a code span over the lines of a block quote", function()
+      assert.are.same(
+        { "$A/real.md" },
+        scanned({ "> a `span that wraps", "> [x]($A/gone/in-span.md)` and", "> [r]($A/real.md)" })
+      )
+      -- a blank quote line ends the paragraph
+      assert.are.same({ "$A/out.md" }, scanned({ "> a `open", ">", "> [o]($A/out.md)` x" }))
+    end)
+
+    it("knows indented code and comment blocks in fenced_at", function()
+      local lines = { "text", "", "    code", "<!--", "c", "-->", "text" }
+      for lnum, want in ipairs({ false, false, true, true, true, true, false }) do
+        assert.are.equal(want, links.fenced_at(lines, lnum), "line " .. lnum)
+      end
+    end)
+
+    it("indexes a setext heading in a block quote and in a list item", function()
+      local idx = index_of(
+        "> Quoted\n> ======\n\n- Listed\n  ------\n\n> - Deep\n>   ===\n\n1. a\n\n   Second\n   ---\n"
+      )
+      assert.are.equal(0, links.heading_lookup(idx, "quoted"))
+      assert.are.equal(3, links.heading_lookup(idx, "listed"))
+      assert.are.equal(6, links.heading_lookup(idx, "deep"))
+      assert.are.equal(11, links.heading_lookup(idx, "second"))
+    end)
+
+    it("does not take an underline outside the quote or item for a setext one", function()
+      local idx =
+        index_of("> quote\n===\n\n- item\n---\n\n> two\n> lines\n> ===\n\npara\n2. not item\n===\n")
+      assert.is_nil(links.heading_lookup(idx, "quote"))
+      assert.is_nil(links.heading_lookup(idx, "item"))
+      assert.are.equal(6, links.heading_lookup(idx, "two-lines"))
+      assert.are.equal(10, links.heading_lookup(idx, "para-2-not-item"))
+    end)
+
+    it("stays fast on a long document of indented lines, comments and quotes", function()
+      local lines = {}
+      for k = 1, 5000 do
+        local m = k % 4
+        lines[k] = m == 0 and ""
+          or m == 1 and "    [c]($A/c.md)"
+          or m == 2 and "> `q <!-- x"
+          or "- [i]($A/i.md) -->"
+      end
+      local ms = best_ms(function()
+        links.scan(lines)
+      end)
+      assert.is_true(ms < 500, ("%.1f ms"):format(ms))
     end)
   end)
 
