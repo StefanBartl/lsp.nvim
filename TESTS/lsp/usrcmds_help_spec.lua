@@ -8,7 +8,8 @@
 --- trailing full stop. A value text for a value the argument does not offer shows nowhere, so that
 --- is pinned too.
 ---
---- Skipped on a lib.nvim without `help.undocumented` / `arg_desc` (older than the argument texts).
+--- A lib.nvim without `help.undocumented` / `arg_desc` (older than the argument texts) fails the
+--- suite by name instead of skipping it (NEW-43).
 
 local VERBS = { "Lsp", "LspDoctor", "LspMdHints" }
 
@@ -33,7 +34,7 @@ end
 describe("the option float of the lsp.nvim verbs", function()
   if not supported then
     it("needs a lib.nvim with argument texts", function()
-      pending("lib.nvim has no help.undocumented / entries.arg_desc")
+      error("lib.nvim lacks composer.help.undocumented / entries.arg_desc: update lib.nvim")
     end)
     return
   end
