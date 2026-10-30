@@ -49,12 +49,12 @@ that shows a thousand popups does not carry a thousand records.
 | `lsp_nvim_winbar` | `TextChanged`, `InsertLeave` | — | filetype enabled | Re-requests `textDocument/documentSymbol`, debounced per buffer (`winbar.refresh_ms`, default 300ms) |
 | `lsp_nvim_winbar` | `LspAttach` | — | — | Draws the path-only bar at once and asks for symbols |
 | `lsp_nvim_winbar` | `LspDetach` | — | — | Drops the bar when the last client leaves (`vim.schedule`d: the client is still listed while this fires) |
-| `lsp_nvim_winbar` | `BufWipeout` | — | — | Forgets that buffer's refresh timer |
+| `lsp_nvim_winbar` | `BufWipeout`, `BufUnload` | — | — | Cancels and forgets that buffer's refresh timer (`:bdelete` fires only `BufUnload`) |
 | `lsp_nvim_winbar` | `ColorScheme` | — | — | Redefines the chip highlight groups under their old names |
 | `lsp_nvim_symbols` | `BufWipeout`, `BufUnload` | — | — | Drops a buffer's cached document symbols and cancels its request. Registered on the first symbol request |
 | `lsp_nvim_symbols` | `LspDetach` | — | the client was the one that answered | Drops symbols that came from a client that is leaving |
 | `lsp_nvim_implement` | `TextChanged`, `InsertLeave`, `BufEnter`, `LspAttach` | — | filetype enabled | Asks for implementations after an edit, debounced (`implement.debounce_ms`, default 600ms); one round per `changedtick` |
-| `lsp_nvim_implement` | `BufWipeout` | — | — | Cancels and forgets that buffer's round |
+| `lsp_nvim_implement` | `BufWipeout`, `BufUnload` | — | — | Cancels and forgets that buffer's round and its debounce timer (`:bdelete` fires only `BufUnload`) |
 | `lsp_nvim_peek` | `WinClosed` | `*` | window is a peek | Gives back the peek's keymaps, closes what was opened from it, unloads a buffer the peek loaded. Registered on the first peek |
 | `lsp_nvim_gitsigns_actions` | `User` | `GitSignsUpdate` | `code_actions.gitsigns` | Starts the in-process server on a buffer gitsigns is attached to |
 | `lsp_nvim_supervisor` | `LspAttach` | — | — | Records server name, buffer and start time per client id |
