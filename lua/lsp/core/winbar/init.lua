@@ -469,7 +469,10 @@ function M.setup(opts)
     desc = "lsp.nvim: drop the LSP breadcrumb when the last client detaches",
   })
 
-  autocmd.create("BufWipeout", function(args)
+  -- `BufUnload` as well as `BufWipeout`: `:bdelete` fires only the first, and
+  -- a debouncer that is never cancelled keeps its libuv timer open for the
+  -- rest of the session.
+  autocmd.create({ "BufUnload", "BufWipeout" }, function(args)
     local handle = refreshers[args.buf]
     if handle then
       handle.cancel()
@@ -477,7 +480,7 @@ function M.setup(opts)
     end
   end, {
     group = group,
-    desc = "lsp.nvim: forget the symbol-refresh timer of a wiped buffer",
+    desc = "lsp.nvim: forget the symbol-refresh timer of an unloaded buffer",
   })
 
   -- A colorscheme change clears every group, the derived chip ones included.

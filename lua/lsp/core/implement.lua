@@ -456,7 +456,10 @@ function M.setup(opts)
     group = group,
     desc = "lsp.nvim: re-ask for implementations after an edit (implementation markers)",
   })
-  autocmd.create("BufWipeout", function(args)
+  -- `BufUnload` as well as `BufWipeout`: `:bdelete` fires only the first, and
+  -- a debouncer that is never cancelled keeps its libuv timer open for the
+  -- rest of the session. The markers go with the text, so the state does too.
+  autocmd.create({ "BufUnload", "BufWipeout" }, function(args)
     cancel(args.buf)
     tokens[args.buf] = nil
     handled[args.buf] = nil
@@ -467,7 +470,7 @@ function M.setup(opts)
     end
   end, {
     group = group,
-    desc = "lsp.nvim: forget the implementation-marker state of a wiped buffer",
+    desc = "lsp.nvim: forget the implementation-marker state of an unloaded buffer",
   })
 
   if state.enable or next(state.filetypes) ~= nil then
