@@ -13,6 +13,7 @@ local lsp = vim.lsp
 local cfg = require("lsp.servers.marksman.config")
 local diagnostics_handler = require("lsp.servers.marksman.diagnostics_handler")
 local root_resolver = require("lsp.servers.marksman.rootresolver")
+local direct_exe = require("lsp.core.direct_exe")
 
 ---@class MarksmanServer
 local M = {}
@@ -34,7 +35,12 @@ function M.setup(shared, opts)
     local resolve_root = root_resolver()
 
     lsp.config("marksman", {
-      cmd = { "marksman", "server" },
+      -- The Mason exe itself, not the `mason/bin/marksman.CMD` wrapper PATH
+      -- resolves to: through the wrapper `:LspStop` kills only cmd.exe and
+      -- marksman.exe survives with Neovim's pipes (see lsp.core.direct_exe).
+      cmd = direct_exe.cmd("marksman", {
+        direct_exe.mason_package("marksman", "marksman.exe"),
+      }, { "server" }),
       filetypes = cfg.filetypes,
       -- Skip buffers with no real backing file before delegating to the
       -- shared resolver. Marksman only accepts `file://` URIs built from an

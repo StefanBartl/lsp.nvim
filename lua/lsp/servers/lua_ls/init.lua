@@ -7,6 +7,7 @@ local M = {}
 local ignore = require("lsp.servers.lua_ls.ignore")
 local root_resolver = require("lsp.servers.lua_ls.rootresolver")
 local library_profiles = require("lsp.servers.lua_ls.library_profiles")
+local direct_exe = require("lsp.core.direct_exe")
 
 ---@param shared {capabilities?:table,on_attach?:fun(client,bufnr),on_init?:fun(client,init_result):boolean}|nil
 --- `opts` deliberately has no `profile` field. It used to declare one, and
@@ -28,8 +29,14 @@ function M.setup(shared, opts)
   if type(vim.lsp.config) == "table" then
     -- Register the lua_ls server configuration
     vim.lsp.config("lua_ls", {
-      -- Command to launch the language server executable
-      cmd = { "lua-language-server" },
+      -- Command to launch the language server executable: the installed exe
+      -- itself rather than a scoop shim or Mason's `.CMD` wrapper, so that
+      -- stopping the client kills the server and not just a launcher (see
+      -- lsp.core.direct_exe). Falls back to the PATH name.
+      cmd = direct_exe.cmd("lua-language-server", {
+        direct_exe.scoop_app("lua-language-server", "bin/lua-language-server.exe"),
+        direct_exe.mason_package("lua-language-server", "bin/lua-language-server.exe"),
+      }),
 
       -- File types this server should attach to
       filetypes = { "lua" },
