@@ -154,6 +154,9 @@ describe("lsp.core.implement", function()
         hold_impl = false,
         ---@type function[]
         held_impl = {},
+        -- How many requests were cancelled, so a case can tell whether a round
+        -- can still be called off.
+        cancelled = 0,
       }
       function client:request(method, params, handler, bufnr_)
         sent[#sent + 1] = method
@@ -188,7 +191,9 @@ describe("lsp.core.implement", function()
         end
         return true, #sent
       end
-      function client:cancel_request() end
+      function client:cancel_request()
+        self.cancelled = self.cancelled + 1
+      end
       function client:release_impl()
         local held = self.held_impl
         self.held_impl = {}
@@ -438,6 +443,51 @@ describe("lsp.core.implement", function()
       local found = marks()
       assert.are.equal(1, #found)
       assert.are.equal(2, found[1][2], "the marker is not on the line of `Repo` any more")
+    end)
+
+    -- `:bdelete` keeps the buffer number, and a buffer loaded again counts its
+    -- rounds on from where its token stands. Had `BufUnload` dropped the token,
+    -- the new round would carry the same one as the old, an old answer that
+    -- arrives anyway (a cancelled request can still be answered) would pass for
+    -- the new round's and settle it -- and the new round's requests could not be
+    -- called off any more.
+    it("keeps a round after :bdelete cancellable when the old round answers late", function()
+      local client = stub_client({ [0] = 3 })
+      client.hold_impl = true
+      run({ enable = true }, client)
+      vim.wait(1000, function()
+        return #client.held_impl >= 2
+      end, 10)
+      assert.are.equal(2, #client.held_impl, "the first round never asked")
+      local first_round = client.held_impl
+      client.held_impl = {}
+
+      -- A scratch buffer to stand in the window (one this module never asks
+      -- about): deleting the only buffer makes Nvim load it again by itself.
+      vim.api.nvim_set_current_buf(vim.api.nvim_create_buf(false, true))
+      vim.cmd("bdelete! " .. bufnr)
+      vim.fn.bufload(bufnr)
+      vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {
+        "interface Repo {}",
+        "",
+        "class Impl {}",
+        "",
+        "interface Cache {}",
+        "",
+      })
+      vim.bo[bufnr].filetype = "typescript"
+      vim.api.nvim_exec_autocmds("BufEnter", { buffer = bufnr })
+      vim.wait(1000, function()
+        return #client.held_impl >= 2
+      end, 10)
+      assert.are.equal(2, #client.held_impl, "the second round never asked")
+
+      for _, deliver in ipairs(first_round) do
+        deliver()
+      end
+      client.cancelled = 0
+      implement.detach()
+      assert.are.equal(2, client.cancelled, "the second round can no longer be cancelled")
     end)
 
     it("sends nothing at all when no client implements the method", function()

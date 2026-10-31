@@ -459,9 +459,17 @@ function M.setup(opts)
   -- `BufUnload` as well as `BufWipeout`: `:bdelete` fires only the first, and
   -- a debouncer that is never cancelled keeps its libuv timer open for the
   -- rest of the session. The markers go with the text, so the state does too.
+  -- The token is the exception: `:bdelete` keeps the buffer number, and a round
+  -- of the buffer loaded again must not carry the token of a round from before
+  -- (a cancelled request can still be answered, and would settle the new
+  -- round). So it is bumped on unload and only dropped once the number is gone.
   autocmd.create({ "BufUnload", "BufWipeout" }, function(args)
     cancel(args.buf)
-    tokens[args.buf] = nil
+    if args.event == "BufWipeout" then
+      tokens[args.buf] = nil
+    else
+      tokens[args.buf] = (tokens[args.buf] or 0) + 1
+    end
     handled[args.buf] = nil
     local handle = schedulers[args.buf]
     if handle then
